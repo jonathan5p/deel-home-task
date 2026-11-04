@@ -7,8 +7,8 @@ services:
       - POSTGRES_PASSWORD=1234
       - POSTGRES_DB=finance_db
     volumes:
-        - pg-data:/var/lib/postgresql/data
-        - "${PWD}/db-scripts/initialize_db_ddl.sql:/docker-entrypoint-initdb.d/initialize_db_ddl.sql"
+      - pg-data:/var/lib/postgresql/data
+      - "${PWD}/db-scripts/initialize_db_ddl.sql:/docker-entrypoint-initdb.d/initialize_db_ddl.sql"
     ports:
       - "5432:5432"
     command: ["postgres", "-c", "wal_level=logical", "-c", "hot_standby=on"]
@@ -64,5 +64,55 @@ services:
     entrypoint: ["/bin/sh", "/init-connectors.sh"]
     restart: "no"
 
+  # Kafka monitoring console
+  conduktor-console:
+    image: conduktor/conduktor-console:1.48.1
+    profiles: [monitoring]
+    depends_on:
+      kafka:
+        condition: service_started
+      conduktor-db:
+        condition: service_healthy
+    ports:
+      - "8090:8080"
+    volumes:
+      - conduktor-data:/var/conduktor
+    environment:
+      CDK_DATABASE_URL: "postgresql://conduktor:local-metadata-only@conduktor-db:5432/conduktor"
+      CDK_ORGANIZATION_NAME: "deel-home-task"
+      CDK_ADMIN_EMAIL: "admin@local.test"
+      CDK_ADMIN_PASSWORD: "LocalConsole123!"
+      CDK_CLUSTERS_0_ID: "deel-kafka"
+      CDK_CLUSTERS_0_NAME: "Deel Kafka Cluster"
+      CDK_CLUSTERS_0_BOOTSTRAPSERVERS: "kafka:29092"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -fsS http://localhost:8080/platform/api/modules/health/live || exit 1",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+  conduktor-db:
+    image: postgres:16.8
+    profiles: [monitoring]
+    environment:
+      POSTGRES_DB: "conduktor"
+      POSTGRES_USER: "conduktor"
+      POSTGRES_PASSWORD: "local-metadata-only"
+      POSTGRES_HOST_AUTH_METHOD: "scram-sha-256"
+    volumes:
+      - conduktor-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U conduktor -d conduktor"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   pg-data:
+  conduktor-pg-data:
+  conduktor-data:
