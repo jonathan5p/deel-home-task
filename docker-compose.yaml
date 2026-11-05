@@ -51,6 +51,7 @@ services:
     volumes:
       # Postgres 18+ images keep data in a version-specific directory under /var/lib/postgresql.
       - analytics-pg-data:/var/lib/postgresql
+      - ./docker/analytics-db/initdb:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
       interval: 10s

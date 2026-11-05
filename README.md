@@ -51,6 +51,20 @@ The credentials are local development defaults in `.env` (`ANALYTICS_DB_USER`, `
 docker compose exec analytics-db psql -U analytics -d analytics
 ```
 
+#### Schemas and init script
+
+`docker/analytics-db/initdb/01-gold-and-catalog.sql` creates:
+
+- the `gold` schema in the `analytics` database, for the dimensional model;
+- the `iceberg_catalog` database, where the Iceberg JDBC catalog creates its own tables on first use.
+
+PostgreSQL runs init scripts **only when the data volume is empty**, so editing the script does not change an existing database. To apply a changed script, recreate only the analytics volume. **Data loss:** this deletes all gold data and the Iceberg catalog, which then no longer points to the lake tables.
+
+```sh
+docker compose down -v analytics-db  # Removes only the analytics container and its volume
+make up
+```
+
 ### Optional Kafka monitoring
 
 With the source stack already running, start only the optional Conduktor services:
