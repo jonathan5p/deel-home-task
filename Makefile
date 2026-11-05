@@ -1,5 +1,5 @@
 COMPOSE ?= docker compose
-SPARK_APP ?= /opt/spark/examples/src/main/python/pi.py
+SPARK_APP ?= /opt/spark/jobs/spark_ui_check.py
 SPARK_APP_ARGS ?=
 .DEFAULT_GOAL := help
 
@@ -11,7 +11,7 @@ help:
 		'up-monitoring  Start the default stack plus the optional Conduktor monitoring services.' \
 		'down           Stop all project services, including optional profiles; keep volumes.' \
 		'clean          Delete project containers and volumes (DATA LOSS); requires CONFIRM=1.' \
-		'spark-submit   Submit SPARK_APP (default: bundled Pi example) with SPARK_APP_ARGS to the Spark cluster.' \
+		'spark-submit   Submit SPARK_APP (default: UI check job, see README) with SPARK_APP_ARGS to the Spark cluster.' \
 		'See README.md for optional monitor controls.'
 
 up:

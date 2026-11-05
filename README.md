@@ -16,7 +16,7 @@ Install [Docker](https://www.docker.com/products/docker-desktop/) with [Compose 
 make up             # Start the default source/CDC stack and Spark cluster in detached mode
 make up-monitoring  # Start the default stack plus optional Conduktor monitoring
 make down           # Stop/remove all project containers, including optional profiles; keep volumes
-make spark-submit   # Submit a job to the Spark cluster (defaults to the bundled Pi example)
+make spark-submit   # Submit a job to the Spark cluster (defaults to a two-minute UI check job)
 make help           # Show lifecycle commands
 ```
 
@@ -92,12 +92,26 @@ Worker resources are set with `SPARK_WORKER_CORES` and `SPARK_WORKER_MEMORY` in 
 #### Submitting a job
 
 ```sh
-make spark-submit                                                                                # Run the bundled Pi example
-make spark-submit SPARK_APP_ARGS=10                                                              # Pass arguments to the application
-make spark-submit SPARK_APP=/opt/spark/examples/src/main/python/wordcount.py SPARK_APP_ARGS=/opt/spark/RELEASE
+make spark-submit                                                                                # Run the two-minute UI check job (default)
+make spark-submit SPARK_APP=/opt/spark/examples/src/main/python/pi.py SPARK_APP_ARGS=10         # Run another application with arguments
 ```
 
-`SPARK_APP` is a path inside the Spark image and defaults to `/opt/spark/examples/src/main/python/pi.py`; `SPARK_APP_ARGS` are passed to it unchanged. The driver runs in client mode inside the `spark-master` container and submits to that container's `SPARK_MASTER_URL`, so the cluster must be running first. Running and finished applications appear on the master UI.
+`SPARK_APP` is a path inside the `spark-master` container and defaults to `/opt/spark/jobs/spark_ui_check.py`; `SPARK_APP_ARGS` are passed to it unchanged. The driver runs in client mode inside the `spark-master` container and submits to that container's `SPARK_MASTER_URL`, so the cluster must be running first. Running and finished applications appear on the master UI.
+
+Interrupting `make spark-submit` does not stop a driver that is already running inside the container, and that driver keeps holding the workers' cores, so the next submission waits for resources. Stop leftover drivers with `docker compose exec spark-master pkill -f org.apache.spark.deploy.SparkSubmit`.
+
+#### Checking the application UI
+
+The application UI at http://localhost:4040 exists only while a driver runs. The default job, [`jobs/spark_ui_check.py`](jobs/spark_ui_check.py), is a dummy streaming query that runs for two minutes so the UI can be inspected. It reads Spark's built-in `rate` source and counts rows per 10-second window every five seconds. The `jobs/` directory is mounted read-only into the master container at `/opt/spark/jobs`. While the job runs, open http://localhost:4040:
+
+| Tab | What to look at |
+|---|---|
+| Jobs and Stages | One job per micro-batch; the windowed count adds a shuffle stage |
+| SQL / DataFrame | The plan of each micro-batch |
+| Executors | Executors on both workers |
+| Structured Streaming | The `rate_window_counts` query, with input and processing rates and batch durations |
+
+The job prints the progress of the latest micro-batch every five seconds. When it finishes, the UI on port 4040 closes.
 
 Extra informations and tips about the task execution can be found in the task description document shared by our recruiting team.
 
