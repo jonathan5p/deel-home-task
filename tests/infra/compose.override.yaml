@@ -1,0 +1,6 @@
+services:
+  analytics-db: { ports: !reset [] }
+  seaweedfs: { ports: !reset [] }
+  spark-master: { ports: !reset [] }
+  spark-worker-1: { ports: !reset [] }
+  spark-worker-2: { ports: !reset [] }

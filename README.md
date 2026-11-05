@@ -239,7 +239,8 @@ analytics/
       settings.py           pipeline settings (Kafka, lake, analytics database)
       jobs/                 Spark jobs
     tests/
-tests/infra/apps/           Spark applications used to check the platform (UI check, Iceberg smoke check)
+tests/infra/                infra tests that drive an isolated copy of the stack
+  apps/                     Spark applications they submit (UI check, Iceberg smoke check, version and hold apps)
 ```
 
 Tests mirror the source tree of their project: `analytics/<project>/src/<project>/<module>.py` is tested in `analytics/<project>/tests/test_<module>.py`.
@@ -294,3 +295,18 @@ make typecheck  # check types with ty; any diagnostic fails
 - **Coverage** is measured on the `common` and `pipelines` packages with branch coverage. The 90% floor is configured in `pyproject.toml` (`[tool.coverage.report] fail_under`), and `make test` fails below it even when every test passes.
 - **Lint and format** use [ruff](https://docs.astral.sh/ruff/), configured in `pyproject.toml` (`[tool.ruff]`).
 - **Typing** is required for all code. ruff's `ANN` rules fail `make lint` when an annotation is missing, and [ty](https://docs.astral.sh/ty/) checks that the annotations are correct, including calls into PySpark, whose types it reads from the image (`[tool.ty]` in `pyproject.toml`). ty is in beta, so its version is pinned in `uv.lock`; it only runs in the container, where PySpark is available.
+
+#### Infra tests
+
+Infra tests check the platform itself rather than the pipeline code. They need Docker and [uv](https://docs.astral.sh/uv/) on the host, and run locally only (not in CI):
+
+```sh
+make test-infra   # about two minutes, mostly building images and starting the stack
+```
+
+They start an isolated Compose project (`deel-infra-tests`, with no host ports), so they never touch your running stack or its data, and remove it with its volumes at the end. They submit the apps in `tests/infra/apps/` with `make spark-submit` and check that:
+
+- the Iceberg smoke job writes catalog metadata to PostgreSQL and table files to SeaweedFS;
+- drivers and executors run the same Spark (4.1.4) and Python (3.14) versions;
+- each application run gets its own driver container, which is removed when the application ends;
+- two applications capped with `spark.cores.max=2` run at the same time, both with executors, in two separate driver containers.

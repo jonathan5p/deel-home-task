@@ -11,6 +11,7 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["analytics/common/tests", "analytics/pipelines/tests"]
+pythonpath = ["."]
 addopts = [
     "--strict-markers",
     "--strict-config",

@@ -11,7 +11,7 @@ PROFILES ?=
 CODE_MOUNTS = -v "$(CURDIR)/analytics:/opt/app/analytics" -v "$(CURDIR)/tests:/opt/app/tests"
 APP_RUN = $(COMPOSE) run --rm --build --no-deps $(CODE_MOUNTS)
 
-.PHONY: help up down clean spark-submit spark-history test lint format typecheck
+.PHONY: help up down clean spark-submit spark-history test lint format typecheck test-infra
 
 help:
 	@printf '%s\n' \
@@ -24,6 +24,7 @@ help:
 		'lint           Check linting and formatting with ruff in the app container.' \
 		'format         Format the code and apply safe lint fixes with ruff.' \
 		'typecheck      Check types with ty in the app container; any diagnostic fails.' \
+		'test-infra     Run the infra tests against an isolated copy of the stack (local only, a few minutes).' \
 		'Optional profiles: monitoring (Conduktor), history (Spark History Server). See README.md.'
 
 up:
@@ -56,6 +57,9 @@ format:
 
 typecheck:
 	@$(APP_RUN) spark-app ty check
+
+test-infra:
+	@uv run --frozen pytest tests/infra --no-cov -p no:cacheprovider -v
 
 clean:
 ifeq ($(CONFIRM),1)
