@@ -1,5 +1,3 @@
-"""Spark application that keeps its executors for a given number of seconds, then exits."""
-
 import sys
 import time
 

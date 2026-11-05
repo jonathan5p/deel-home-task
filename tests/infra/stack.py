@@ -1,5 +1,3 @@
-"""Drive an isolated Docker Compose project of the platform for infra tests."""
-
 import json
 import os
 import subprocess

@@ -1,5 +1,3 @@
-"""Spark application that prints the driver's and executors' Spark and Python versions as JSON."""
-
 import json
 import platform
 
