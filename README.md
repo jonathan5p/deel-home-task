@@ -20,7 +20,7 @@ make spark-submit   # Submit a job to the Spark cluster (defaults to a one-minut
 make help           # Show lifecycle commands
 ```
 
-Optional services are grouped in Compose profiles and are not started by a plain `make up`: `monitoring` (Conduktor, see **Optional Kafka monitoring**) and `history` (Spark History Server, see **Spark History Server**). Pass them with `PROFILES`, separated by spaces or commas.
+Optional services are grouped in Compose profiles and are not started by a plain `make up`: `monitoring` (Conduktor, see **Optional Kafka monitoring**) and `history` (Spark History Server, see **Spark History Server**). Pass them with `PROFILES`, separated by spaces.
 
 #### Destructive reset
 

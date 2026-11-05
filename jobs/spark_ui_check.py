@@ -1,9 +1,3 @@
-"""Dummy Spark job that keeps a streaming query running so the application UI at
-http://localhost:4040 can be inspected.
-
-It stops on its own after one minute.
-"""
-
 import time
 
 from pyspark.sql import SparkSession

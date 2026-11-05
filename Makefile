@@ -1,11 +1,8 @@
 COMPOSE ?= docker compose
 SPARK_APP ?= /opt/spark/jobs/spark_ui_check.py
 SPARK_APP_ARGS ?=
-PROFILES ?= $(COMPOSE_PROFILES)
+PROFILES ?=
 .DEFAULT_GOAL := help
-
-comma := ,
-space := $(subst ,, )
 
 .PHONY: help up down clean spark-submit spark-history
 
@@ -18,15 +15,12 @@ help:
 		'spark-history  Start only the optional Spark History Server (localhost:18080).' \
 		'Optional profiles: monitoring (Conduktor), history (Spark History Server). See README.md.'
 
-# Compose expects COMPOSE_PROFILES as a comma-separated list; PROFILES also accepts spaces.
 up:
-	@COMPOSE_PROFILES="$(subst $(space),$(comma),$(strip $(PROFILES)))" $(COMPOSE) up -d
+	@$(COMPOSE) $(addprefix --profile ,$(PROFILES)) up -d
 
 down:
 	@$(COMPOSE) --profile '*' down
 
-# The driver runs inside the master container, so the master URL and the hostname executors
-# connect back to are resolved from that container's environment rather than duplicated here.
 spark-submit:
 	@$(COMPOSE) exec -T spark-master sh -c '/opt/spark/bin/spark-submit \
 		--master "$$SPARK_MASTER_URL" \
