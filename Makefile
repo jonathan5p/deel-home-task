@@ -8,7 +8,7 @@ PROFILES ?=
 
 help:
 	@printf '%s\n' \
-		'up             Start the default stack; add optional services with PROFILES (e.g. PROFILES="monitoring history").' \
+		'up             Build changed local images and start the default stack; add optional services with PROFILES (e.g. PROFILES="monitoring history").' \
 		'down           Stop all project services, including optional profiles; keep volumes.' \
 		'clean          Delete project containers and volumes (DATA LOSS); requires CONFIRM=1.' \
 		'spark-submit   Submit SPARK_APP (default: UI check job, see README) with SPARK_APP_ARGS to the Spark cluster.' \
@@ -16,7 +16,7 @@ help:
 		'Optional profiles: monitoring (Conduktor), history (Spark History Server). See README.md.'
 
 up:
-	@$(COMPOSE) $(addprefix --profile ,$(PROFILES)) up -d
+	@$(COMPOSE) $(addprefix --profile ,$(PROFILES)) up -d --build
 
 down:
 	@$(COMPOSE) --profile '*' down

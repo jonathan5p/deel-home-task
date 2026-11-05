@@ -13,7 +13,7 @@ Welcome to Deel's Data Engineering Take-Home task, as mentioned in the Task spec
 Install [Docker](https://www.docker.com/products/docker-desktop/) with [Compose v2](https://docs.docker.com/compose/install/) and GNU Make. With the Docker engine running, run these commands from the repository root:
 
 ```sh
-make up             # Start the default stack (source/CDC, analytics database, Spark cluster) in detached mode
+make up             # Build changed local images and start the default stack (source/CDC, analytics database, data lake, Spark cluster)
 make up PROFILES="monitoring history"  # Also start optional services (any combination of profiles)
 make down           # Stop/remove all project containers, including optional profiles; keep volumes
 make spark-submit   # Submit a job to the Spark cluster (defaults to a one-minute UI check job)
@@ -64,6 +64,46 @@ PostgreSQL runs init scripts **only when the data volume is empty**, so editing 
 docker compose down -v analytics-db  # Removes only the analytics container and its volume
 make up
 ```
+
+### Data lake (SeaweedFS)
+
+[SeaweedFS](https://github.com/seaweedfs/seaweedfs) provides the S3-compatible object store for the data lake. It runs as a single `seaweedfs` container (`weed mini`), starts with `make up`, and keeps its data in the `seaweedfs-data` volume. It creates the `lake` bucket on startup if it does not exist, and the service reports healthy only once the bucket is there.
+
+| Endpoint | From the host | From other containers |
+| --- | --- | --- |
+| S3 API | `http://localhost:8333` | `http://seaweedfs:8333` |
+| Filer UI (browse buckets and files) | http://localhost:8888/buckets/lake/ | `http://seaweedfs:8888` |
+
+| Setting | Value |
+| --- | --- |
+| Access key | `lakeadmin` |
+| Secret key | `lakeadmin-secret` |
+| Region | any (for example `us-east-1`); use path-style access |
+
+The credentials are local development defaults in `.env` (`LAKE_S3_ACCESS_KEY`, `LAKE_S3_SECRET_KEY`); variables exported in the shell override them. Any S3-compatible store, or AWS S3 itself, can replace SeaweedFS by changing the endpoint and credentials.
+
+#### Iceberg catalog
+
+Every Spark job gets an [Apache Iceberg](https://iceberg.apache.org/) catalog named `lake`, configured in `docker/spark/spark-defaults.conf`:
+
+- table metadata (the catalog) lives in the `iceberg_catalog` database of `analytics-db`, through Iceberg's JDBC catalog;
+- table data and metadata files live in SeaweedFS under `s3://lake/warehouse/<namespace>/<table>/`.
+
+The Spark image bundles Iceberg 1.12.0 (`iceberg-spark-runtime-4.1_2.13`, `iceberg-aws-bundle`) and the PostgreSQL JDBC driver 42.7.14, with pinned checksums, so jobs need no `--packages`. The driver reads the database and S3 credentials from its environment (the `.env` values above).
+
+Run the smoke job to check the whole path. It creates or replaces `lake.smoke.iceberg_check`, writes four rows, reads them back, and fails if they differ:
+
+```sh
+make spark-submit SPARK_APP=/opt/spark/jobs/iceberg_smoke_check.py
+```
+
+To inspect the result:
+
+```sh
+docker compose exec analytics-db psql -U analytics -d iceberg_catalog -c "select * from iceberg_tables"
+```
+
+The table files are visible at http://localhost:8888/buckets/lake/warehouse/smoke/iceberg_check/.
 
 ### Optional Kafka monitoring
 
