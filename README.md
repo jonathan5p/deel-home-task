@@ -13,7 +13,7 @@ Welcome to Deel's Data Engineering Take-Home task, as mentioned in the Task spec
 Install [Docker](https://www.docker.com/products/docker-desktop/) with [Compose v2](https://docs.docker.com/compose/install/) and GNU Make. With the Docker engine running, run these commands from the repository root:
 
 ```sh
-make up             # Start the default source/CDC stack in detached mode
+make up             # Start the default source/CDC stack and Spark cluster in detached mode
 make up-monitoring  # Start the default stack plus optional Conduktor monitoring
 make down           # Stop/remove all project containers, including optional profiles; keep volumes
 make help           # Show lifecycle commands
@@ -72,6 +72,18 @@ The stack includes a Debezium CDC pipeline that streams database changes to Kafk
 ```properties
 bootstrap.servers=localhost:9092
 ```
+
+### Spark cluster
+
+`make up` also starts a Spark 4.1.4 standalone cluster: one master and two workers built from `docker/spark/Dockerfile`. The same image is meant to run the driver, so driver and worker versions always match.
+
+| Service | UI | Resources |
+|---|---|---|
+| `spark-master` | http://localhost:8080 | Cluster manager; accepts jobs at `spark://spark-master:7077` |
+| `spark-worker-1` | http://localhost:8081 | 2 cores, 2 GiB executor memory |
+| `spark-worker-2` | http://localhost:8082 | 2 cores, 2 GiB executor memory |
+
+Worker resources are set with `SPARK_WORKER_CORES` and `SPARK_WORKER_MEMORY` in `docker-compose.yaml`. They cap what executors can claim on each worker; the master, worker and driver JVMs need memory on top of that, so make sure Docker has enough memory for the whole stack.
 
 Extra informations and tips about the task execution can be found in the task description document shared by our recruiting team.
 
