@@ -7,6 +7,13 @@ USER root
 RUN mkdir -p /opt/spark/conf /opt/spark/spark-events \
     && chown spark:spark /opt/spark/spark-events
 
+# Python 3.14 for every driver and executor; the base image's Python 3.10 is left to Spark's own scripts.
+ENV UV_PYTHON_INSTALL_DIR=/opt/python
+RUN --mount=from=ghcr.io/astral-sh/uv:0.13.7,source=/uv,target=/usr/local/bin/uv \
+    uv python install 3.14.10 \
+    && ln -s "$(uv python find --managed-python 3.14.10)" /usr/local/bin/python3.14
+ENV PYSPARK_PYTHON=/usr/local/bin/python3.14
+
 # Iceberg drivers
 ADD --chmod=644 --checksum=sha256:3123c3798af642dd537230923548e013ef41cc28b6626e5225808cf5670a0f82 \
     https://repo1.maven.org/maven2/org/apache/iceberg/iceberg-spark-runtime-4.1_2.13/1.12.0/iceberg-spark-runtime-4.1_2.13-1.12.0.jar \
