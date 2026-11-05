@@ -83,6 +83,7 @@ bootstrap.servers=localhost:9092
 | `spark-master` | http://localhost:8080 | Cluster manager; accepts jobs at `SPARK_MASTER_URL` |
 | `spark-worker-1` | http://localhost:8081 | 2 cores, 2 GiB executor memory |
 | `spark-worker-2` | http://localhost:8082 | 2 cores, 2 GiB executor memory |
+| Running application | http://localhost:4040 | Jobs, stages, SQL and streaming tabs of the driver started by `make spark-submit`; only available while it runs |
 
 Worker resources are set with `SPARK_WORKER_CORES` and `SPARK_WORKER_MEMORY` in `docker-compose.yaml`. They cap what executors can claim on each worker; the master, worker and driver JVMs need memory on top of that, so make sure Docker has enough memory for the whole stack.
 
