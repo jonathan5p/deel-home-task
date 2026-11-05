@@ -11,7 +11,7 @@ PROFILES ?=
 CODE_MOUNTS = -v "$(CURDIR)/analytics:/opt/app/analytics" -v "$(CURDIR)/tests:/opt/app/tests"
 APP_RUN = $(COMPOSE) run --rm --build --no-deps $(CODE_MOUNTS)
 
-.PHONY: help up down clean spark-submit spark-history test lint format
+.PHONY: help up down clean spark-submit spark-history test lint format typecheck
 
 help:
 	@printf '%s\n' \
@@ -23,6 +23,7 @@ help:
 		'test           Run the unit tests with coverage (fails below 90%) in the app container.' \
 		'lint           Check linting and formatting with ruff in the app container.' \
 		'format         Format the code and apply safe lint fixes with ruff.' \
+		'typecheck      Check types with ty in the app container; any diagnostic fails.' \
 		'Optional profiles: monitoring (Conduktor), history (Spark History Server). See README.md.'
 
 up:
@@ -52,6 +53,9 @@ lint:
 
 format:
 	@$(APP_RUN) --user "$$(id -u):$$(id -g)" spark-app sh -c 'ruff format && ruff check --fix'
+
+typecheck:
+	@$(APP_RUN) spark-app ty check
 
 clean:
 ifeq ($(CONFIRM),1)

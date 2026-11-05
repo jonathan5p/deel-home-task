@@ -6,6 +6,7 @@ dev = [
     "pytest>=9.2",
     "pytest-cov>=7.0",
     "ruff>=0.17.4",
+    "ty==0.0.98",
 ]
 
 [tool.pytest.ini_options]
@@ -37,6 +38,7 @@ line-length = 100
 
 [tool.ruff.lint]
 select = [
+    "ANN",  # type annotations are required everywhere
     "E",    # pycodestyle errors
     "W",    # pycodestyle warnings
     "F",    # pyflakes
@@ -50,3 +52,11 @@ select = [
 
 [tool.ruff.lint.isort]
 known-first-party = ["common", "pipelines", "tests"]
+
+[tool.ty.environment]
+python-version = "3.14"
+# PySpark is not installed from PyPI: it comes from the Spark image.
+extra-paths = ["/opt/spark/python"]
+
+[tool.ty.terminal]
+error-on-warning = true
