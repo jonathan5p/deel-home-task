@@ -46,10 +46,8 @@ def main() -> None:
     print("Spark UI check finished.", flush=True)
 
 
-def stop_between_micro_batches(
-    stream: StreamingQuery, timeout_seconds: float = 30.0
-) -> None:
-    """Stop the query while no micro-batch is running, so it is not aborted mid-write and logged as an error."""
+def stop_between_micro_batches(stream: StreamingQuery, timeout_seconds: float = 30.0) -> None:
+    """Stop the query between micro-batches, so it is not aborted mid-write and logged as error."""
     deadline = time.monotonic() + timeout_seconds
     while stream.status["isTriggerActive"] and time.monotonic() < deadline:
         time.sleep(0.2)

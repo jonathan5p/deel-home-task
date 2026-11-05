@@ -6,7 +6,12 @@ SPARK_UI_PORT ?= 4040
 PROFILES ?=
 .DEFAULT_GOAL := help
 
-.PHONY: help up down clean spark-submit spark-history
+# Code checks run in a throwaway app container with the working tree's source mounted,
+# so they use the image's Spark and Python without a rebuild for every edit.
+CODE_MOUNTS = -v "$(CURDIR)/analytics:/opt/app/analytics" -v "$(CURDIR)/tests:/opt/app/tests"
+APP_RUN = $(COMPOSE) run --rm --build --no-deps $(CODE_MOUNTS)
+
+.PHONY: help up down clean spark-submit spark-history test lint format
 
 help:
 	@printf '%s\n' \
@@ -15,6 +20,9 @@ help:
 		'clean          Delete project containers and volumes (DATA LOSS); requires CONFIRM=1.' \
 		'spark-submit   Run SPARK_APP (repo path; default: UI check job) in its own driver container; options SPARK_APP_ARGS, SPARK_CONF, SPARK_UI_PORT.' \
 		'spark-history  Start only the optional Spark History Server (localhost:18080).' \
+		'test           Run the unit tests with coverage (fails below 90%) in the app container.' \
+		'lint           Check linting and formatting with ruff in the app container.' \
+		'format         Format the code and apply safe lint fixes with ruff.' \
 		'Optional profiles: monitoring (Conduktor), history (Spark History Server). See README.md.'
 
 up:
@@ -35,6 +43,15 @@ spark-submit:
 
 spark-history:
 	@$(COMPOSE) --profile history up -d --wait spark-history
+
+test:
+	@$(APP_RUN) spark-app pytest -p no:cacheprovider
+
+lint:
+	@$(APP_RUN) spark-app sh -c 'ruff check && ruff format --check'
+
+format:
+	@$(APP_RUN) --user "$$(id -u):$$(id -g)" spark-app sh -c 'ruff format && ruff check --fix'
 
 clean:
 ifeq ($(CONFIRM),1)

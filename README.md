@@ -278,3 +278,17 @@ The defaults point at the local Docker Compose stack.
 | `ANALYTICS_DB_PASSWORD` | `common.settings.AnalyticsDbSettings` | required | Analytics database password |
 
 `PipelineSettings` combines the three. A missing or empty required variable raises `MissingSettingsError`, which lists every missing name at once.
+
+#### Tests, lint and format
+
+The checks run in a throwaway container from the `app` image, with `analytics/` and `tests/` mounted, so they use the cluster's exact Spark and Python versions and pick up edits without a rebuild:
+
+```sh
+make test     # unit tests with branch coverage; fails below 90%
+make lint     # ruff lint and format check
+make format   # format the code and apply safe lint fixes (files keep your ownership)
+```
+
+- **Unit tests** live next to each project and mirror its source tree (`analytics/<project>/tests/test_<module>.py`). Tests that need Spark use a local `SparkSession` (`local[2]`) from `analytics/pipelines/tests/conftest.py`. Outside Docker, `uv run pytest` skips them, because PySpark only exists in the image.
+- **Coverage** is measured on the `common` and `pipelines` packages with branch coverage. The 90% floor is configured in `pyproject.toml` (`[tool.coverage.report] fail_under`), and `make test` fails below it even when every test passes.
+- **Lint and format** use [ruff](https://docs.astral.sh/ruff/), configured in `pyproject.toml` (`[tool.ruff]`).

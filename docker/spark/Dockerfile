@@ -59,6 +59,8 @@ RUN --mount=from=ghcr.io/astral-sh/uv:0.13.7,source=/uv,target=/usr/local/bin/uv
 ENV PATH=/opt/venv/bin:$PATH \
     PYTHONPATH=/opt/spark/python:/opt/spark/python/lib/py4j-0.10.9.9-src.zip \
     PYSPARK_DRIVER_PYTHON=/opt/venv/bin/python \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    COVERAGE_FILE=/tmp/.coverage \
+    RUFF_CACHE_DIR=/tmp/.ruff_cache
 
 USER spark
