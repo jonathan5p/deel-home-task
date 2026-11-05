@@ -16,7 +16,7 @@ Install [Docker](https://www.docker.com/products/docker-desktop/) with [Compose 
 make up             # Start the default source/CDC stack and Spark cluster in detached mode
 make up PROFILES="monitoring history"  # Also start optional services (any combination of profiles)
 make down           # Stop/remove all project containers, including optional profiles; keep volumes
-make spark-submit   # Submit a job to the Spark cluster (defaults to a two-minute UI check job)
+make spark-submit   # Submit a job to the Spark cluster (defaults to a one-minute UI check job)
 make help           # Show lifecycle commands
 ```
 
@@ -93,7 +93,7 @@ Worker resources are set with `SPARK_WORKER_CORES` and `SPARK_WORKER_MEMORY` in 
 #### Submitting a job
 
 ```sh
-make spark-submit                                                                                # Run the two-minute UI check job (default)
+make spark-submit                                                                                # Run the one-minute UI check job (default)
 make spark-submit SPARK_APP=/opt/spark/examples/src/main/python/pi.py SPARK_APP_ARGS=10         # Run another application with arguments
 ```
 
@@ -115,7 +115,7 @@ When it starts, it lists every application whose event logs are in the volume, i
 
 #### Checking the application UI
 
-The application UI at http://localhost:4040 exists only while a driver runs. The default job, [`jobs/spark_ui_check.py`](jobs/spark_ui_check.py), is a dummy streaming query that runs for two minutes so the UI can be inspected. It reads Spark's built-in `rate` source and counts rows per 10-second window every five seconds. The `jobs/` directory is mounted read-only into the master container at `/opt/spark/jobs`. While the job runs, open http://localhost:4040:
+The application UI at http://localhost:4040 exists only while a driver runs. The default job, [`jobs/spark_ui_check.py`](jobs/spark_ui_check.py), is a dummy streaming query that runs for one minute so the UI can be inspected. It reads Spark's built-in `rate` source and counts rows per 10-second window every five seconds. The `jobs/` directory is mounted read-only into the master container at `/opt/spark/jobs`. While the job runs, open http://localhost:4040:
 
 | Tab | What to look at |
 |---|---|
