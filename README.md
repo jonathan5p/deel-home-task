@@ -94,7 +94,7 @@ The Spark image bundles Iceberg 1.12.0 (`iceberg-spark-runtime-4.1_2.13`, `icebe
 Run the smoke job to check the whole path. It creates or replaces `lake.smoke.iceberg_check`, writes four rows, reads them back, and fails if they differ:
 
 ```sh
-make spark-submit SPARK_APP=/opt/spark/jobs/iceberg_smoke_check.py
+make spark-submit SPARK_APP=tests/infra/apps/iceberg_smoke_check.py
 ```
 
 To inspect the result:
@@ -147,7 +147,7 @@ bootstrap.servers=localhost:9092
 
 ### Spark cluster
 
-`make up` also starts a Spark 4.1.4 standalone cluster: one master and two workers built from `docker/spark/Dockerfile`. The same image is meant to run the driver, so driver and worker versions always match.
+`make up` also starts a Spark 4.1.4 standalone cluster: one master and two workers built from the `spark` target of `docker/spark/Dockerfile`. Drivers run from the `app` target, which is built on top of the `spark` target and adds the application packages, so drivers and executors always share Spark, Java and Python versions.
 
 | Service | UI | Resources |
 |---|---|---|
@@ -155,7 +155,7 @@ bootstrap.servers=localhost:9092
 | `spark-worker-1` | http://localhost:8081 | 2 cores, 2 GiB executor memory |
 | `spark-worker-2` | http://localhost:8082 | 2 cores, 2 GiB executor memory |
 | `spark-history` (optional) | http://localhost:18080 | History server for finished, crashed and running applications; started with `make spark-history` |
-| Running application | http://localhost:4040 | Jobs, stages, SQL and streaming tabs of the driver started by `make spark-submit`; only available while it runs |
+| `spark-app` (one container per run) | http://localhost:4040 | Driver of an application started by `make spark-submit`; its UI is only available while it runs |
 
 Spark runs PySpark on **Python 3.14** (3.14.10), the newest version PySpark 4.1.4 supports. The official `apache/spark` images ship Python 3.10, so the Dockerfile installs CPython 3.14 with [uv](https://docs.astral.sh/uv/) at build time and points `PYSPARK_PYTHON` at it; every driver and executor uses it.
 
@@ -166,13 +166,32 @@ Worker resources are set with `SPARK_WORKER_CORES` and `SPARK_WORKER_MEMORY` in 
 #### Submitting a job
 
 ```sh
-make spark-submit                                                                                # Run the one-minute UI check job (default)
-make spark-submit SPARK_APP=/opt/spark/examples/src/main/python/pi.py SPARK_APP_ARGS=10         # Run another application with arguments
+make spark-submit                                                               # Run the one-minute UI check job (default)
+make spark-submit SPARK_APP=tests/infra/apps/iceberg_smoke_check.py             # Run another application
+make spark-submit SPARK_APP=path/to/app.py SPARK_APP_ARGS="--date 2026-11-05"  # Pass arguments to the application
+make spark-submit SPARK_CONF="spark.cores.max=2" SPARK_UI_PORT=4041             # Cap cores and publish the UI on another port
 ```
 
-`SPARK_APP` is a path inside the `spark-master` container and defaults to `/opt/spark/jobs/spark_ui_check.py`; `SPARK_APP_ARGS` are passed to it unchanged. The driver runs in client mode inside the `spark-master` container and submits to that container's `SPARK_MASTER_URL`, so the cluster must be running first. Running and finished applications appear on the master UI.
+| Variable | Default | Meaning |
+|---|---|---|
+| `SPARK_APP` | `tests/infra/apps/spark_ui_check.py` | Application to run, as a path from the repository root |
+| `SPARK_APP_ARGS` | empty | Arguments passed to the application unchanged |
+| `SPARK_CONF` | empty | Space-separated `key=value` Spark settings, each passed as `--conf` |
+| `SPARK_UI_PORT` | `4040` | Host port for the application UI; `0` picks a free port |
 
-Interrupting `make spark-submit` does not stop a driver that is already running inside the container, and that driver keeps holding the workers' cores, so the next submission waits for resources. Stop leftover drivers with `docker compose exec spark-master pkill -f org.apache.spark.deploy.SparkSubmit`.
+Each run starts its own driver container from the `app` image with `docker compose run --rm`, in client mode, and the container is removed when the application ends. A batch job's container ends with the job; a streaming job's container lives as long as the stream. `make spark-submit` rebuilds the `app` image first when the code changed, and the cluster must already be running (`make up`).
+
+```mermaid
+flowchart LR
+    make["make spark-submit"] -->|docker compose run --rm| driver["spark-app container<br/>driver, UI on :4040"]
+    driver -->|1. registers the application| master["spark-master<br/>:7077"]
+    master -->|2. starts executors| workers["spark-worker-1 / spark-worker-2"]
+    workers -->|3. executors connect back,<br/>run tasks, return results| driver
+```
+
+Because every run has its own container, one application's memory, logs and lifecycle never affect another, and stopping `make spark-submit` (Ctrl+C) stops its driver. Executors reach the driver through the container's IP address, and the `common` and `pipelines` packages are shipped to them with `--py-files`.
+
+To run several applications at the same time, give each its own UI port and cap its cores: the standalone master gives an application every free core unless `spark.cores.max` is set, so a second application would wait until the first one ends.
 
 #### Spark History Server (optional)
 
@@ -188,7 +207,7 @@ When it starts, it lists every application whose event logs are in the volume, i
 
 #### Checking the application UI
 
-The application UI at http://localhost:4040 exists only while a driver runs. The default job, [`jobs/spark_ui_check.py`](jobs/spark_ui_check.py), is a dummy streaming query that runs for one minute so the UI can be inspected. It reads Spark's built-in `rate` source and counts rows per 10-second window every five seconds. The `jobs/` directory is mounted read-only into the master container at `/opt/spark/jobs`. While the job runs, open http://localhost:4040:
+The application UI at http://localhost:4040 exists only while a driver runs. The default job, [`tests/infra/apps/spark_ui_check.py`](tests/infra/apps/spark_ui_check.py), is a dummy streaming query that runs for one minute so the UI can be inspected. It reads Spark's built-in `rate` source and counts rows per 10-second window every five seconds. While the job runs, open http://localhost:4040:
 
 | Tab | What to look at |
 |---|---|
@@ -220,6 +239,7 @@ analytics/
       settings.py           pipeline settings (Kafka, lake, analytics database)
       jobs/                 Spark jobs
     tests/
+tests/infra/apps/           Spark applications used to check the platform (UI check, Iceberg smoke check)
 ```
 
 Tests mirror the source tree of their project: `analytics/<project>/src/<project>/<module>.py` is tested in `analytics/<project>/tests/test_<module>.py`.
