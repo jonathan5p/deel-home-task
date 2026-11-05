@@ -16,6 +16,7 @@ Install [Docker](https://www.docker.com/products/docker-desktop/) with [Compose 
 make up             # Start the default source/CDC stack and Spark cluster in detached mode
 make up-monitoring  # Start the default stack plus optional Conduktor monitoring
 make down           # Stop/remove all project containers, including optional profiles; keep volumes
+make spark-submit   # Submit a job to the Spark cluster (defaults to the bundled Pi example)
 make help           # Show lifecycle commands
 ```
 
@@ -84,6 +85,16 @@ bootstrap.servers=localhost:9092
 | `spark-worker-2` | http://localhost:8082 | 2 cores, 2 GiB executor memory |
 
 Worker resources are set with `SPARK_WORKER_CORES` and `SPARK_WORKER_MEMORY` in `docker-compose.yaml`. They cap what executors can claim on each worker; the master, worker and driver JVMs need memory on top of that, so make sure Docker has enough memory for the whole stack.
+
+#### Submitting a job
+
+```sh
+make spark-submit                                                                    # Run the bundled Pi example
+make spark-submit ARGS=10                                                            # Pass arguments to the application
+make spark-submit APP=/opt/spark/examples/src/main/python/wordcount.py ARGS=/opt/spark/RELEASE
+```
+
+`APP` is a path inside the Spark image and defaults to `/opt/spark/examples/src/main/python/pi.py`. The driver runs in client mode inside the `spark-master` container, so the cluster must be running first. Running and finished applications appear on the master UI.
 
 Extra informations and tips about the task execution can be found in the task description document shared by our recruiting team.
 
