@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          version: "0.13.7"
+      - name: uv.lock matches pyproject.toml
+        run: uv lock --check
+      - name: ruff check
+        run: uv run --frozen ruff check
+      - name: ruff format --check
+        run: uv run --frozen ruff format --check
+
+  container-checks:
+    name: ${{ matrix.check }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [typecheck, test]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - name: Build the app image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/spark/Dockerfile
+          target: app
+          tags: deel-home-task/spark-app:4.1.4
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: make ${{ matrix.check }}
+        run: make ${{ matrix.check }} APP_BUILD=

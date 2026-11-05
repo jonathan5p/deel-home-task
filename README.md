@@ -329,3 +329,15 @@ Every `git commit` then runs, in order, stopping at the first failure:
 | unit tests with the 90% coverage floor | `analytics/`, `tests/`, `pyproject.toml`, `uv.lock` | app container (`make test`) |
 
 A commit that only changes documentation or configuration skips all of them. Commits that touch code take about 20–30 seconds longer, mostly for the container checks. Run `make format` to fix formatting before committing again. `git commit --no-verify` skips the hooks, which is why CI runs the same checks.
+
+#### Continuous integration
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs the code checks on every pull request to `main` (before merging) and on every push to `main` (after merging):
+
+| Job | What it runs |
+| --- | --- |
+| `lint` | `uv lock --check`, `ruff check`, `ruff format --check` |
+| `typecheck` | `make typecheck` in the app image |
+| `test` | `make test` in the app image, with the 90% coverage floor |
+
+The app image is built once per job with Docker's layer cache stored in GitHub Actions, and `make` reuses it (`APP_BUILD=`), so CI runs exactly the commands used locally. Infra tests are not part of CI; run them locally with `make test-infra`.
