@@ -200,3 +200,42 @@ The job prints the progress of the latest micro-batch every five seconds. When i
 Extra informations and tips about the task execution can be found in the task description document shared by our recruiting team.
 
 For any questions, feel free to reach us out through data-platform@deel.com
+
+### Pipeline application
+
+The pipeline code is a Python package managed with [uv](https://docs.astral.sh/uv/):
+
+```text
+pyproject.toml        project metadata, dependency groups and tool settings
+uv.lock               locked dependency versions (install with uv sync --frozen)
+.python-version       Python 3.14.10, the same version the Spark image runs
+src/pipeline/         the application package
+  config.py           settings read from environment variables
+  jobs/               Spark jobs
+tests/unit/           unit tests
+```
+
+PySpark is not a project dependency: it comes from the Spark image, so the application always runs the cluster's exact Spark version.
+
+To work on the code outside Docker, install uv and run:
+
+```sh
+uv sync --frozen          # create .venv with Python 3.14.10 and the dev tools
+uv run pytest             # run the unit tests that do not need Spark
+```
+
+#### Configuration
+
+Jobs read their settings from environment variables through `pipeline.config.Settings.from_env()`. The defaults point at the local Docker Compose stack.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `KAFKA_BOOTSTRAP_SERVERS` | `kafka:29092` | Kafka brokers to read CDC topics from |
+| `LAKE_ROOT` | `s3://lake` | Root of the data lake |
+| `CHECKPOINT_ROOT` | `<LAKE_ROOT>/checkpoints` | Root for Structured Streaming checkpoints |
+| `ICEBERG_CATALOG` | `lake` | Spark catalog name for Iceberg tables |
+| `ANALYTICS_DB_URL` | `jdbc:postgresql://analytics-db:5432/analytics` | JDBC URL of the analytics database (gold layer) |
+| `ANALYTICS_DB_USER` | required | Analytics database user |
+| `ANALYTICS_DB_PASSWORD` | required | Analytics database password |
+
+A missing or empty required variable stops the job with an error that lists every missing name.
