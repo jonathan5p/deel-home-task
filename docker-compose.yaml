@@ -9,7 +9,7 @@ x-spark-worker: &spark-worker
     [
       "/opt/spark/bin/spark-class",
       "org.apache.spark.deploy.worker.Worker",
-      "spark://spark-master:7077",
+      "${SPARK_MASTER_URL}",
     ]
   depends_on:
     spark-master:
@@ -96,10 +96,16 @@ services:
     hostname: spark-master
     command:
       ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.master.Master"]
+    environment:
+      SPARK_MASTER_URL: ${SPARK_MASTER_URL}
     ports:
       - "8080:8080"
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/json/ >/dev/null || exit 1"]
+      test:
+        [
+          "CMD-SHELL",
+          "curl -fsS http://localhost:8080/json/ >/dev/null || exit 1",
+        ]
       interval: 10s
       timeout: 5s
       retries: 10

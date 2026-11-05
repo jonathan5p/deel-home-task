@@ -80,21 +80,23 @@ bootstrap.servers=localhost:9092
 
 | Service | UI | Resources |
 |---|---|---|
-| `spark-master` | http://localhost:8080 | Cluster manager; accepts jobs at `spark://spark-master:7077` |
+| `spark-master` | http://localhost:8080 | Cluster manager; accepts jobs at `SPARK_MASTER_URL` |
 | `spark-worker-1` | http://localhost:8081 | 2 cores, 2 GiB executor memory |
 | `spark-worker-2` | http://localhost:8082 | 2 cores, 2 GiB executor memory |
 
 Worker resources are set with `SPARK_WORKER_CORES` and `SPARK_WORKER_MEMORY` in `docker-compose.yaml`. They cap what executors can claim on each worker; the master, worker and driver JVMs need memory on top of that, so make sure Docker has enough memory for the whole stack.
 
+`SPARK_MASTER_URL` defaults to `spark://spark-master:7077` in `.env`, which Docker Compose loads automatically. Exporting the variable in your shell overrides it; recreate the Spark services (`make up`) after changing it.
+
 #### Submitting a job
 
 ```sh
-make spark-submit                                                                    # Run the bundled Pi example
-make spark-submit ARGS=10                                                            # Pass arguments to the application
-make spark-submit APP=/opt/spark/examples/src/main/python/wordcount.py ARGS=/opt/spark/RELEASE
+make spark-submit                                                                                # Run the bundled Pi example
+make spark-submit SPARK_APP_ARGS=10                                                              # Pass arguments to the application
+make spark-submit SPARK_APP=/opt/spark/examples/src/main/python/wordcount.py SPARK_APP_ARGS=/opt/spark/RELEASE
 ```
 
-`APP` is a path inside the Spark image and defaults to `/opt/spark/examples/src/main/python/pi.py`. The driver runs in client mode inside the `spark-master` container, so the cluster must be running first. Running and finished applications appear on the master UI.
+`SPARK_APP` is a path inside the Spark image and defaults to `/opt/spark/examples/src/main/python/pi.py`; `SPARK_APP_ARGS` are passed to it unchanged. The driver runs in client mode inside the `spark-master` container and submits to that container's `SPARK_MASTER_URL`, so the cluster must be running first. Running and finished applications appear on the master UI.
 
 Extra informations and tips about the task execution can be found in the task description document shared by our recruiting team.
 

@@ -1,7 +1,6 @@
 COMPOSE ?= docker compose
-SPARK_MASTER_URL ?= spark://spark-master:7077
-APP ?= /opt/spark/examples/src/main/python/pi.py
-ARGS ?=
+SPARK_APP ?= /opt/spark/examples/src/main/python/pi.py
+SPARK_APP_ARGS ?=
 .DEFAULT_GOAL := help
 
 .PHONY: help up down clean up-monitoring spark-submit
@@ -12,7 +11,7 @@ help:
 		'up-monitoring  Start the default stack plus the optional Conduktor monitoring services.' \
 		'down           Stop all project services, including optional profiles; keep volumes.' \
 		'clean          Delete project containers and volumes (DATA LOSS); requires CONFIRM=1.' \
-		'spark-submit   Submit APP (default: bundled Pi example) with ARGS to the Spark cluster.' \
+		'spark-submit   Submit SPARK_APP (default: bundled Pi example) with SPARK_APP_ARGS to the Spark cluster.' \
 		'See README.md for optional monitor controls.'
 
 up:
@@ -24,12 +23,13 @@ up-monitoring:
 down:
 	@$(COMPOSE) --profile '*' down
 
-# The driver runs inside the master container; executors reach it back through that hostname.
+# The driver runs inside the master container, so the master URL and the hostname executors
+# connect back to are resolved from that container's environment rather than duplicated here.
 spark-submit:
-	@$(COMPOSE) exec -T spark-master /opt/spark/bin/spark-submit \
-		--master $(SPARK_MASTER_URL) \
-		--conf spark.driver.host=spark-master \
-		$(APP) $(ARGS)
+	@$(COMPOSE) exec -T spark-master sh -c '/opt/spark/bin/spark-submit \
+		--master "$$SPARK_MASTER_URL" \
+		--conf spark.driver.host="$$HOSTNAME" \
+		"$$@"' spark-submit $(SPARK_APP) $(SPARK_APP_ARGS)
 
 clean:
 ifeq ($(CONFIRM),1)
