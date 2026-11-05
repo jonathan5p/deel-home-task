@@ -10,7 +10,7 @@ from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.streaming import StreamingQuery
 
-DURATION_SECONDS = 120
+DURATION_SECONDS = 60
 TRIGGER_SECONDS = 5
 
 
