@@ -1,0 +1,40 @@
+default_install_hook_types: [pre-commit]
+fail_fast: true
+
+repos:
+  - repo: local
+    hooks:
+      - id: uv-lock
+        name: uv.lock matches pyproject.toml
+        entry: uv lock --check
+        language: system
+        pass_filenames: false
+        files: (^|/)pyproject\.toml$|^uv\.lock$
+
+      - id: ruff-check
+        name: ruff check
+        entry: uv run --frozen ruff check
+        language: system
+        pass_filenames: false
+        files: (\.py|pyproject\.toml)$
+
+      - id: ruff-format
+        name: ruff format --check
+        entry: uv run --frozen ruff format --check
+        language: system
+        pass_filenames: false
+        files: (\.py|pyproject\.toml)$
+
+      - id: ty
+        name: ty (app container)
+        entry: make --no-print-directory typecheck
+        language: system
+        pass_filenames: false
+        files: ^(analytics/|tests/|pyproject\.toml$|uv\.lock$)
+
+      - id: unit-tests
+        name: unit tests with coverage (app container)
+        entry: make --no-print-directory test
+        language: system
+        pass_filenames: false
+        files: ^(analytics/|tests/|pyproject\.toml$|uv\.lock$)

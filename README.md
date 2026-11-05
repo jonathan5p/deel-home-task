@@ -310,3 +310,22 @@ They start an isolated Compose project (`deel-infra-tests`, with no host ports),
 - drivers and executors run the same Spark (4.1.4) and Python (3.14) versions;
 - each application run gets its own driver container, which is removed when the application ends;
 - two applications capped with `spark.cores.max=2` run at the same time, both with executors, in two separate driver containers.
+
+#### Pre-commit hooks
+
+Install the hooks once per clone (needs [uv](https://docs.astral.sh/uv/) and Docker):
+
+```sh
+make hooks
+```
+
+Every `git commit` then runs, in order, stopping at the first failure:
+
+| Hook | Runs when the commit touches | Where |
+| --- | --- | --- |
+| `uv.lock` matches `pyproject.toml` | any `pyproject.toml`, `uv.lock` | host |
+| ruff check, ruff format check | Python files, `pyproject.toml` | host, with the ruff version from `uv.lock` |
+| ty | `analytics/`, `tests/`, `pyproject.toml`, `uv.lock` | app container (`make typecheck`) |
+| unit tests with the 90% coverage floor | `analytics/`, `tests/`, `pyproject.toml`, `uv.lock` | app container (`make test`) |
+
+A commit that only changes documentation or configuration skips all of them. Commits that touch code take about 20–30 seconds longer, mostly for the container checks. Run `make format` to fix formatting before committing again. `git commit --no-verify` skips the hooks, which is why CI runs the same checks.
