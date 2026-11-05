@@ -1,5 +1,3 @@
-"""Pipeline settings, read from environment variables with defaults for the local stack."""
-
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
