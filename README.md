@@ -13,7 +13,7 @@ Welcome to Deel's Data Engineering Take-Home task, as mentioned in the Task spec
 Install [Docker](https://www.docker.com/products/docker-desktop/) with [Compose v2](https://docs.docker.com/compose/install/) and GNU Make. With the Docker engine running, run these commands from the repository root:
 
 ```sh
-make up             # Start the default source/CDC stack and Spark cluster in detached mode
+make up             # Start the default stack (source/CDC, analytics database, Spark cluster) in detached mode
 make up PROFILES="monitoring history"  # Also start optional services (any combination of profiles)
 make down           # Stop/remove all project containers, including optional profiles; keep volumes
 make spark-submit   # Submit a job to the Spark cluster (defaults to a one-minute UI check job)
@@ -33,6 +33,37 @@ Once you have the Database up and running feel free to connect to this using any
 - **Username**: `finance_db_user`
 - **Password**: `1234`
 - **Database**: `finance_db`
+
+### Analytics database
+
+A separate PostgreSQL instance (`analytics-db`) holds the gold layer and the Iceberg catalog, so analytical load never reaches the source database. It starts with `make up` and keeps its data in the `analytics-pg-data` volume across `make down` / `make up`.
+
+| Setting | From the host | From other containers |
+| --- | --- | --- |
+| Host and port | `localhost:5433` | `analytics-db:5432` |
+| Username | `analytics` | `analytics` |
+| Password | `analytics` | `analytics` |
+| Database | `analytics` | `analytics` |
+
+The credentials are local development defaults in `.env` (`ANALYTICS_DB_USER`, `ANALYTICS_DB_PASSWORD`, `ANALYTICS_DB_NAME`); variables exported in the shell override them.
+
+```sh
+docker compose exec analytics-db psql -U analytics -d analytics
+```
+
+#### Schemas and init script
+
+`docker/analytics-db/initdb/01-gold-and-catalog.sql` creates:
+
+- the `gold` schema in the `analytics` database, for the dimensional model;
+- the `iceberg_catalog` database, where the Iceberg JDBC catalog creates its own tables on first use.
+
+PostgreSQL runs init scripts **only when the data volume is empty**, so editing the script does not change an existing database. To apply a changed script, recreate only the analytics volume. **Data loss:** this deletes all gold data and the Iceberg catalog, which then no longer points to the lake tables.
+
+```sh
+docker compose down -v analytics-db  # Removes only the analytics container and its volume
+make up
+```
 
 ### Optional Kafka monitoring
 
