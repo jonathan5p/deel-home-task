@@ -14,13 +14,13 @@ Install [Docker](https://www.docker.com/products/docker-desktop/) with [Compose 
 
 ```sh
 make up             # Start the default source/CDC stack and Spark cluster in detached mode
-make up-monitoring  # Start the default stack plus optional Conduktor monitoring
+make up PROFILES="monitoring history"  # Also start optional services (any combination of profiles)
 make down           # Stop/remove all project containers, including optional profiles; keep volumes
 make spark-submit   # Submit a job to the Spark cluster (defaults to a two-minute UI check job)
 make help           # Show lifecycle commands
 ```
 
-The monitor is optional and is not enabled by `make up`. See **Optional Kafka monitoring** below for independent controls.
+Optional services are grouped in Compose profiles and are not started by a plain `make up`: `monitoring` (Conduktor, see **Optional Kafka monitoring**) and `history` (Spark History Server, see **Spark History Server**). Pass them with `PROFILES`, separated by spaces or commas.
 
 #### Destructive reset
 
@@ -83,6 +83,7 @@ bootstrap.servers=localhost:9092
 | `spark-master` | http://localhost:8080 | Cluster manager; accepts jobs at `SPARK_MASTER_URL` |
 | `spark-worker-1` | http://localhost:8081 | 2 cores, 2 GiB executor memory |
 | `spark-worker-2` | http://localhost:8082 | 2 cores, 2 GiB executor memory |
+| `spark-history` (optional) | http://localhost:18080 | History server for finished, crashed and running applications; started with `make spark-history` |
 | Running application | http://localhost:4040 | Jobs, stages, SQL and streaming tabs of the driver started by `make spark-submit`; only available while it runs |
 
 Worker resources are set with `SPARK_WORKER_CORES` and `SPARK_WORKER_MEMORY` in `docker-compose.yaml`. They cap what executors can claim on each worker; the master, worker and driver JVMs need memory on top of that, so make sure Docker has enough memory for the whole stack.
@@ -99,6 +100,18 @@ make spark-submit SPARK_APP=/opt/spark/examples/src/main/python/pi.py SPARK_APP_
 `SPARK_APP` is a path inside the `spark-master` container and defaults to `/opt/spark/jobs/spark_ui_check.py`; `SPARK_APP_ARGS` are passed to it unchanged. The driver runs in client mode inside the `spark-master` container and submits to that container's `SPARK_MASTER_URL`, so the cluster must be running first. Running and finished applications appear on the master UI.
 
 Interrupting `make spark-submit` does not stop a driver that is already running inside the container, and that driver keeps holding the workers' cores, so the next submission waits for resources. Stop leftover drivers with `docker compose exec spark-master pkill -f org.apache.spark.deploy.SparkSubmit`.
+
+#### Spark History Server (optional)
+
+Every driver writes event logs to the `spark-events` volume, whether or not the history server is running. Logs roll over at 128 MiB, so long-running streaming applications stay in bounded files. Start the history server only when you need to inspect past runs:
+
+```sh
+make spark-history                                   # Start only the history server (http://localhost:18080)
+make up PROFILES=history                             # Or start it together with the rest of the stack
+docker compose --profile history stop spark-history  # Stop it again; event logs are kept
+```
+
+When it starts, it lists every application whose event logs are in the volume, including runs that happened while it was stopped. `make down` stops it with the rest of the stack, and `make clean CONFIRM=1` deletes the event logs.
 
 #### Checking the application UI
 
