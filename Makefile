@@ -23,8 +23,6 @@ up:
 down:
 	@$(COMPOSE) --profile '*' down
 
-# Compose does not forward signals to a run container without a terminal, so the trap stops
-# the driver container whenever this recipe ends or is interrupted.
 spark-submit:
 	@name="spark-app-run-$$(date +%s)-$$$$"; \
 	trap 'docker stop "$$name" >/dev/null 2>&1 || true' EXIT INT TERM; \
