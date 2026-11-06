@@ -94,7 +94,7 @@ The Spark image bundles Iceberg 1.12.0 (`iceberg-spark-runtime-4.1_2.13`, `icebe
 Run the smoke job to check the whole path. It creates or replaces `lake.smoke.iceberg_check`, writes four rows, reads them back, and fails if they differ:
 
 ```sh
-make spark-submit SPARK_APP=/opt/spark/jobs/iceberg_smoke_check.py
+make spark-submit SPARK_APP=tests/infra/apps/iceberg_smoke_check.py
 ```
 
 To inspect the result:
@@ -147,7 +147,7 @@ bootstrap.servers=localhost:9092
 
 ### Spark cluster
 
-`make up` also starts a Spark 4.1.4 standalone cluster: one master and two workers built from `docker/spark/Dockerfile`. The same image is meant to run the driver, so driver and worker versions always match.
+`make up` also starts a Spark 4.1.4 standalone cluster: one master and two workers built from the `spark` target of `docker/spark/Dockerfile`. Drivers run from the `app` target, which is built on top of the `spark` target and adds the application packages, so drivers and executors always share Spark, Java and Python versions.
 
 | Service | UI | Resources |
 |---|---|---|
@@ -155,7 +155,9 @@ bootstrap.servers=localhost:9092
 | `spark-worker-1` | http://localhost:8081 | 2 cores, 2 GiB executor memory |
 | `spark-worker-2` | http://localhost:8082 | 2 cores, 2 GiB executor memory |
 | `spark-history` (optional) | http://localhost:18080 | History server for finished, crashed and running applications; started with `make spark-history` |
-| Running application | http://localhost:4040 | Jobs, stages, SQL and streaming tabs of the driver started by `make spark-submit`; only available while it runs |
+| `spark-app` (one container per run) | http://localhost:4040 | Driver of an application started by `make spark-submit`; its UI is only available while it runs |
+
+Spark runs PySpark on **Python 3.14** (3.14.10), the newest version PySpark 4.1.4 supports. The official `apache/spark` images ship Python 3.10, so the Dockerfile installs CPython 3.14 with [uv](https://docs.astral.sh/uv/) at build time and points `PYSPARK_PYTHON` at it; every driver and executor uses it.
 
 Worker resources are set with `SPARK_WORKER_CORES` and `SPARK_WORKER_MEMORY` in `docker-compose.yaml`. They cap what executors can claim on each worker; the master, worker and driver JVMs need memory on top of that, so make sure Docker has enough memory for the whole stack.
 
@@ -164,13 +166,32 @@ Worker resources are set with `SPARK_WORKER_CORES` and `SPARK_WORKER_MEMORY` in 
 #### Submitting a job
 
 ```sh
-make spark-submit                                                                                # Run the one-minute UI check job (default)
-make spark-submit SPARK_APP=/opt/spark/examples/src/main/python/pi.py SPARK_APP_ARGS=10         # Run another application with arguments
+make spark-submit                                                               # Run the one-minute UI check job (default)
+make spark-submit SPARK_APP=tests/infra/apps/iceberg_smoke_check.py             # Run another application
+make spark-submit SPARK_APP=path/to/app.py SPARK_APP_ARGS="--date 2026-11-05"  # Pass arguments to the application
+make spark-submit SPARK_CONF="spark.cores.max=2" SPARK_UI_PORT=4041             # Cap cores and publish the UI on another port
 ```
 
-`SPARK_APP` is a path inside the `spark-master` container and defaults to `/opt/spark/jobs/spark_ui_check.py`; `SPARK_APP_ARGS` are passed to it unchanged. The driver runs in client mode inside the `spark-master` container and submits to that container's `SPARK_MASTER_URL`, so the cluster must be running first. Running and finished applications appear on the master UI.
+| Variable | Default | Meaning |
+|---|---|---|
+| `SPARK_APP` | `tests/infra/apps/spark_ui_check.py` | Application to run, as a path from the repository root |
+| `SPARK_APP_ARGS` | empty | Arguments passed to the application unchanged |
+| `SPARK_CONF` | empty | Space-separated `key=value` Spark settings, each passed as `--conf` |
+| `SPARK_UI_PORT` | `4040` | Host port for the application UI; `0` picks a free port |
 
-Interrupting `make spark-submit` does not stop a driver that is already running inside the container, and that driver keeps holding the workers' cores, so the next submission waits for resources. Stop leftover drivers with `docker compose exec spark-master pkill -f org.apache.spark.deploy.SparkSubmit`.
+Each run starts its own driver container from the `app` image with `docker compose run --rm`, in client mode, and the container is removed when the application ends. A batch job's container ends with the job; a streaming job's container lives as long as the stream. `make spark-submit` rebuilds the `app` image first when the code changed, and the cluster must already be running (`make up`).
+
+```mermaid
+flowchart LR
+    make["make spark-submit"] -->|docker compose run --rm| driver["spark-app container<br/>driver, UI on :4040"]
+    driver -->|1. registers the application| master["spark-master<br/>:7077"]
+    master -->|2. starts executors| workers["spark-worker-1 / spark-worker-2"]
+    workers -->|3. executors connect back,<br/>run tasks, return results| driver
+```
+
+Because every run has its own container, one application's memory, logs and lifecycle never affect another, and stopping `make spark-submit` (Ctrl+C) stops its driver. Executors reach the driver through the container's IP address, and the `common` and `pipelines` packages are shipped to them with `--py-files`.
+
+To run several applications at the same time, give each its own UI port and cap its cores: the standalone master gives an application every free core unless `spark.cores.max` is set, so a second application would wait until the first one ends.
 
 #### Spark History Server (optional)
 
@@ -186,7 +207,7 @@ When it starts, it lists every application whose event logs are in the volume, i
 
 #### Checking the application UI
 
-The application UI at http://localhost:4040 exists only while a driver runs. The default job, [`jobs/spark_ui_check.py`](jobs/spark_ui_check.py), is a dummy streaming query that runs for one minute so the UI can be inspected. It reads Spark's built-in `rate` source and counts rows per 10-second window every five seconds. The `jobs/` directory is mounted read-only into the master container at `/opt/spark/jobs`. While the job runs, open http://localhost:4040:
+The application UI at http://localhost:4040 exists only while a driver runs. The default job, [`tests/infra/apps/spark_ui_check.py`](tests/infra/apps/spark_ui_check.py), is a dummy streaming query that runs for one minute so the UI can be inspected. It reads Spark's built-in `rate` source and counts rows per 10-second window every five seconds. While the job runs, open http://localhost:4040:
 
 | Tab | What to look at |
 |---|---|
@@ -218,6 +239,8 @@ analytics/
       settings.py           pipeline settings (Kafka, lake, analytics database)
       jobs/                 Spark jobs
     tests/
+tests/infra/                infra tests that drive an isolated copy of the stack
+  apps/                     Spark applications they submit (UI check, Iceberg smoke check, version and hold apps)
 ```
 
 Tests mirror the source tree of their project: `analytics/<project>/src/<project>/<module>.py` is tested in `analytics/<project>/tests/test_<module>.py`.
@@ -256,3 +279,65 @@ The defaults point at the local Docker Compose stack.
 | `ANALYTICS_DB_PASSWORD` | `common.settings.AnalyticsDbSettings` | required | Analytics database password |
 
 `PipelineSettings` combines the three. A missing or empty required variable raises `MissingSettingsError`, which lists every missing name at once.
+
+#### Tests, lint and format
+
+The checks run in a throwaway container from the `app` image, with `analytics/` and `tests/` mounted, so they use the cluster's exact Spark and Python versions and pick up edits without a rebuild:
+
+```sh
+make test       # unit tests with branch coverage; fails below 90%
+make lint       # ruff lint and format check
+make format     # format the code and apply safe lint fixes (files keep your ownership)
+make typecheck  # check types with ty; any diagnostic fails
+```
+
+- **Unit tests** live next to each project and mirror its source tree (`analytics/<project>/tests/test_<module>.py`). Tests that need Spark use a local `SparkSession` (`local[2]`) from `analytics/pipelines/tests/conftest.py`. Outside Docker, `uv run pytest` skips them, because PySpark only exists in the image.
+- **Coverage** is measured on the `common` and `pipelines` packages with branch coverage. The 90% floor is configured in `pyproject.toml` (`[tool.coverage.report] fail_under`), and `make test` fails below it even when every test passes.
+- **Lint and format** use [ruff](https://docs.astral.sh/ruff/), configured in `pyproject.toml` (`[tool.ruff]`).
+- **Typing** is required for all code. ruff's `ANN` rules fail `make lint` when an annotation is missing, and [ty](https://docs.astral.sh/ty/) checks that the annotations are correct, including calls into PySpark, whose types it reads from the image (`[tool.ty]` in `pyproject.toml`). ty is in beta, so its version is pinned in `uv.lock`; it only runs in the container, where PySpark is available.
+
+#### Infra tests
+
+Infra tests check the platform itself rather than the pipeline code. They need Docker and [uv](https://docs.astral.sh/uv/) on the host, and run locally only (not in CI):
+
+```sh
+make test-infra   # about two minutes, mostly building images and starting the stack
+```
+
+They start an isolated Compose project (`deel-infra-tests`, with no host ports), so they never touch your running stack or its data, and remove it with its volumes at the end. They submit the apps in `tests/infra/apps/` with `make spark-submit` and check that:
+
+- the Iceberg smoke job writes catalog metadata to PostgreSQL and table files to SeaweedFS;
+- drivers and executors run the same Spark (4.1.4) and Python (3.14) versions;
+- each application run gets its own driver container, which is removed when the application ends;
+- two applications capped with `spark.cores.max=2` run at the same time, both with executors, in two separate driver containers.
+
+#### Pre-commit hooks
+
+Install the hooks once per clone (needs [uv](https://docs.astral.sh/uv/) and Docker):
+
+```sh
+make hooks
+```
+
+Every `git commit` then runs, in order, stopping at the first failure:
+
+| Hook | Runs when the commit touches | Where |
+| --- | --- | --- |
+| `uv.lock` matches `pyproject.toml` | any `pyproject.toml`, `uv.lock` | host |
+| ruff check, ruff format check | Python files, `pyproject.toml` | host, with the ruff version from `uv.lock` |
+| ty | `analytics/`, `tests/`, `pyproject.toml`, `uv.lock` | app container (`make typecheck`) |
+| unit tests with the 90% coverage floor | `analytics/`, `tests/`, `pyproject.toml`, `uv.lock` | app container (`make test`) |
+
+A commit that only changes documentation or configuration skips all of them. Commits that touch code take about 20–30 seconds longer, mostly for the container checks. Run `make format` to fix formatting before committing again. `git commit --no-verify` skips the hooks, which is why CI runs the same checks.
+
+#### Continuous integration
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs the code checks on every pull request to `main` (before merging) and on every push to `main` (after merging):
+
+| Job | What it runs |
+| --- | --- |
+| `lint` | `uv lock --check`, `ruff check`, `ruff format --check` |
+| `typecheck` | `make typecheck` in the app image |
+| `test` | `make test` in the app image, with the 90% coverage floor |
+
+The app image is built once per job with Docker's layer cache stored in GitHub Actions, and `make` reuses it (`APP_BUILD=`), so CI runs exactly the commands used locally. Infra tests are not part of CI; run them locally with `make test-infra`.

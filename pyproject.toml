@@ -3,9 +3,62 @@ members = ["analytics/common", "analytics/pipelines"]
 
 [dependency-groups]
 dev = [
+    "pre-commit>=4.3",
     "pytest>=9.2",
+    "pytest-cov>=7.0",
+    "ruff>=0.17.4",
+    "ty==0.0.98",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["analytics/common/tests", "analytics/pipelines/tests"]
-addopts = ["--strict-markers", "--strict-config", "--import-mode=importlib"]
+pythonpath = ["."]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "--import-mode=importlib",
+    "--cov",
+    "--cov-report=term-missing",
+]
+
+[tool.coverage.run]
+source = ["common", "pipelines"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true
+skip_empty = true
+exclude_also = [
+    "if TYPE_CHECKING:",
+    'if __name__ == "__main__":',
+]
+
+[tool.ruff]
+target-version = "py314"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "ANN",  # type annotations are required everywhere
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # import sorting
+    "B",    # bugbear
+    "UP",   # pyupgrade
+    "SIM",  # simplifications
+    "PT",   # pytest style
+    "RUF",  # ruff-specific
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["common", "pipelines", "tests"]
+
+[tool.ty.environment]
+python-version = "3.14"
+# PySpark is not installed from PyPI: it comes from the Spark image.
+extra-paths = ["/opt/spark/python"]
+
+[tool.ty.terminal]
+error-on-warning = true

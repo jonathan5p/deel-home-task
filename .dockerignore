@@ -1,0 +1,9 @@
+*
+!docker/spark/
+!analytics/
+!tests/
+!pyproject.toml
+!uv.lock
+!.python-version
+**/__pycache__
+**/.pytest_cache
