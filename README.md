@@ -291,7 +291,7 @@ make format     # format the code and apply safe lint fixes (files keep your own
 make typecheck  # check types with ty; any diagnostic fails
 ```
 
-- **Unit tests** live next to each project and mirror its source tree (`analytics/<project>/tests/test_<module>.py`). Tests that need Spark use a local `SparkSession` (`local[2]`) from `analytics/pipelines/tests/conftest.py`. Outside Docker, `uv run pytest` skips them, because PySpark only exists in the image.
+- **Unit tests** live next to each project and mirror its source tree (`analytics/<project>/tests/test_<module>.py`).
 - **Coverage** is measured on the `common` and `pipelines` packages with branch coverage. The 90% floor is configured in `pyproject.toml` (`[tool.coverage.report] fail_under`), and `make test` fails below it even when every test passes.
 - **Lint and format** use [ruff](https://docs.astral.sh/ruff/), configured in `pyproject.toml` (`[tool.ruff]`).
 - **Typing** is required for all code. ruff's `ANN` rules fail `make lint` when an annotation is missing, and [ty](https://docs.astral.sh/ty/) checks that the annotations are correct, including calls into PySpark, whose types it reads from the image (`[tool.ty]` in `pyproject.toml`). ty is in beta, so its version is pinned in `uv.lock`; it only runs in the container, where PySpark is available.
