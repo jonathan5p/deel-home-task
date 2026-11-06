@@ -1,0 +1,11 @@
+[tool.uv.workspace]
+members = ["analytics/common", "analytics/pipelines"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["analytics/common/tests", "analytics/pipelines/tests"]
+addopts = ["--strict-markers", "--strict-config", "--import-mode=importlib"]

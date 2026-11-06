@@ -1,0 +1,10 @@
+[project]
+name = "common"
+version = "0.1.0"
+description = "Code shared by the analytics components: settings and helpers."
+requires-python = ">=3.14,<3.15"
+dependencies = []
+
+[build-system]
+requires = ["uv_build>=0.13.7,<0.14"]
+build-backend = "uv_build"

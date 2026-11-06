@@ -200,3 +200,59 @@ The job prints the progress of the latest micro-batch every five seconds. When i
 Extra informations and tips about the task execution can be found in the task description document shared by our recruiting team.
 
 For any questions, feel free to reach us out through data-platform@deel.com
+
+### Application code
+
+The Python code is a [uv workspace](https://docs.astral.sh/uv/concepts/projects/workspaces/): one repository-wide lock file and toolchain, with one small project per component under `analytics/`. Each image installs only the project it runs and what that project depends on.
+
+```text
+pyproject.toml              workspace root: members, development tools and their settings
+uv.lock                     locked versions for the whole workspace (install with uv sync --frozen)
+.python-version             Python 3.14.10, the same version the Spark image runs
+analytics/
+  common/                   project "common": code shared by the components
+    src/common/settings.py  shared settings (analytics database) and environment helpers
+    tests/
+  pipelines/                project "pipelines": the Spark pipelines, depends on common
+    src/pipelines/
+      settings.py           pipeline settings (Kafka, lake, analytics database)
+      jobs/                 Spark jobs
+    tests/
+```
+
+Tests mirror the source tree of their project: `analytics/<project>/src/<project>/<module>.py` is tested in `analytics/<project>/tests/test_<module>.py`.
+
+PySpark is not a dependency: it comes from the Spark image, so the pipelines always run the cluster's exact Spark version.
+
+To work on the code outside Docker, install uv and run:
+
+```sh
+uv sync --frozen          # create .venv with Python 3.14.10, every project and the dev tools
+uv run pytest             # run the tests that do not need Spark
+```
+
+#### Configuration
+
+Settings are read from environment variables into small, immutable settings objects, one per concern. The environment is always passed in explicitly, so code and tests never read or patch the process environment:
+
+```python
+import os
+
+from pipelines.settings import PipelineSettings
+
+settings = PipelineSettings.from_env(os.environ)  # only a job's entry point reads os.environ
+```
+
+The defaults point at the local Docker Compose stack.
+
+| Variable | Settings | Default | Purpose |
+| --- | --- | --- | --- |
+| `KAFKA_BOOTSTRAP_SERVERS` | `pipelines.settings.KafkaSettings` | `kafka:29092` | Kafka brokers to read CDC topics from |
+| `LAKE_ROOT` | `pipelines.settings.LakeSettings` | `s3://lake` | Root of the data lake |
+| `CHECKPOINT_ROOT` | `pipelines.settings.LakeSettings` | `<LAKE_ROOT>/checkpoints` | Root for Structured Streaming checkpoints |
+| `ICEBERG_CATALOG` | `pipelines.settings.LakeSettings` | `lake` | Spark catalog name for Iceberg tables |
+| `ANALYTICS_DB_URL` | `common.settings.AnalyticsDbSettings` | `jdbc:postgresql://analytics-db:5432/analytics` | JDBC URL of the analytics database (gold layer) |
+| `ANALYTICS_DB_USER` | `common.settings.AnalyticsDbSettings` | required | Analytics database user |
+| `ANALYTICS_DB_PASSWORD` | `common.settings.AnalyticsDbSettings` | required | Analytics database password |
+
+`PipelineSettings` combines the three. A missing or empty required variable raises `MissingSettingsError`, which lists every missing name at once.
