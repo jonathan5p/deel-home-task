@@ -19,8 +19,29 @@ def require(env: Mapping[str, str], *names: str) -> tuple[str, ...]:
     return tuple(env[name] for name in names)
 
 
+class InvalidSettingError(ValueError):
+    def __init__(self, name: str, value: str, expected: str) -> None:
+        super().__init__(f"Environment variable {name}={value!r} is not {expected}")
+
+
 def optional(env: Mapping[str, str], name: str, default: str) -> str:
     return env.get(name) or default
+
+
+def positive_int(env: Mapping[str, str], name: str, default: int) -> int:
+    value = env.get(name)
+    if not value:
+        return default
+    if not value.isdigit() or int(value) == 0:
+        raise InvalidSettingError(name, value, "a positive integer")
+    return int(value)
+
+
+def comma_separated(env: Mapping[str, str], name: str, default: tuple[str, ...]) -> tuple[str, ...]:
+    value = env.get(name)
+    if not value:
+        return default
+    return tuple(item.strip() for item in value.split(",") if item.strip())
 
 
 @dataclass(frozen=True, slots=True)
