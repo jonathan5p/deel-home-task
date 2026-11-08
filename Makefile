@@ -3,8 +3,20 @@ SPARK_APP ?= tests/infra/apps/spark_ui_check.py
 SPARK_APP_ARGS ?=
 SPARK_CONF ?=
 SPARK_UI_PORT ?= 4040
+SPARK_SQL_FILE ?=
+SPARK_SQL_VARS ?=
+LANDING_ROOT ?= s3a://lake/landing
 PROFILES ?=
 .DEFAULT_GOAL := help
+
+DRIVER_RUN = name="spark-app-run-$$(date +%s)-$$$$"; \
+	trap 'docker stop "$$name" >/dev/null 2>&1 || true' EXIT INT TERM; \
+	$(COMPOSE) run --rm --build --name "$$name" -p $(SPARK_UI_PORT):4040
+DRIVER_CONF = --master "$$SPARK_MASTER_URL" \
+	--conf spark.driver.host="$$(hostname -i)" \
+	--conf spark.hadoop.fs.s3a.access.key="$$LAKE_S3_ACCESS_KEY" \
+	--conf spark.hadoop.fs.s3a.secret.key="$$LAKE_S3_SECRET_KEY" \
+	$(addprefix --conf ,$(SPARK_CONF))
 
 # Code checks run in a throwaway app container with the working tree's source mounted,
 # so they use the image's Spark and Python without a rebuild for every edit.
@@ -13,7 +25,7 @@ APP_BUILD ?= --build
 CODE_MOUNTS = -v "$(CURDIR)/analytics:/opt/app/analytics" -v "$(CURDIR)/tests:/opt/app/tests"
 APP_RUN = $(COMPOSE) run --rm $(APP_BUILD) --no-deps $(CODE_MOUNTS)
 
-.PHONY: help up down clean spark-submit spark-history test lint format typecheck test-infra hooks
+.PHONY: help up down clean spark-submit spark-sql spark-history test lint format typecheck test-infra hooks
 
 help:
 	@printf '%s\n' \
@@ -21,6 +33,7 @@ help:
 		'down           Stop all project services, including optional profiles; keep volumes.' \
 		'clean          Delete project containers and volumes (DATA LOSS); requires CONFIRM=1.' \
 		'spark-submit   Run SPARK_APP (repo path; default: UI check job) in its own driver container; options SPARK_APP_ARGS, SPARK_CONF, SPARK_UI_PORT.' \
+		'spark-sql      Open the Spark SQL shell in its own driver container; SPARK_SQL_FILE runs a file instead; SPARK_SQL_VARS (key=value ...) and LANDING_ROOT set its variables.' \
 		'spark-history  Toggle the optional Spark History Server (localhost:18080): start it if stopped, stop it if running.' \
 		'test           Run the unit tests with coverage (fails below 90%) in the app container.' \
 		'lint           Check linting and formatting with ruff in the app container.' \
@@ -37,16 +50,16 @@ down:
 	@$(COMPOSE) --profile '*' down
 
 spark-submit:
-	@name="spark-app-run-$$(date +%s)-$$$$"; \
-	trap 'docker stop "$$name" >/dev/null 2>&1 || true' EXIT INT TERM; \
-	$(COMPOSE) run --rm --build --name "$$name" -p $(SPARK_UI_PORT):4040 spark-app sh -c 'exec /opt/spark/bin/spark-submit \
-		--master "$$SPARK_MASTER_URL" \
-		--conf spark.driver.host="$$(hostname -i)" \
-		--conf spark.hadoop.fs.s3a.access.key="$$LAKE_S3_ACCESS_KEY" \
-		--conf spark.hadoop.fs.s3a.secret.key="$$LAKE_S3_SECRET_KEY" \
+	@$(DRIVER_RUN) spark-app sh -c 'exec /opt/spark/bin/spark-submit $(DRIVER_CONF) \
 		--py-files /opt/app/packages.zip \
-		$(addprefix --conf ,$(SPARK_CONF)) \
 		"$$@"' spark-submit $(SPARK_APP) $(SPARK_APP_ARGS)
+
+spark-sql:
+	@$(DRIVER_RUN) -v "$(CURDIR)/tools:/opt/app/tools:ro" spark-app sh -c 'exec /opt/spark/bin/spark-sql $(DRIVER_CONF) \
+		--conf spark.sql.catalogImplementation=in-memory \
+		--hivevar landing_root="$(LANDING_ROOT)" \
+		$(addprefix --hivevar ,$(SPARK_SQL_VARS)) \
+		"$$@"' spark-sql $(if $(SPARK_SQL_FILE),-S -f $(SPARK_SQL_FILE))
 
 spark-history:
 	@if [ -n "$$($(COMPOSE) --profile history ps -q --status running spark-history)" ]; then \

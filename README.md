@@ -283,6 +283,42 @@ The application UI at http://localhost:4040 exists only while a driver runs. The
 
 The job prints the progress of the latest micro-batch every five seconds. When it finishes, the UI on port 4040 closes.
 
+#### Inspecting the landing zone with Spark SQL
+
+`make spark-sql` opens the Spark SQL shell in its own driver container, like `make spark-submit`: it runs on the cluster, reads the lake with the S3A credentials, and can use the Iceberg catalog `lake` (Spark loads it on first use, so it appears in `SHOW CATALOGS` only after a query such as `SHOW NAMESPACES IN lake;`). It uses Spark's in-memory session catalog, so temporary views live for the session only.
+
+```sh
+make spark-sql                                                      # interactive shell
+make spark-sql SPARK_SQL_FILE=tools/spark-sql/landing_examples.sql \
+  SPARK_SQL_VARS="topic=finance_db.operations.orders key_field=order_id key_value=1 from_offset=0 to_offset=99"
+```
+
+[`tools/spark-sql/landing_examples.sql`](tools/spark-sql/landing_examples.sql) inspects one topic at a time and contains no topic or field names. Its variables:
+
+| Variable | Set with | Meaning |
+|---|---|---|
+| `landing_root` | `LANDING_ROOT` (default `s3a://lake/landing`) | Root of the landing zone |
+| `topic` | `SPARK_SQL_VARS` | Topic folder to inspect |
+| `key_field`, `key_value` | `SPARK_SQL_VARS` | Key field and value for the `by key` example |
+| `from_offset`, `to_offset` | `SPARK_SQL_VARS` | Offset range for the `offset range` example (both ends included) |
+
+It defines a `landing` view that decodes the topic's records: the source coordinates (`record_source`, `source_partition`, `source_offset`, `published_at`), the key as JSON, `change_op` (`create`, `update`, `delete`, `snapshot`), and `before_json`/`after_json`. Tombstones have `tombstone = true` and no operation. Its examples return:
+
+| Example | Returns |
+|---|---|
+| `latest` | the latest records |
+| `by key` | every change of one key, in log order |
+| `offset range` | an offset range |
+| `last hour` | records published in the last hour |
+| `counts` | record counts by operation |
+| `tombstones` | tombstone records |
+
+When a whole file runs, the result sets follow each other without headers, so every example's first column is its name. In the shell, set the variables first (for example `SET hivevar:topic=finance_db.operations.orders;`), then paste the views and the queries you need.
+
+The default landing root only has data once the landing job has run; until then the views fail with `PATH_NOT_FOUND`.
+
+Spark reads each topic folder through its file-sink commit log (`_spark_metadata`), so files from failed micro-batches are ignored and counts are exact.
+
 Extra informations and tips about the task execution can be found in the task description document shared by our recruiting team.
 
 For any questions, feel free to reach us out through data-platform@deel.com
@@ -392,7 +428,8 @@ They start an isolated Compose project (`deel-infra-tests`, with no host ports),
 - executors write and read Avro files on `s3a://lake/` and write and read a Kafka topic with the bundled connectors;
 - drivers and executors run the same Spark (4.1.4) and Python (3.14) versions;
 - each application run gets its own driver container, which is removed when the application ends;
-- two applications capped with `spark.cores.max=2` run at the same time, both with executors, in two separate driver containers.
+- two applications capped with `spark.cores.max=2` run at the same time, both with executors, in two separate driver containers;
+- the landing example queries (`make spark-sql`) return the expected records from neutral, landing-shaped fixture data (topics `topic-a` and `topic-b`), including an update, a delete, a tombstone and a snapshot read, and inspect only the chosen topic.
 
 #### Pre-commit hooks
 
