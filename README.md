@@ -260,10 +260,11 @@ To run several applications at the same time, give each its own UI port and cap 
 Every driver writes event logs to the `spark-events` volume, whether or not the history server is running. Logs roll over at 128 MiB, so long-running streaming applications stay in bounded files. Start the history server only when you need to inspect past runs:
 
 ```sh
-make spark-history                                   # Start only the history server (http://localhost:18080)
-make up PROFILES=history                             # Or start it together with the rest of the stack
-docker compose --profile history stop spark-history  # Stop it again; event logs are kept
+make spark-history          # Start the history server if it is stopped (http://localhost:18080), stop it if it is running
+make up PROFILES=history    # Or start it together with the rest of the stack
 ```
+
+`make spark-history` is a toggle: run it once to start the history server and again to stop and remove its container. The event logs stay in the volume either way.
 
 When it starts, it lists every application whose event logs are in the volume, including runs that happened while it was stopped. `make down` stops it with the rest of the stack, and `make clean CONFIRM=1` deletes the event logs.
 

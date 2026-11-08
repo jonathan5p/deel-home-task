@@ -21,7 +21,7 @@ help:
 		'down           Stop all project services, including optional profiles; keep volumes.' \
 		'clean          Delete project containers and volumes (DATA LOSS); requires CONFIRM=1.' \
 		'spark-submit   Run SPARK_APP (repo path; default: UI check job) in its own driver container; options SPARK_APP_ARGS, SPARK_CONF, SPARK_UI_PORT.' \
-		'spark-history  Start only the optional Spark History Server (localhost:18080).' \
+		'spark-history  Toggle the optional Spark History Server (localhost:18080): start it if stopped, stop it if running.' \
 		'test           Run the unit tests with coverage (fails below 90%) in the app container.' \
 		'lint           Check linting and formatting with ruff in the app container.' \
 		'format         Format the code and apply safe lint fixes with ruff.' \
@@ -49,7 +49,13 @@ spark-submit:
 		"$$@"' spark-submit $(SPARK_APP) $(SPARK_APP_ARGS)
 
 spark-history:
-	@$(COMPOSE) --profile history up -d --wait spark-history
+	@if [ -n "$$($(COMPOSE) --profile history ps -q --status running spark-history)" ]; then \
+		$(COMPOSE) --profile history rm -sf spark-history >/dev/null 2>&1 \
+			&& echo "Spark History Server stopped; event logs are kept."; \
+	else \
+		$(COMPOSE) --profile history up -d --wait spark-history \
+			&& echo "Spark History Server running at http://localhost:18080"; \
+	fi
 
 test:
 	@$(APP_RUN) spark-app pytest -p no:cacheprovider
