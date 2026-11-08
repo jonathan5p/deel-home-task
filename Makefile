@@ -4,6 +4,7 @@ SPARK_APP_ARGS ?=
 SPARK_CONF ?=
 SPARK_UI_PORT ?= 4040
 SPARK_SQL_FILE ?=
+SPARK_SQL_VARS ?=
 LANDING_ROOT ?= s3a://lake/landing
 PROFILES ?=
 .DEFAULT_GOAL := help
@@ -32,7 +33,7 @@ help:
 		'down           Stop all project services, including optional profiles; keep volumes.' \
 		'clean          Delete project containers and volumes (DATA LOSS); requires CONFIRM=1.' \
 		'spark-submit   Run SPARK_APP (repo path; default: UI check job) in its own driver container; options SPARK_APP_ARGS, SPARK_CONF, SPARK_UI_PORT.' \
-		'spark-sql      Open the Spark SQL shell in its own driver container; SPARK_SQL_FILE runs a file instead, LANDING_ROOT sets $${landing_root}.' \
+		'spark-sql      Open the Spark SQL shell in its own driver container; SPARK_SQL_FILE runs a file instead; SPARK_SQL_VARS (key=value ...) and LANDING_ROOT set its variables.' \
 		'spark-history  Toggle the optional Spark History Server (localhost:18080): start it if stopped, stop it if running.' \
 		'test           Run the unit tests with coverage (fails below 90%) in the app container.' \
 		'lint           Check linting and formatting with ruff in the app container.' \
@@ -57,6 +58,7 @@ spark-sql:
 	@$(DRIVER_RUN) -v "$(CURDIR)/tools:/opt/app/tools:ro" spark-app sh -c 'exec /opt/spark/bin/spark-sql $(DRIVER_CONF) \
 		--conf spark.sql.catalogImplementation=in-memory \
 		--hivevar landing_root="$(LANDING_ROOT)" \
+		$(addprefix --hivevar ,$(SPARK_SQL_VARS)) \
 		"$$@"' spark-sql $(if $(SPARK_SQL_FILE),-S -f $(SPARK_SQL_FILE))
 
 spark-history:
