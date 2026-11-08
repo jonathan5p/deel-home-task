@@ -1,36 +1,63 @@
 import pytest
 
-from common.settings import AnalyticsDbSettings, MissingSettingsError
+from common.settings import (
+    AnalyticsDbSettings,
+    InvalidSettingError,
+    MissingSettingsError,
+    positive_int,
+    split_list,
+)
 
-CREDENTIALS = {"ANALYTICS_DB_USER": "analytics", "ANALYTICS_DB_PASSWORD": "secret"}
+DATABASE = {
+    "ANALYTICS_DB_URL": "jdbc:postgresql://db:5432/gold",
+    "ANALYTICS_DB_USER": "user",
+    "ANALYTICS_DB_PASSWORD": "secret",
+}
 
 
-def test_url_defaults_to_the_local_analytics_database() -> None:
-    settings = AnalyticsDbSettings.from_env(CREDENTIALS)
+def test_analytics_db_settings_read_the_environment() -> None:
+    settings = AnalyticsDbSettings.from_env(DATABASE)
 
-    assert settings.url == "jdbc:postgresql://analytics-db:5432/analytics"
-    assert settings.user == "analytics"
+    assert settings.url == "jdbc:postgresql://db:5432/gold"
+    assert settings.user == "user"
     assert settings.password == "secret"
 
 
-def test_url_can_be_overridden() -> None:
-    env = CREDENTIALS | {"ANALYTICS_DB_URL": "jdbc:postgresql://db:5432/gold"}
-
-    assert AnalyticsDbSettings.from_env(env).url == "jdbc:postgresql://db:5432/gold"
-
-
-def test_missing_credentials_are_all_reported() -> None:
+def test_every_missing_analytics_db_variable_is_reported_at_once() -> None:
     with pytest.raises(MissingSettingsError) as error:
         AnalyticsDbSettings.from_env({})
 
-    assert error.value.names == ("ANALYTICS_DB_USER", "ANALYTICS_DB_PASSWORD")
-    assert "ANALYTICS_DB_USER, ANALYTICS_DB_PASSWORD" in str(error.value)
+    assert error.value.names == AnalyticsDbSettings.REQUIRED
+    assert "ANALYTICS_DB_URL, ANALYTICS_DB_USER, ANALYTICS_DB_PASSWORD" in str(error.value)
 
 
 def test_empty_values_count_as_missing() -> None:
     with pytest.raises(MissingSettingsError, match="ANALYTICS_DB_PASSWORD"):
-        AnalyticsDbSettings.from_env(CREDENTIALS | {"ANALYTICS_DB_PASSWORD": ""})
+        AnalyticsDbSettings.from_env(DATABASE | {"ANALYTICS_DB_PASSWORD": ""})
 
 
 def test_password_is_hidden_from_repr() -> None:
-    assert "secret" not in repr(AnalyticsDbSettings.from_env(CREDENTIALS))
+    assert "secret" not in repr(AnalyticsDbSettings.from_env(DATABASE))
+
+
+def test_positive_int_uses_the_default_when_unset() -> None:
+    assert positive_int({}, "TRIGGER_SECONDS", 10) == 10
+
+
+def test_positive_int_parses_the_variable() -> None:
+    assert positive_int({"TRIGGER_SECONDS": "30"}, "TRIGGER_SECONDS", 10) == 30
+
+
+@pytest.mark.parametrize("value", ["0", "-5", "ten", "1.5"])
+def test_positive_int_rejects_values_that_are_not_positive_integers(value: str) -> None:
+    with pytest.raises(InvalidSettingError, match="TRIGGER_SECONDS"):
+        positive_int({"TRIGGER_SECONDS": value}, "TRIGGER_SECONDS", 10)
+
+
+def test_split_list_splits_and_trims_values() -> None:
+    assert split_list("TOPICS", " a, b ,,c ") == ("a", "b", "c")
+
+
+def test_split_list_rejects_a_list_without_items() -> None:
+    with pytest.raises(InvalidSettingError, match="TOPICS"):
+        split_list("TOPICS", " , ,")

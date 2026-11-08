@@ -316,8 +316,10 @@ To work on the code outside Docker, install uv and run:
 
 ```sh
 uv sync --frozen          # create .venv with Python 3.14.10, every project and the dev tools
-uv run pytest             # run the tests that do not need Spark
+uv run pytest --no-cov    # run the tests that do not need Spark
 ```
+
+Outside Docker the Spark tests are skipped, so coverage is only meaningful with `make test`, which runs every test in the image.
 
 #### Configuration
 
@@ -331,19 +333,34 @@ from pipelines.settings import PipelineSettings
 settings = PipelineSettings.from_env(os.environ)  # only a job's entry point reads os.environ
 ```
 
-The defaults point at the local Docker Compose stack.
+The code holds no deployment details: anything that depends on where it runs (brokers, topics, the lake, the catalog, the database) is a required variable with no default. The local values live in `.env`, and Docker Compose passes them to the `spark-app` driver containers; another environment sets its own values. Only tuning settings have defaults.
 
-| Variable | Settings | Default | Purpose |
-| --- | --- | --- | --- |
-| `KAFKA_BOOTSTRAP_SERVERS` | `pipelines.settings.KafkaSettings` | `kafka:29092` | Kafka brokers to read CDC topics from |
-| `LAKE_ROOT` | `pipelines.settings.LakeSettings` | `s3://lake` | Root of the data lake |
-| `CHECKPOINT_ROOT` | `pipelines.settings.LakeSettings` | `<LAKE_ROOT>/checkpoints` | Root for Structured Streaming checkpoints |
-| `ICEBERG_CATALOG` | `pipelines.settings.LakeSettings` | `lake` | Spark catalog name for Iceberg tables |
-| `ANALYTICS_DB_URL` | `common.settings.AnalyticsDbSettings` | `jdbc:postgresql://analytics-db:5432/analytics` | JDBC URL of the analytics database (gold layer) |
-| `ANALYTICS_DB_USER` | `common.settings.AnalyticsDbSettings` | required | Analytics database user |
-| `ANALYTICS_DB_PASSWORD` | `common.settings.AnalyticsDbSettings` | required | Analytics database password |
+| Variable | Settings | Default | Local value in `.env` | Purpose |
+| --- | --- | --- | --- | --- |
+| `KAFKA_BOOTSTRAP_SERVERS` | `pipelines.settings.KafkaSettings` | required | `kafka:29092` | Kafka brokers to read CDC topics from |
+| `KAFKA_TOPICS` | `pipelines.settings.KafkaSettings` | required | the four `finance_db.operations.*` topics | Comma-separated CDC topics to read |
+| `LAKE_ROOT` | `pipelines.settings.LakeSettings` | required | `s3a://lake` | Root of the data lake for plain files (S3A) |
+| `ICEBERG_CATALOG` | `pipelines.settings.LakeSettings` | required | `lake` | Spark catalog name for Iceberg tables |
+| `CHECKPOINT_ROOT` | `pipelines.settings.LakeSettings` | `<LAKE_ROOT>/checkpoints` | not set | Root for Structured Streaming checkpoints |
+| `LANDING_TRIGGER_SECONDS` | `pipelines.settings.LandingSettings` | `10` | not set | Micro-batch interval of the landing job (a positive integer) |
+| `ANALYTICS_DB_URL` | `common.settings.AnalyticsDbSettings` | required | `jdbc:postgresql://analytics-db:5432/analytics` | JDBC URL of the analytics database (gold layer) |
+| `ANALYTICS_DB_USER` | `common.settings.AnalyticsDbSettings` | required | `analytics` | Analytics database user |
+| `ANALYTICS_DB_PASSWORD` | `common.settings.AnalyticsDbSettings` | required | `analytics` | Analytics database password |
 
-`PipelineSettings` combines the three. A missing or empty required variable raises `MissingSettingsError`, which lists every missing name at once.
+`PipelineSettings` combines the Kafka, lake and analytics database settings. `LandingSettings` combines the Kafka and lake settings with the trigger interval and needs no database credentials. A missing or empty required variable raises `MissingSettingsError`, which lists every missing name of the settings being built at once; a malformed value, such as an empty topic list or a trigger interval that is not a positive integer, raises `InvalidSettingError`.
+
+#### Landing zone
+
+The landing job (`analytics/pipelines/src/pipelines/jobs/landing.py`) streams every record of the CDC topics into raw Avro files, exactly as Kafka delivered it, so the lake keeps a replayable copy of the sources:
+
+```sh
+make spark-submit SPARK_APP=analytics/pipelines/src/pipelines/jobs/landing.py SPARK_CONF="spark.cores.max=2"
+```
+
+- **One streaming query per topic,** reading from the earliest offset and writing to `<LAKE_ROOT>/landing/<topic>/`: one folder per topic, with no partition folders.
+- **Each record is stored unchanged:** `key` and `value` as raw bytes, plus `topic`, `partition`, `offset`, `timestamp` and `timestampType`. Tombstones keep their `null` value.
+- **Restart-safe:** each query keeps its checkpoint in `<CHECKPOINT_ROOT>/landing/<topic>/`, and Spark's file sink records the committed files in `_spark_metadata`. Stopping and restarting the job neither skips nor duplicates records; Spark readers of the folder see only committed files.
+- **Micro-batches** run every `LANDING_TRIGGER_SECONDS`. `spark.cores.max` keeps cores free for the other jobs; the job runs until it is stopped (Ctrl+C).
 
 #### Tests, lint and format
 

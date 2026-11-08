@@ -1,14 +1,17 @@
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
-from typing import Self
-
-DEFAULT_ANALYTICS_DB_URL = "jdbc:postgresql://analytics-db:5432/analytics"
+from typing import ClassVar, Self
 
 
 class MissingSettingsError(ValueError):
     def __init__(self, names: Iterable[str]) -> None:
         self.names = tuple(names)
         super().__init__(f"Missing required environment variables: {', '.join(self.names)}")
+
+
+class InvalidSettingError(ValueError):
+    def __init__(self, name: str, value: str, expected: str) -> None:
+        super().__init__(f"Environment variable {name}={value!r} is not {expected}")
 
 
 def require(env: Mapping[str, str], *names: str) -> tuple[str, ...]:
@@ -23,17 +26,35 @@ def optional(env: Mapping[str, str], name: str, default: str) -> str:
     return env.get(name) or default
 
 
+def positive_int(env: Mapping[str, str], name: str, default: int) -> int:
+    value = env.get(name)
+    if not value:
+        return default
+    if not value.isdigit() or int(value) == 0:
+        raise InvalidSettingError(name, value, "a positive integer")
+    return int(value)
+
+
+def split_list(name: str, value: str) -> tuple[str, ...]:
+    items = tuple(item.strip() for item in value.split(",") if item.strip())
+    if not items:
+        raise InvalidSettingError(name, value, "a comma-separated list")
+    return items
+
+
 @dataclass(frozen=True, slots=True)
 class AnalyticsDbSettings:
+    REQUIRED: ClassVar[tuple[str, ...]] = (
+        "ANALYTICS_DB_URL",
+        "ANALYTICS_DB_USER",
+        "ANALYTICS_DB_PASSWORD",
+    )
+
     url: str
     user: str
     password: str = field(repr=False)
 
     @classmethod
     def from_env(cls, env: Mapping[str, str]) -> Self:
-        user, password = require(env, "ANALYTICS_DB_USER", "ANALYTICS_DB_PASSWORD")
-        return cls(
-            url=optional(env, "ANALYTICS_DB_URL", DEFAULT_ANALYTICS_DB_URL),
-            user=user,
-            password=password,
-        )
+        url, user, password = require(env, *cls.REQUIRED)
+        return cls(url=url, user=user, password=password)
