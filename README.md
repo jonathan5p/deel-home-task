@@ -225,7 +225,7 @@ Worker resources are set with `SPARK_WORKER_CORES` and `SPARK_WORKER_MEMORY` in 
 
 `SPARK_MASTER_URL` defaults to `spark://spark-master:7077` in `.env`, which Docker Compose loads automatically. Exporting the variable in your shell overrides it; recreate the Spark services (`make up`) after changing it.
 
-`.env` also pins the Compose project name (`COMPOSE_PROJECT_NAME=deel_home_task`), so every checkout of the repository, including git worktrees, drives the same local stack. `SPARK_IMAGE_TAG` overrides the tag of the two Spark images (default `4.1.4`); setting it, for example to `4.1.4-mybranch`, keeps builds from parallel checkouts from replacing each other's images.
+`.env` also pins the Compose project name (`COMPOSE_PROJECT_NAME=deel_home_task`), so every checkout of the repository, including git worktrees, drives the same local stack. `make up` rebuilds the Spark images from the checkout it runs in.
 
 #### Submitting a job
 

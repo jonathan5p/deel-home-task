@@ -3,7 +3,7 @@ x-spark-image: &spark-image
     context: .
     dockerfile: docker/spark/Dockerfile
     target: spark
-  image: deel-home-task/spark:${SPARK_IMAGE_TAG:-4.1.4}
+  image: deel-home-task/spark:4.1.4
 
 x-spark-worker: &spark-worker
   <<: *spark-image
@@ -151,7 +151,7 @@ services:
       context: .
       dockerfile: docker/spark/Dockerfile
       target: app
-    image: deel-home-task/spark-app:${SPARK_IMAGE_TAG:-4.1.4}
+    image: deel-home-task/spark-app:4.1.4
     profiles: [app]
     environment:
       SPARK_MASTER_URL: ${SPARK_MASTER_URL}
