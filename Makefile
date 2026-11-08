@@ -42,6 +42,8 @@ spark-submit:
 	$(COMPOSE) run --rm --build --name "$$name" -p $(SPARK_UI_PORT):4040 spark-app sh -c 'exec /opt/spark/bin/spark-submit \
 		--master "$$SPARK_MASTER_URL" \
 		--conf spark.driver.host="$$(hostname -i)" \
+		--conf spark.hadoop.fs.s3a.access.key="$$LAKE_S3_ACCESS_KEY" \
+		--conf spark.hadoop.fs.s3a.secret.key="$$LAKE_S3_SECRET_KEY" \
 		--py-files /opt/app/packages.zip \
 		$(addprefix --conf ,$(SPARK_CONF)) \
 		"$$@"' spark-submit $(SPARK_APP) $(SPARK_APP_ARGS)
