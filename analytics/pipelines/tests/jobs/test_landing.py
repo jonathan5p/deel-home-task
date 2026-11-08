@@ -58,7 +58,12 @@ def kafka_rows(topic: str, offsets: range, *, tombstone_at: int | None = None) -
 
 def landing_settings(tmp_path: Path) -> LandingSettings:
     return LandingSettings.from_env(
-        {"LAKE_ROOT": f"file://{tmp_path}/lake", "KAFKA_TOPICS": ",".join(TOPICS)}
+        {
+            "KAFKA_BOOTSTRAP_SERVERS": "broker:9092",
+            "KAFKA_TOPICS": ",".join(TOPICS),
+            "LAKE_ROOT": f"file://{tmp_path}/lake",
+            "ICEBERG_CATALOG": "catalog",
+        }
     )
 
 
@@ -101,9 +106,9 @@ def test_landing_records_keep_exactly_the_kafka_record(spark: SparkSession) -> N
 
 
 def test_read_topic_streams_the_kafka_record_schema(spark: SparkSession) -> None:
-    kafka = KafkaSettings.from_env({})
+    kafka = KafkaSettings(bootstrap_servers="broker:9092", topics=("topic-a",))
 
-    records = read_topic(spark, kafka, "finance_db.operations.orders")
+    records = read_topic(spark, kafka, "topic-a")
 
     assert records.isStreaming
     assert set(KAFKA_RECORD_COLUMNS) <= set(records.columns)
