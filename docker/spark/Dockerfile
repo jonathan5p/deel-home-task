@@ -27,6 +27,36 @@ ADD --chmod=644 --checksum=sha256:73914527305a40cce504b0d3d90b23caf565136912d607
     https://repo1.maven.org/maven2/org/postgresql/postgresql/42.7.14/postgresql-42.7.14.jar \
     /opt/spark/jars/
 
+# Kafka source
+ADD --chmod=644 --checksum=sha256:94f9514f64b319aa31c3b2061bf2fb75700f82e14845fda71337a13696855710 \
+    https://repo1.maven.org/maven2/org/apache/spark/spark-sql-kafka-0-10_2.13/4.1.4/spark-sql-kafka-0-10_2.13-4.1.4.jar \
+    /opt/spark/jars/
+ADD --chmod=644 --checksum=sha256:b641257bf720279865206a9cd8d69691c8004bc18e653829c6e1aa1d748c6716 \
+    https://repo1.maven.org/maven2/org/apache/spark/spark-token-provider-kafka-0-10_2.13/4.1.4/spark-token-provider-kafka-0-10_2.13-4.1.4.jar \
+    /opt/spark/jars/
+ADD --chmod=644 --checksum=sha256:7568b998572d256f0b7bc0afdc1b7a2588b8b08415c62ce314c864a6851ae9d9 \
+    https://repo1.maven.org/maven2/org/apache/kafka/kafka-clients/3.9.1/kafka-clients-3.9.1.jar \
+    /opt/spark/jars/
+ADD --chmod=644 --checksum=sha256:5273c8bc8c0dca2211175c0d27efbd7228efae99689aac001a8e1ef8e872e9ef \
+    https://repo1.maven.org/maven2/org/apache/commons/commons-pool2/2.12.1/commons-pool2-2.12.1.jar \
+    /opt/spark/jars/
+
+# Avro files
+ADD --chmod=644 --checksum=sha256:696c36bed6eee622e411b6889d7a849f12332761685c3d2947ec7bd4f756cf8f \
+    https://repo1.maven.org/maven2/org/apache/spark/spark-avro_2.13/4.1.4/spark-avro_2.13-4.1.4.jar \
+    /opt/spark/jars/
+
+# S3A filesystem for plain files and checkpoints in the lake; the AWS SDK comes from the Iceberg bundle
+ADD --chmod=644 --checksum=sha256:d2d24e6b715b5656b9d238bf13b6682a07e2004dd36aad74a73aeb854319f4d9 \
+    https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.4.2/hadoop-aws-3.4.2.jar \
+    /opt/spark/jars/
+ADD --chmod=644 --checksum=sha256:7bef0ea4efd5e0860bab63e08317040951edb51b72a5be734284c28b8324ab87 \
+    https://repo1.maven.org/maven2/software/amazon/awssdk/s3-transfer-manager/2.54.17/s3-transfer-manager-2.54.17.jar \
+    /opt/spark/jars/
+ADD --chmod=644 --checksum=sha256:0b00ae3d55c3d1213ca47b5651dc4c2a0080fc9b6192dde3d53c3da6c1811bcb \
+    https://repo1.maven.org/maven2/software/amazon/awssdk/apache-client/2.54.17/apache-client-2.54.17.jar \
+    /opt/spark/jars/
+
 COPY docker/spark/spark-defaults.conf /opt/spark/conf/spark-defaults.conf
 
 USER spark

@@ -5,6 +5,7 @@ from tests.infra.stack import MasterApp, Stack, wait_until
 SMOKE_APP = "tests/infra/apps/iceberg_smoke_check.py"
 VERSIONS_APP = "tests/infra/apps/versions_check.py"
 HOLD_APP = "tests/infra/apps/hold_app.py"
+CONNECTORS_APP = "tests/infra/apps/connectors_check.py"
 
 
 def running_with_executors(apps: list[MasterApp]) -> set[str]:
@@ -23,6 +24,14 @@ def test_iceberg_smoke_check_writes_catalog_metadata_and_lake_files(stack: Stack
     )
     assert location.startswith("s3://lake/warehouse/smoke/iceberg_check/metadata/")
     assert {"data", "metadata"} <= stack.lake_entries("warehouse/smoke/iceberg_check/")
+
+
+def test_kafka_avro_and_s3a_connectors_work_from_executors(stack: Stack) -> None:
+    returncode, output = stack.run_app(CONNECTORS_APP)
+
+    assert returncode == 0, output
+    line = next(line for line in output.splitlines() if line.startswith("CONNECTORS "))
+    assert json.loads(line.removeprefix("CONNECTORS ")) == {"avro_rows": 100, "kafka_rows": 100}
 
 
 def test_driver_and_executors_run_the_same_spark_and_python(stack: Stack) -> None:

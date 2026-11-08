@@ -91,6 +91,20 @@ Every Spark job gets an [Apache Iceberg](https://iceberg.apache.org/) catalog na
 
 The Spark image bundles Iceberg 1.12.0 (`iceberg-spark-runtime-4.1_2.13`, `iceberg-aws-bundle`) and the PostgreSQL JDBC driver 42.7.14, with pinned checksums, so jobs need no `--packages`. The driver reads the database and S3 credentials from its environment (the `.env` values above).
 
+#### Kafka, Avro and plain files in the lake
+
+The image also bundles, with pinned checksums:
+
+| Library | Version | Used for |
+| --- | --- | --- |
+| `spark-sql-kafka-0-10`, `spark-token-provider-kafka-0-10`, `kafka-clients`, `commons-pool2` | 4.1.4, 4.1.4, 3.9.1, 2.12.1 | Reading the CDC topics with `spark.readStream.format("kafka")` |
+| `spark-avro` | 4.1.4 | Reading and writing Avro files |
+| `hadoop-aws` and the AWS SDK's `s3-transfer-manager` and `apache-client` | 3.4.2, 2.54.17 | The S3A filesystem for plain files and streaming checkpoints in SeaweedFS |
+
+Iceberg tables use `s3://` paths through the catalog above. Plain files, such as the landing zone, and streaming checkpoints use `s3a://lake/...` paths. S3A uses the same AWS SDK version as the Iceberg bundle (2.54.17); the image adds only the two SDK modules the bundle does not contain.
+
+Spark does not substitute `${env:...}` in `spark.hadoop.*` settings, so `make spark-submit` passes the S3A credentials from the driver container's environment (`LAKE_S3_ACCESS_KEY`, `LAKE_S3_SECRET_KEY`). Spark ships them to the executors and shows them as `*********(redacted)` in the UI and event logs.
+
 Run the smoke job to check the whole path. It creates or replaces `lake.smoke.iceberg_check`, writes four rows, reads them back, and fails if they differ:
 
 ```sh
@@ -355,6 +369,7 @@ make test-infra   # about two minutes, mostly building images and starting the s
 They start an isolated Compose project (`deel-infra-tests`, with no host ports), so they never touch your running stack or its data, and remove it with its volumes at the end. They submit the apps in `tests/infra/apps/` with `make spark-submit` and check that:
 
 - the Iceberg smoke job writes catalog metadata to PostgreSQL and table files to SeaweedFS;
+- executors write and read Avro files on `s3a://lake/` and write and read a Kafka topic with the bundled connectors;
 - drivers and executors run the same Spark (4.1.4) and Python (3.14) versions;
 - each application run gets its own driver container, which is removed when the application ends;
 - two applications capped with `spark.cores.max=2` run at the same time, both with executors, in two separate driver containers.

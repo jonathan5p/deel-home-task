@@ -10,7 +10,15 @@ from typing import Self, TypedDict
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PROJECT = "deel-infra-tests"
 COMPOSE_FILES = ("docker-compose.yaml", "tests/infra/compose.override.yaml")
-CLUSTER_SERVICES = ("analytics-db", "seaweedfs", "spark-master", "spark-worker-1", "spark-worker-2")
+CLUSTER_SERVICES = (
+    "analytics-db",
+    "seaweedfs",
+    "zookeeper",
+    "kafka",
+    "spark-master",
+    "spark-worker-1",
+    "spark-worker-2",
+)
 
 
 class MasterApp(TypedDict):
@@ -46,6 +54,20 @@ class Stack:
     def up(self) -> None:
         self.compose("--profile", "app", "build", "spark-app")
         self.compose("up", "--detach", "--build", "--wait", *CLUSTER_SERVICES)
+        wait_until(self.kafka_ready, timeout=120, message="Kafka never accepted connections")
+
+    def kafka_ready(self) -> bool:
+        listing = self.compose(
+            "exec",
+            "-T",
+            "kafka",
+            "kafka-topics",
+            "--bootstrap-server",
+            "kafka:29092",
+            "--list",
+            check=False,
+        )
+        return listing.returncode == 0
 
     def down(self) -> None:
         for process in self.running:
