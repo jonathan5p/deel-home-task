@@ -104,6 +104,27 @@ class Stack:
     def run_app(self, app: str, *args: str, timeout: float = 300) -> tuple[int, str]:
         return self.finish(self.start_app(app, *args), timeout=timeout)
 
+    def run_sql_file(
+        self, sql_file: str, landing_root: str, timeout: float = 300
+    ) -> subprocess.CompletedProcess[str]:
+        """Run a SQL file with make spark-sql; stdout holds only the query results."""
+        return subprocess.run(
+            [
+                "make",
+                "--no-print-directory",
+                "spark-sql",
+                f"SPARK_SQL_FILE={sql_file}",
+                f"LANDING_ROOT={landing_root}",
+                "SPARK_UI_PORT=0",
+            ],
+            cwd=REPO_ROOT,
+            env=self.env,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+
     def active_apps(self) -> list[MasterApp]:
         state = self.compose(
             "exec", "-T", "spark-master", "curl", "-fsS", "http://localhost:8080/json/"

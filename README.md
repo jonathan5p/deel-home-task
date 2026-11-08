@@ -283,6 +283,31 @@ The application UI at http://localhost:4040 exists only while a driver runs. The
 
 The job prints the progress of the latest micro-batch every five seconds. When it finishes, the UI on port 4040 closes.
 
+#### Inspecting the landing zone with Spark SQL
+
+`make spark-sql` opens the Spark SQL shell in its own driver container, like `make spark-submit`: it runs on the cluster, reads the lake with the S3A credentials, and sees the Iceberg catalog `lake`. It uses Spark's in-memory session catalog, so temporary views live for the session only.
+
+```sh
+make spark-sql                                                           # interactive shell
+make spark-sql SPARK_SQL_FILE=tools/spark-sql/landing_examples.sql       # run the example queries
+make spark-sql SPARK_SQL_FILE=... LANDING_ROOT=s3a://lake/other-landing  # point ${landing_root} elsewhere
+```
+
+[`tools/spark-sql/landing_examples.sql`](tools/spark-sql/landing_examples.sql) defines one view per topic over the landing Avro files and a `landing` view that decodes them: the source coordinates (`record_source`, `source_partition`, `source_offset`, `published_at`), the key as JSON, `change_op` (`create`, `update`, `delete`, `snapshot`), and `before_json`/`after_json`. Tombstones have `tombstone = true` and no operation. Its examples return:
+
+| Example | Returns |
+|---|---|
+| `latest` | the latest records of one topic |
+| `by key` | every change of one key, in log order |
+| `offset range` | an offset range of one partition |
+| `last hour` | records published to Kafka in the last hour |
+| `counts` | record counts by topic and operation |
+| `tombstones` | tombstone records |
+
+When a whole file runs, the result sets follow each other without headers, so every example's first column is its name. In the shell, paste the view definitions first, with `${landing_root}` replaced by the landing path or set with `SET hivevar:landing_root=s3a://lake/landing;`.
+
+Spark reads each topic folder through its file-sink commit log (`_spark_metadata`), so files from failed micro-batches are ignored and counts are exact.
+
 Extra informations and tips about the task execution can be found in the task description document shared by our recruiting team.
 
 For any questions, feel free to reach us out through data-platform@deel.com
@@ -392,7 +417,8 @@ They start an isolated Compose project (`deel-infra-tests`, with no host ports),
 - executors write and read Avro files on `s3a://lake/` and write and read a Kafka topic with the bundled connectors;
 - drivers and executors run the same Spark (4.1.4) and Python (3.14) versions;
 - each application run gets its own driver container, which is removed when the application ends;
-- two applications capped with `spark.cores.max=2` run at the same time, both with executors, in two separate driver containers.
+- two applications capped with `spark.cores.max=2` run at the same time, both with executors, in two separate driver containers;
+- the landing example queries (`make spark-sql`) return the expected records from landing-shaped fixture data, including an update, a delete and a tombstone.
 
 #### Pre-commit hooks
 
