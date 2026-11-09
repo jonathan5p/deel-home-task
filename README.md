@@ -69,13 +69,38 @@ make up
 
 #### Gold layer
 
-The `gold` schema holds a star schema built from the silver history tables: SCD2 customer and product dimensions, seeded date and order-status dimensions, append-only history facts for orders and order items (partitioned by month, 3 years kept), and current-state tables for orders and items that the four business questions read. The design, with the ERD, the grain of every table, the open and pending rules, versioning by `change_position`, and retention, is in [docs/architecture/gold-model.md](docs/architecture/gold-model.md).
+The `gold` schema holds a star schema built from the silver history tables: SCD2 customer and product dimensions, seeded date and order-status dimensions, append-only history facts for orders and order items (partitioned by month, 3 years kept), and current-state tables for orders and items that the four business questions read. The design, with the ERD, the grain of every table, the open and pending rules, versioning by `_commit_sequence`, and retention, is in [docs/architecture/gold-model.md](docs/architecture/gold-model.md).
 
 In short:
 
 - **Open order:** current status other than `COMPLETED`, not deleted. **Pending orders** are open orders, and **pending items** are the items of open orders.
-- **Current state only moves forward:** a version replaces the current row only if its `change_position` is higher, so late or replayed events never overwrite newer state; they are still kept as history.
+- **Current state only moves forward:** a version replaces the current row only if its `_commit_sequence` is higher, so late or replayed events never overwrite newer state; they are still kept as history.
 - **Top 3 questions include ties**, so more than three rows can come back.
+
+`docker/analytics-db/initdb/02-gold-model.sql` creates the gold tables, views and seeds, and the monthly history partitions for the current month and the next two (`gold.ensure_history_partitions(months_ahead)`, which a maintenance job can call to create later months). It runs on an empty volume like the other init scripts, and every statement is idempotent, so it can also be applied to an existing database without losing data:
+
+```sh
+docker compose exec -T analytics-db psql -v ON_ERROR_STOP=1 -U analytics -d analytics < docker/analytics-db/initdb/02-gold-model.sql
+```
+
+The four business questions are in `sql/gold/`, one query per file:
+
+| File | Question |
+| --- | --- |
+| `01_open_orders_by_delivery_date_and_status.sql` | Number of open orders by delivery date and status |
+| `02_top_delivery_dates_by_open_orders.sql` | Top 3 delivery dates with more open orders |
+| `03_pending_items_by_product.sql` | Number of open pending items by product (items and total quantity) |
+| `04_top_customers_by_pending_orders.sql` | Top 3 customers with more pending orders |
+
+```sh
+docker compose exec -T analytics-db psql -U analytics -d analytics < sql/gold/01_open_orders_by_delivery_date_and_status.sql
+```
+
+`gold.data_freshness` shows, per entity (customers, products, orders, order items), the source commit time of the newest change gold holds. **It is a temporary, deliberately simple proxy** for how up to date gold is, to be replaced by real pipeline metrics later (#127): when the source stops changing, it ages even though the pipeline is healthy.
+
+```sh
+docker compose exec analytics-db psql -U analytics -d analytics -c "select * from gold.data_freshness"
+```
 
 ### Data lake (SeaweedFS)
 
@@ -704,6 +729,7 @@ They start an isolated Compose project named after the checkout folder (`deel-in
 - the landing example queries (`make spark-sql`) return the expected records from neutral, landing-shaped fixture data (topics `topic-a` and `topic-b`), including an update, a delete, a tombstone and a snapshot read, and inspect only the chosen topic;
 - the bronze job, run with `--available-now` on records landed through the landing job's file sink (topics `test.operations.<table>`), writes typed rows with their change metadata to each entity's Iceberg table, partitioned by publish day; quarantines invalid records while valid ones flow, each with the path of the landing file it was read from, and drops tombstones; after new records land, a second run appends only those, and a third run with nothing new appends nothing, so every Kafka offset is written exactly once; and ignores an Avro file in a landing folder that the commit log does not record;
 - the silver job, run with `--available-now` on the bronze tables those runs leave, writes one version row per bronze change to each entity's silver table, with the bronze values and change metadata and `_is_deleted` true only for the delete, which keeps the last known values; partitions the table by change day and describes every table and column; after bronze appends another change, that change delivered again and an already versioned change delivered again, a second run appends only the new change once, and a third run with nothing new appends nothing; keeps its deduplication state in RocksDB (the checkpoint's state folder holds RocksDB files); and exits with an error when a bronze table is missing.
+- the gold DDL applies again to an existing database, describes every table and column, seeds the date and status dimensions, routes history rows to their monthly or default partition, rejects replayed history rows, orders versions by `commit_sequence` despite late events, and the four business queries return the expected rows on a fixture with a completed order, a deleted order, an unknown status and ties for third place (each test rolls its rows back).
 
 #### Pre-commit hooks
 
