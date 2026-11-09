@@ -64,22 +64,22 @@ def schema_files(root: Path) -> list[Path]:
     return sorted(root.rglob("*.avsc"))
 
 
-def column_definitions(root: Path, skip: str = "sources") -> dict[str, dict[str, list[str]]]:
-    """Every field definition (type, default and doc) under `root`, by field name, with the
-    files that define the field that way.
+def column_definitions(root: Path) -> dict[str, dict[str, list[str]]]:
+    """Every definition (type, default and doc) of each metadata (`_`) column under `root`,
+    with the files that define the column that way.
 
-    The source tables in `skip` are left out: each describes its own columns, so a foreign key
-    and the primary key it points to share a name but not a description or nullability.
+    Business columns are left out: a key and the references to it share a name but not
+    a description or nullability, in the source tables as in a star schema.
     """
     definitions: dict[str, dict[str, list[str]]] = {}
     for file in schema_files(root):
-        relative = file.relative_to(root)
-        if relative.parts[0] == skip:
-            continue
+        relative = file.relative_to(root).as_posix()
         for field in json.loads(file.read_text(encoding="utf-8"))["fields"]:
+            if not field["name"].startswith("_"):
+                continue
             definition = json.dumps({key: field.get(key) for key in ("type", "default", "doc")})
             by_definition = definitions.setdefault(field["name"], {})
-            by_definition.setdefault(definition, []).append(relative.as_posix())
+            by_definition.setdefault(definition, []).append(relative)
     return definitions
 
 

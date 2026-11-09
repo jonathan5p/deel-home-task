@@ -187,6 +187,20 @@ def test_differing_definitions_of_a_column_are_found_in_any_folder(schemas: Sche
     assert len(differing) == 2
 
 
+def test_business_columns_may_differ_between_schemas(schemas: SchemasTree) -> None:
+    (schemas.root / "gold").mkdir()
+    thing = {
+        "type": "record",
+        "name": "facts",
+        "fields": [
+            {"name": "customer_id", "type": ["null", "long"], "default": None, "doc": "A reference"}
+        ],
+    }
+    schemas.write("gold/facts.avsc", json.dumps(thing))
+
+    assert "customer_id" not in column_definitions(schemas.root)
+
+
 def test_table_templates_describe_the_tables_of_an_entity() -> None:
     templates = load_table_templates()
     orders = load_entity("orders")
