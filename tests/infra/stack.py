@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import subprocess
 import time
 from collections.abc import Callable, Mapping
@@ -8,7 +9,15 @@ from pathlib import Path
 from typing import Self, TypedDict
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-PROJECT = "deel-infra-tests-" + REPO_ROOT.name.lower().replace(".", "-")
+
+
+def project_name(prefix: str, folder: str) -> str:
+    """Name a Compose project after a checkout folder, with the same rule as the Makefile."""
+    return prefix + re.sub(r"[^a-z0-9_-]", "-", folder.lower())
+
+
+PROJECT = project_name("deel-infra-tests-", REPO_ROOT.name)
+IMAGES = (f"{PROJECT}-spark", f"{PROJECT}-spark-app")
 COMPOSE_FILES = ("docker-compose.yaml", "tests/infra/compose.override.yaml")
 CLUSTER_SERVICES = (
     "analytics-db",
@@ -76,6 +85,10 @@ class Stack:
         for name in self.driver_containers():
             subprocess.run(["docker", "rm", "--force", name], capture_output=True, check=False)
         self.compose("--profile", "*", "down", "--volumes", "--remove-orphans", check=False)
+        # Only the images this project builds: --rmi all would also delete the pulled ones.
+        subprocess.run(
+            ["docker", "image", "rm", "--force", *IMAGES], capture_output=True, check=False
+        )
 
     def start_app(
         self, app: str, *args: str, conf: Mapping[str, str] | None = None

@@ -430,7 +430,7 @@ By default every landed offset is compared, from the first to the last landed of
 
 #### Tests, lint and format
 
-The checks run in a throwaway container from the `app` image, with `analytics/` and `tests/` mounted, so they use the cluster's exact Spark and Python versions and pick up edits without a rebuild. They use their own Compose project, named after the checkout folder (`deel-checks-<folder>`), so checks in different checkouts or worktrees never share an image and can run in parallel:
+The checks run in a throwaway container from the `app` image, with `analytics/` and `tests/` mounted, so they use the cluster's exact Spark and Python versions and pick up edits without a rebuild. They use their own Compose project, named after the checkout folder (`deel-checks-<folder>`, lowercased, with every character other than letters, digits, `_` and `-` replaced by `-`), with one app image (`<project>-spark-app`), so checks in different checkouts or worktrees never share an image and can run in parallel:
 
 ```sh
 make test       # unit tests with branch coverage; fails below 90%
@@ -452,7 +452,7 @@ Infra tests check the platform itself rather than the pipeline code. They need D
 make test-infra   # about two minutes, mostly building images and starting the stack
 ```
 
-They start an isolated Compose project named after the checkout folder (`deel-infra-tests-<folder>`, with no host ports and its own images), so they never touch your running stack or its data, runs from different worktrees can run in parallel, and the project is removed with its volumes at the end. Two full stacks at once need enough memory for Docker, so very heavy runs may still be worth staggering. They submit the apps in `tests/infra/apps/` with `make spark-submit` and check that:
+They start an isolated Compose project named after the checkout folder (`deel-infra-tests-<folder>`, sanitised like the code-check project, with no host ports), so they never touch your running stack or its data, and runs from different worktrees can run in parallel. Each project builds one Spark image (`<project>-spark`, shared by the master and the workers) and one app image (`<project>-spark-app`); at the end the project is removed with its volumes and those two images. Two full stacks at once need enough memory for Docker, so very heavy runs may still be worth staggering. They submit the apps in `tests/infra/apps/` with `make spark-submit` and check that:
 
 - the Iceberg smoke job writes catalog metadata to PostgreSQL and table files to SeaweedFS;
 - executors write and read Avro files on `s3a://lake/` and write and read a Kafka topic with the bundled connectors;
