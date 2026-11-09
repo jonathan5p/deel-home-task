@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Self, TypedDict
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-PROJECT = "deel-infra-tests"
+PROJECT = "deel-infra-tests-" + REPO_ROOT.name.lower().replace(".", "-")
 COMPOSE_FILES = ("docker-compose.yaml", "tests/infra/compose.override.yaml")
 CLUSTER_SERVICES = (
     "analytics-db",

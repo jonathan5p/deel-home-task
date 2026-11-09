@@ -20,10 +20,12 @@ DRIVER_CONF = --master "$$SPARK_MASTER_URL" \
 
 # Code checks run in a throwaway app container with the working tree's source mounted,
 # so they use the image's Spark and Python without a rebuild for every edit.
+# Each checkout gets its own project, and so its own image, so checks in parallel worktrees never share one.
 # APP_BUILD= reuses an already built app image, as CI does after building it with a layer cache.
+CHECKS_PROJECT ?= deel-checks-$(shell basename "$(CURDIR)" | tr 'A-Z.' 'a-z-')
 APP_BUILD ?= --build
 CODE_MOUNTS = -v "$(CURDIR)/analytics:/opt/app/analytics" -v "$(CURDIR)/tests:/opt/app/tests"
-APP_RUN = $(COMPOSE) run --rm $(APP_BUILD) --no-deps $(CODE_MOUNTS)
+APP_RUN = $(COMPOSE) -p $(CHECKS_PROJECT) run --rm $(APP_BUILD) --no-deps $(CODE_MOUNTS)
 
 .PHONY: help up down clean spark-submit spark-sql spark-history data-quality test lint format typecheck test-infra hooks
 
