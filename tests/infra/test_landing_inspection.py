@@ -2,9 +2,7 @@ import pytest
 
 from tests.infra.stack import Stack
 
-FIXTURE_APP = "tests/infra/apps/landing_fixture.py"
 EXAMPLES = "tools/spark-sql/landing_examples.sql"
-FIXTURE_ROOT = "s3a://lake/test-fixtures/landing"
 VARIABLES = {
     "topic": "topic-a",
     "key_field": "id",
@@ -15,12 +13,9 @@ VARIABLES = {
 
 
 @pytest.fixture(scope="module")
-def results(stack: Stack) -> dict[str, list[list[str]]]:
-    """Run the example queries against fixture records and group their rows by example label."""
-    returncode, output = stack.run_app(FIXTURE_APP, FIXTURE_ROOT)
-    assert returncode == 0, output
-
-    run = stack.run_sql_file(EXAMPLES, FIXTURE_ROOT, VARIABLES)
+def results(stack: Stack, landing_fixture: str) -> dict[str, list[list[str]]]:
+    """Run the example queries against the fixture records and group their rows by example label."""
+    run = stack.run_sql_file(EXAMPLES, f"s3a://lake/{landing_fixture}", VARIABLES)
 
     assert run.returncode == 0, run.stdout + run.stderr
     grouped: dict[str, list[list[str]]] = {}

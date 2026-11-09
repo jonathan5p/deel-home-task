@@ -3,6 +3,7 @@ members = ["analytics/common", "analytics/pipelines"]
 
 [dependency-groups]
 dev = [
+    "fastavro>=1.12",
     "pre-commit>=4.3",
     "pytest>=9.2",
     "pytest-cov>=7.0",
