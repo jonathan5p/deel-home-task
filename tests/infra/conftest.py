@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from tests.infra.bronze_setup import BronzeRuns, run_bronze_scenario
 from tests.infra.landing_avro import landing_avro
 from tests.infra.stack import Stack
 
@@ -64,3 +65,8 @@ def landing_fixture(stack: Stack) -> str:
     for topic, records in landing_records(datetime.now(UTC)).items():
         stack.put_object(f"{LANDING_FIXTURE_ROOT}/{topic}/part-00000.avro", landing_avro(records))
     return LANDING_FIXTURE_ROOT
+
+
+@pytest.fixture(scope="module")
+def bronze_runs(stack: Stack) -> BronzeRuns:
+    return run_bronze_scenario(stack)

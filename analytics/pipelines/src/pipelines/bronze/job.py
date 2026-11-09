@@ -1,12 +1,14 @@
 import argparse
+import contextlib
 import os
 import sys
 from collections.abc import Callable, Sequence
-from typing import NamedTuple
+from typing import NamedTuple, Self
 
+from pyspark.errors import StreamingQueryException
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
-from pyspark.sql.streaming import DataStreamWriter, StreamingQuery
+from pyspark.sql.streaming import DataStreamWriter, StreamingQuery, StreamingQueryManager
 from pyspark.sql.types import StructType
 
 from pipelines.bronze.entities import entity_for_topic
@@ -25,10 +27,22 @@ class BronzeStream(NamedTuple):
     checkpoint: str
     rows: DataFrame
 
+    @classmethod
+    def for_table(cls, settings: BronzeSettings, name: str, rows: DataFrame) -> Self:
+        return cls(
+            name=f"bronze {name}",
+            table=settings.table(name),
+            checkpoint=settings.checkpoint_path(name),
+            rows=rows,
+        )
+
+
+class StreamsFailedError(RuntimeError):
+    def __init__(self, names: Sequence[str]) -> None:
+        super().__init__(f"streaming queries failed: {', '.join(names)}")
+
 
 def read_landing(spark: SparkSession, path: str) -> DataFrame:
-    # The file source follows the landing file sink's _spark_metadata log, so files left behind
-    # by failed landing micro-batches are never read.
     records = spark.readStream.format("avro").schema(KAFKA_RECORD_SCHEMA).load(path)
     return records.select("*", F.col("_metadata.file_path").alias("landing_file"))
 
@@ -50,22 +64,11 @@ def create_table(spark: SparkSession, table: str, schema: StructType) -> None:
 
 
 def append_to_iceberg(writer: DataStreamWriter, table: str) -> StreamingQuery:
-    # Iceberg's sink records the query id and epoch in each snapshot and skips an epoch it has
-    # already committed, so a micro-batch replayed after a restart is not appended twice.
     return writer.format("iceberg").outputMode("append").toTable(table)
 
 
 def quarantined(rows: DataFrame) -> DataFrame:
     return rows.withColumn("quarantined_at", F.current_timestamp())
-
-
-def _stream(settings: BronzeSettings, name: str, rows: DataFrame) -> BronzeStream:
-    return BronzeStream(
-        name=f"bronze {name}",
-        table=settings.table(name),
-        checkpoint=settings.checkpoint_path(name),
-        rows=rows,
-    )
 
 
 def entity_streams(
@@ -74,8 +77,10 @@ def entity_streams(
     entity = entity_for_topic(topic)
     parsed = parse_changes(read(spark, settings.landing_path(topic)), entity)
     return (
-        _stream(settings, entity.name, parsed.bronze),
-        _stream(settings, f"{entity.name}_quarantine", quarantined(parsed.quarantine)),
+        BronzeStream.for_table(settings, entity.name, parsed.bronze),
+        BronzeStream.for_table(
+            settings, f"{entity.name}_quarantine", quarantined(parsed.quarantine)
+        ),
     )
 
 
@@ -111,6 +116,27 @@ def run(
     return [start_stream(stream, settings, sink, available_now=available_now) for stream in streams]
 
 
+def await_queries(
+    manager: StreamingQueryManager, queries: Sequence[StreamingQuery], *, available_now: bool
+) -> None:
+    """A continuous run stops every query as soon as one terminates, so one failed stream stops
+    the whole job instead of leaving it half running; an available-now run waits for them all."""
+    try:
+        if available_now:
+            for query in queries:
+                with contextlib.suppress(StreamingQueryException):
+                    query.awaitTermination()
+        else:
+            with contextlib.suppress(StreamingQueryException):
+                manager.awaitAnyTermination()
+    finally:
+        for query in queries:
+            query.stop()
+    failed = [query for query in queries if query.exception() is not None]
+    if failed:
+        raise StreamsFailedError([query.name for query in failed]) from failed[0].exception()
+
+
 def wants_available_now(argv: Sequence[str]) -> bool:
     parser = argparse.ArgumentParser(prog="bronze")
     parser.add_argument(
@@ -125,12 +151,11 @@ def main(argv: Sequence[str]) -> None:
     available_now = wants_available_now(argv)
     settings = BronzeSettings.from_env(os.environ)
     spark = SparkSession.builder.appName("bronze").getOrCreate()
-    queries = run(spark, settings, available_now=available_now)
-    if available_now:
-        for query in queries:
-            query.awaitTermination()
-    else:
-        spark.streams.awaitAnyTermination()
+    try:
+        queries = run(spark, settings, available_now=available_now)
+        await_queries(spark.streams, queries, available_now=available_now)
+    finally:
+        spark.stop()
 
 
 if __name__ == "__main__":

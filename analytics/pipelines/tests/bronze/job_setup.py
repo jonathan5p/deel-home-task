@@ -1,14 +1,16 @@
 import shutil
 from pathlib import Path
+from typing import Protocol
 from urllib.parse import urlparse
 
-from pyspark.sql import Row, SparkSession
+from pyspark.sql import DataFrame, Row, SparkSession
+from pyspark.sql import functions as F
 from pyspark.sql.streaming import DataStreamWriter, StreamingQuery
 from pyspark.sql.types import StructType
 
 from analytics.pipelines.tests.bronze.parse_samples import Json, change, landing
 from pipelines.bronze.entities import Entity
-from pipelines.bronze.job import TableSink, run
+from pipelines.bronze.job import TableSink, await_queries, run
 from pipelines.schemas import KAFKA_RECORD_SCHEMA
 from pipelines.settings import BronzeSettings
 
@@ -23,23 +25,8 @@ def valid(entity: Entity, offset: int) -> Row:
     return record(entity, offset, change(entity, "c"))
 
 
-def bronze_settings(tmp_path: Path, *topics: str, catalog: str = "catalog") -> BronzeSettings:
-    return BronzeSettings.from_env(
-        {
-            "KAFKA_TOPICS": ",".join(topics),
-            "LAKE_ROOT": f"file://{tmp_path}/lake",
-            "ICEBERG_CATALOG": catalog,
-        }
-    )
-
-
-def local_iceberg_catalog(spark: SparkSession, warehouse: Path) -> str:
-    """Register an Iceberg catalog on local files; the image ships the Iceberg runtime."""
-    name = f"iceberg_{warehouse.parent.name.replace('-', '_')}"
-    spark.conf.set(f"spark.sql.catalog.{name}", "org.apache.iceberg.spark.SparkCatalog")
-    spark.conf.set(f"spark.sql.catalog.{name}.type", "hadoop")
-    spark.conf.set(f"spark.sql.catalog.{name}.warehouse", f"file://{warehouse}")
-    return name
+class BronzeSettingsFactory(Protocol):
+    def __call__(self, *topics: str, catalog: str = "catalog") -> BronzeSettings: ...
 
 
 def local(path: str) -> Path:
@@ -99,9 +86,34 @@ def run_until_caught_up(
     spark: SparkSession, settings: BronzeSettings, catalog: FakeCatalog
 ) -> None:
     queries = run(spark, settings, create=catalog.create, sink=catalog.sink(), available_now=True)
-    for query in queries:
-        query.awaitTermination()
+    await_queries(spark.streams, queries, available_now=True)
 
 
 def offsets(rows: list[Row]) -> list[int]:
     return [row.source_offset for row in rows]
+
+
+def numbers(spark: SparkSession, folder: Path, count: int) -> DataFrame:
+    """A file stream over `count` one-row files that reads one file per micro-batch."""
+    for number in range(count):
+        batch = spark.createDataFrame([(number,)], "number long")
+        batch.coalesce(1).write.mode("append").parquet(str(folder))
+    return (
+        spark.readStream.schema("number long").option("maxFilesPerTrigger", 1).parquet(str(folder))
+    )
+
+
+def failing(rows: DataFrame) -> DataFrame:
+    return rows.select(F.raise_error(F.lit("bad record")).alias("failure"))
+
+
+def start(rows: DataFrame, name: str, tmp_path: Path, *, available_now: bool) -> StreamingQuery:
+    """Start a query into a memory table called `name`."""
+    writer = (
+        rows.writeStream.queryName(name)
+        .format("memory")
+        .option("checkpointLocation", str(tmp_path / "checkpoints" / name))
+    )
+    if available_now:
+        return writer.trigger(availableNow=True).start()
+    return writer.trigger(processingTime="1 second").start()
