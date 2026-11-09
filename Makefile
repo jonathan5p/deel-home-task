@@ -7,7 +7,11 @@ SPARK_SQL_FILE ?=
 SPARK_SQL_VARS ?=
 LANDING_ROOT ?= s3a://lake/landing
 PROFILES ?=
+PIPELINE ?=
+PIPELINES = landing
 .DEFAULT_GOAL := help
+
+export BUILDX_NO_DEFAULT_ATTESTATIONS ?= 1
 
 DRIVER_RUN = name="spark-app-run-$$(date +%s)-$$$$"; \
 	trap 'docker stop "$$name" >/dev/null 2>&1 || true' EXIT INT TERM; \
@@ -28,7 +32,10 @@ APP_BUILD ?= --build
 CODE_MOUNTS = -v "$(CURDIR)/analytics:/opt/app/analytics" -v "$(CURDIR)/tests:/opt/app/tests"
 APP_RUN = COMPOSE_PROJECT_NAME=$(CHECKS_PROJECT) $(COMPOSE) run --rm $(APP_BUILD) --no-deps $(CODE_MOUNTS)
 
-.PHONY: help up down clean spark-submit spark-sql spark-history data-quality test lint format typecheck test-infra hooks
+PIPELINE_JOBS = $(addsuffix -job,$(if $(filter all,$(PIPELINE)),$(PIPELINES),$(filter $(PIPELINES),$(PIPELINE))))
+CHECK_PIPELINE = $(if $(and $(PIPELINE_JOBS),$(filter 1,$(words $(PIPELINE)))),,$(error Set PIPELINE to one of: $(PIPELINES) all (got "$(PIPELINE)"), e.g. make $@ PIPELINE=landing))
+
+.PHONY: help up down clean spark-submit spark-sql spark-history data-quality pipeline pipeline-logs pipeline-stop test lint format typecheck test-infra hooks
 
 help:
 	@printf '%s\n' \
@@ -39,6 +46,9 @@ help:
 		'spark-sql      Open the Spark SQL shell in its own driver container; SPARK_SQL_FILE runs a file instead; SPARK_SQL_VARS (key=value ...) and LANDING_ROOT set its variables.' \
 		'spark-history  Toggle the optional Spark History Server (localhost:18080): start it if stopped, stop it if running.' \
 		'data-quality   Run the data quality checks against the running stack (landing versus Kafka); fails if any check fails.' \
+		'pipeline       Start the stack, the History Server and the PIPELINE job (landing, or all) as a long-running service.' \
+		'pipeline-logs  Follow the logs of the PIPELINE job (landing, or all).' \
+		'pipeline-stop  Stop and remove the PIPELINE job (landing, or all); the rest of the stack keeps running.' \
 		'test           Run the unit tests with coverage (fails below 90%) in the app container.' \
 		'lint           Check linting and formatting with ruff in the app container.' \
 		'format         Format the code and apply safe lint fixes with ruff.' \
@@ -77,6 +87,17 @@ spark-history:
 data-quality:
 	@$(MAKE) --no-print-directory spark-submit SPARK_APP=analytics/pipelines/src/pipelines/jobs/landing_quality.py \
 		SPARK_UI_PORT=0 SPARK_CONF="spark.cores.max=2 $(SPARK_CONF)"
+
+pipeline:
+	$(CHECK_PIPELINE)@$(COMPOSE) --profile history up -d --build
+	@$(COMPOSE) --profile app build spark-app
+	@$(COMPOSE) --profile pipeline up -d $(PIPELINE_JOBS)
+
+pipeline-logs:
+	$(CHECK_PIPELINE)@$(COMPOSE) --profile pipeline logs -f $(PIPELINE_JOBS)
+
+pipeline-stop:
+	$(CHECK_PIPELINE)@$(COMPOSE) --profile pipeline rm -sf $(PIPELINE_JOBS)
 
 test:
 	@$(APP_RUN) spark-app pytest -p no:cacheprovider

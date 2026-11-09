@@ -1,9 +1,5 @@
 x-spark-image: &spark-image
   image: ${COMPOSE_PROJECT_NAME}-spark
-  build:
-    context: .
-    dockerfile: docker/spark/Dockerfile
-    target: spark
 
 x-spark-worker: &spark-worker
   <<: *spark-image
@@ -25,6 +21,53 @@ x-spark-worker: &spark-worker
     timeout: 5s
     retries: 10
     start_period: 20s
+
+x-spark-app: &spark-app
+  image: ${COMPOSE_PROJECT_NAME}-spark-app
+  environment:
+    SPARK_MASTER_URL: ${SPARK_MASTER_URL}
+    ANALYTICS_DB_URL: ${ANALYTICS_DB_URL}
+    ANALYTICS_DB_USER: ${ANALYTICS_DB_USER}
+    ANALYTICS_DB_PASSWORD: ${ANALYTICS_DB_PASSWORD}
+    LAKE_S3_ACCESS_KEY: ${LAKE_S3_ACCESS_KEY}
+    LAKE_S3_SECRET_KEY: ${LAKE_S3_SECRET_KEY}
+    KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+    KAFKA_TOPICS: ${KAFKA_TOPICS}
+    LAKE_ROOT: ${LAKE_ROOT}
+    ICEBERG_CATALOG: ${ICEBERG_CATALOG}
+    CHECKPOINT_ROOT: ${CHECKPOINT_ROOT:-}
+    LANDING_TRIGGER_SECONDS: ${LANDING_TRIGGER_SECONDS:-}
+    LANDING_CHECK_LAST_OFFSETS: ${LANDING_CHECK_LAST_OFFSETS:-}
+  volumes:
+    - spark-events:/opt/spark/spark-events
+
+x-pipeline-submit: &pipeline-submit >-
+  exec /opt/spark/bin/spark-submit
+  --master "$$SPARK_MASTER_URL"
+  --conf spark.driver.host="$$(hostname)"
+  --conf spark.cores.max=2
+  --conf spark.hadoop.fs.s3a.access.key="$$LAKE_S3_ACCESS_KEY"
+  --conf spark.hadoop.fs.s3a.secret.key="$$LAKE_S3_SECRET_KEY"
+  --py-files /opt/app/packages.zip
+  "$$@"
+
+x-pipeline-job: &pipeline-job
+  <<: *spark-app
+  profiles: [pipeline]
+  restart: unless-stopped
+  depends_on:
+    spark-master:
+      condition: service_healthy
+    spark-worker-1:
+      condition: service_healthy
+    spark-worker-2:
+      condition: service_healthy
+    kafka:
+      condition: service_started
+    seaweedfs:
+      condition: service_healthy
+    analytics-db:
+      condition: service_healthy
 
 services:
   transactions-db:
@@ -130,6 +173,10 @@ services:
   # Spark standalone cluster
   spark-master:
     <<: *spark-image
+    build:
+      context: .
+      dockerfile: docker/spark/Dockerfile
+      target: spark
     hostname: spark-master
     command:
       ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.master.Master"]
@@ -147,28 +194,12 @@ services:
       start_period: 20s
 
   spark-app:
-    image: ${COMPOSE_PROJECT_NAME}-spark-app
+    <<: *spark-app
     build:
       context: .
       dockerfile: docker/spark/Dockerfile
       target: app
     profiles: [app]
-    environment:
-      SPARK_MASTER_URL: ${SPARK_MASTER_URL}
-      ANALYTICS_DB_URL: ${ANALYTICS_DB_URL}
-      ANALYTICS_DB_USER: ${ANALYTICS_DB_USER}
-      ANALYTICS_DB_PASSWORD: ${ANALYTICS_DB_PASSWORD}
-      LAKE_S3_ACCESS_KEY: ${LAKE_S3_ACCESS_KEY}
-      LAKE_S3_SECRET_KEY: ${LAKE_S3_SECRET_KEY}
-      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
-      KAFKA_TOPICS: ${KAFKA_TOPICS}
-      LAKE_ROOT: ${LAKE_ROOT}
-      ICEBERG_CATALOG: ${ICEBERG_CATALOG}
-      CHECKPOINT_ROOT: ${CHECKPOINT_ROOT:-}
-      LANDING_TRIGGER_SECONDS: ${LANDING_TRIGGER_SECONDS:-}
-      LANDING_CHECK_LAST_OFFSETS: ${LANDING_CHECK_LAST_OFFSETS:-}
-    volumes:
-      - spark-events:/opt/spark/spark-events
 
   spark-worker-1:
     <<: *spark-worker
@@ -181,6 +212,13 @@ services:
     hostname: spark-worker-2
     ports:
       - "8082:8081"
+
+  landing-job:
+    <<: *pipeline-job
+    hostname: landing-job
+    command: [sh, -c, *pipeline-submit, spark-submit, /opt/app/analytics/pipelines/src/pipelines/jobs/landing.py]
+    ports:
+      - "4040:4040"
 
   # Optional: Spark history server
   spark-history:
