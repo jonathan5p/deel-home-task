@@ -1,9 +1,9 @@
 x-spark-image: &spark-image
+  image: ${COMPOSE_PROJECT_NAME}-spark
   build:
     context: .
     dockerfile: docker/spark/Dockerfile
     target: spark
-  image: deel-home-task/spark:4.1.4
 
 x-spark-worker: &spark-worker
   <<: *spark-image
@@ -147,11 +147,11 @@ services:
       start_period: 20s
 
   spark-app:
+    image: ${COMPOSE_PROJECT_NAME}-spark-app
     build:
       context: .
       dockerfile: docker/spark/Dockerfile
       target: app
-    image: deel-home-task/spark-app:4.1.4
     profiles: [app]
     environment:
       SPARK_MASTER_URL: ${SPARK_MASTER_URL}
@@ -164,6 +164,9 @@ services:
       KAFKA_TOPICS: ${KAFKA_TOPICS}
       LAKE_ROOT: ${LAKE_ROOT}
       ICEBERG_CATALOG: ${ICEBERG_CATALOG}
+      CHECKPOINT_ROOT: ${CHECKPOINT_ROOT:-}
+      LANDING_TRIGGER_SECONDS: ${LANDING_TRIGGER_SECONDS:-}
+      LANDING_CHECK_LAST_OFFSETS: ${LANDING_CHECK_LAST_OFFSETS:-}
     volumes:
       - spark-events:/opt/spark/spark-events
 

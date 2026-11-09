@@ -4,17 +4,8 @@ from collections.abc import Callable
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.streaming import StreamingQuery
 
+from pipelines.schemas import KAFKA_RECORD_SCHEMA
 from pipelines.settings import KafkaSettings, LandingSettings
-
-KAFKA_RECORD_COLUMNS = (
-    "key",
-    "value",
-    "topic",
-    "partition",
-    "offset",
-    "timestamp",
-    "timestampType",
-)
 
 type TopicReader = Callable[[SparkSession, KafkaSettings, str], DataFrame]
 
@@ -31,7 +22,7 @@ def read_topic(spark: SparkSession, kafka: KafkaSettings, topic: str) -> DataFra
 
 
 def landing_records(records: DataFrame) -> DataFrame:
-    return records.select(*KAFKA_RECORD_COLUMNS)
+    return records.select(*KAFKA_RECORD_SCHEMA.fieldNames())
 
 
 def start_landing(

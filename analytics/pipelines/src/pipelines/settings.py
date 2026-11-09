@@ -2,7 +2,14 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import ClassVar, Self
 
-from common.settings import AnalyticsDbSettings, optional, positive_int, require, split_list
+from common.settings import (
+    AnalyticsDbSettings,
+    optional,
+    optional_positive_int,
+    positive_int,
+    require,
+    split_list,
+)
 
 DEFAULT_LANDING_TRIGGER_SECONDS = 10
 
@@ -58,6 +65,19 @@ class LandingSettings:
 
     def checkpoint_path(self, topic: str) -> str:
         return f"{self.lake.checkpoint_root}/landing/{topic}"
+
+
+@dataclass(frozen=True, slots=True)
+class LandingQualitySettings:
+    landing: LandingSettings
+    last_offsets: int | None
+
+    @classmethod
+    def from_env(cls, env: Mapping[str, str]) -> Self:
+        return cls(
+            landing=LandingSettings.from_env(env),
+            last_offsets=optional_positive_int(env, "LANDING_CHECK_LAST_OFFSETS"),
+        )
 
 
 @dataclass(frozen=True, slots=True)

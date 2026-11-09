@@ -47,9 +47,9 @@ jobs:
           context: .
           file: docker/spark/Dockerfile
           target: app
-          tags: deel-home-task/spark-app:4.1.4
+          tags: ci-spark-app
           load: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: make ${{ matrix.check }}
-        run: make ${{ matrix.check }} APP_BUILD=
+        run: make ${{ matrix.check }} APP_BUILD= CHECKS_PROJECT=ci

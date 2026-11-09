@@ -339,6 +339,7 @@ analytics/
     src/pipelines/
       settings.py           pipeline settings (Kafka, lake, analytics database)
       jobs/                 Spark jobs
+      quality/              data quality checks on the lake (run by make data-quality)
     tests/
 tests/infra/                infra tests that drive an isolated copy of the stack
   apps/                     Spark applications they submit (UI check, Iceberg smoke check, version and hold apps)
@@ -369,7 +370,7 @@ from pipelines.settings import PipelineSettings
 settings = PipelineSettings.from_env(os.environ)  # only a job's entry point reads os.environ
 ```
 
-The code holds no deployment details: anything that depends on where it runs (brokers, topics, the lake, the catalog, the database) is a required variable with no default. The local values live in `.env`, and Docker Compose passes them to the `spark-app` driver containers; another environment sets its own values. Only tuning settings have defaults.
+The code holds no deployment details: anything that depends on where it runs (brokers, topics, the lake, the catalog, the database) is a required variable with no default. The local values live in `.env`, and Docker Compose passes them to the `spark-app` driver containers; another environment sets its own values. Only tuning settings have defaults; set them in the shell for one run, for example `LANDING_TRIGGER_SECONDS=30 make spark-submit ...`.
 
 | Variable | Settings | Default | Local value in `.env` | Purpose |
 | --- | --- | --- | --- | --- |
@@ -379,6 +380,7 @@ The code holds no deployment details: anything that depends on where it runs (br
 | `ICEBERG_CATALOG` | `pipelines.settings.LakeSettings` | required | `lake` | Spark catalog name for Iceberg tables |
 | `CHECKPOINT_ROOT` | `pipelines.settings.LakeSettings` | `<LAKE_ROOT>/checkpoints` | not set | Root for Structured Streaming checkpoints |
 | `LANDING_TRIGGER_SECONDS` | `pipelines.settings.LandingSettings` | `10` | not set | Micro-batch interval of the landing job (a positive integer) |
+| `LANDING_CHECK_LAST_OFFSETS` | `pipelines.settings.LandingQualitySettings` | all landed offsets | not set | Limit the landing data quality checks to the latest offsets of each partition (a positive integer) |
 | `ANALYTICS_DB_URL` | `common.settings.AnalyticsDbSettings` | required | `jdbc:postgresql://analytics-db:5432/analytics` | JDBC URL of the analytics database (gold layer) |
 | `ANALYTICS_DB_USER` | `common.settings.AnalyticsDbSettings` | required | `analytics` | Analytics database user |
 | `ANALYTICS_DB_PASSWORD` | `common.settings.AnalyticsDbSettings` | required | `analytics` | Analytics database password |
@@ -398,9 +400,37 @@ make spark-submit SPARK_APP=analytics/pipelines/src/pipelines/jobs/landing.py SP
 - **Restart-safe:** each query keeps its checkpoint in `<CHECKPOINT_ROOT>/landing/<topic>/`, and Spark's file sink records the committed files in `_spark_metadata`. Stopping and restarting the job neither skips nor duplicates records; Spark readers of the folder see only committed files.
 - **Micro-batches** run every `LANDING_TRIGGER_SECONDS`. `spark.cores.max` keeps cores free for the other jobs; the job runs until it is stopped (Ctrl+C).
 
+#### Data quality checks
+
+Data quality checks verify the data itself, on the running stack. They are separate from unit tests (the code, on synthetic data) and from infra tests (the platform, on a throwaway stack), and run on demand. They live in `analytics/pipelines/src/pipelines/quality/` and run as a Spark job:
+
+```sh
+make data-quality
+```
+
+The landing checks reconcile the landing zone with Kafka for every configured topic and every topic partition. Landed records are read through Spark, so only files committed by the file sink count; files in a topic folder that `_spark_metadata` does not record are ignored. Kafka is the reference, and it is read once per run into one snapshot, so every check sees the same records:
+
+| Check | Checks that |
+| --- | --- |
+| `topic_found` | a configured topic has records in Kafka or in the landing zone |
+| `partition_landed` | every Kafka partition has landed records |
+| `unique_offsets` | every offset landed exactly once |
+| `contiguous_offsets` | every offset Kafka holds in the compared range landed |
+| `starts_at_kafka_min_offset` | landing starts at or before Kafka's earliest retained offset |
+| `same_bytes_as_kafka` | landed keys and values equal Kafka's, and Kafka holds every landed offset it still retains |
+
+- **Contiguity is measured against the offsets Kafka actually holds,** not against a dense range of numbers: transaction markers and compaction leave offsets with no record, and those are not gaps. Kafka offsets after the last landed offset are lag, not gaps.
+- **Retention:** landed offsets that Kafka no longer retains are not counted as missing in Kafka, including in a partition whose records have all expired.
+- **Empty runs fail:** a configured topic with no records anywhere fails `topic_found`, and a run with no results fails.
+- **Schema drift fails loudly:** a topic folder whose committed files do not hold the Kafka record columns and types raises an error instead of reading as empty. Only a missing folder, or one without committed files, reads as no records.
+
+Each result is printed as one JSON line prefixed with `LANDING QUALITY`, with the check's description, followed by a summary line, and the job exits with code 1 if any check fails. The `partition_landed` result also reports the row count, the offset range, the number of tombstones, Kafka's offset range (`kafka_min_offset`, `kafka_max_offset`) and the lag behind Kafka; lag is expected while landing runs and is not a failure. The `contiguous_offsets` result reports the compared range (`from_offset`, `to_offset`) and the number of `missing_offsets`.
+
+By default every landed offset is compared, from the first to the last landed offset of each partition. For large topics, `LANDING_CHECK_LAST_OFFSETS=<n> make data-quality` limits the comparison to a window of the last `n` offsets up to the last landed offset of each partition, and skips `starts_at_kafka_min_offset`. The window limits what is compared; Kafka is still read in full. The job runs with `spark.cores.max=2` and a random UI port, so it can run while the landing job is running.
+
 #### Tests, lint and format
 
-The checks run in a throwaway container from the `app` image, with `analytics/` and `tests/` mounted, so they use the cluster's exact Spark and Python versions and pick up edits without a rebuild:
+The checks run in a throwaway container from the `app` image, with `analytics/` and `tests/` mounted, so they use the cluster's exact Spark and Python versions and pick up edits without a rebuild. They use their own Compose project, named after the checkout folder (`deel-checks-<folder>`, lowercased, with every character other than letters, digits, `_` and `-` replaced by `-`), with one app image (`<project>-spark-app`), so checks in different checkouts or worktrees never share an image and can run in parallel:
 
 ```sh
 make test       # unit tests with branch coverage; fails below 90%
@@ -422,7 +452,7 @@ Infra tests check the platform itself rather than the pipeline code. They need D
 make test-infra   # about two minutes, mostly building images and starting the stack
 ```
 
-They start an isolated Compose project (`deel-infra-tests`, with no host ports), so they never touch your running stack or its data, and remove it with its volumes at the end. They submit the apps in `tests/infra/apps/` with `make spark-submit` and check that:
+They start an isolated Compose project named after the checkout folder (`deel-infra-tests-<folder>`, sanitised like the code-check project, with no host ports), so they never touch your running stack or its data, and runs from different worktrees can run in parallel. Each project builds one Spark image (`<project>-spark`, shared by the master and the workers) and one app image (`<project>-spark-app`); at the end the project is removed with its volumes and those two images. Two full stacks at once need enough memory for Docker, so very heavy runs may still be worth staggering. They submit the apps in `tests/infra/apps/` with `make spark-submit` and check that:
 
 - the Iceberg smoke job writes catalog metadata to PostgreSQL and table files to SeaweedFS;
 - executors write and read Avro files on `s3a://lake/` and write and read a Kafka topic with the bundled connectors;

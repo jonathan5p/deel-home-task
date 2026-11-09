@@ -20,12 +20,15 @@ DRIVER_CONF = --master "$$SPARK_MASTER_URL" \
 
 # Code checks run in a throwaway app container with the working tree's source mounted,
 # so they use the image's Spark and Python without a rebuild for every edit.
+# Each checkout gets its own project, and so its own image, so checks in parallel worktrees never share one.
+# The project is set through COMPOSE_PROJECT_NAME rather than -p because the image names interpolate it.
 # APP_BUILD= reuses an already built app image, as CI does after building it with a layer cache.
+CHECKS_PROJECT ?= deel-checks-$(shell basename "$(CURDIR)" | LC_ALL=C tr 'A-Z' 'a-z' | LC_ALL=C sed 's/[^a-z0-9_-]/-/g')
 APP_BUILD ?= --build
 CODE_MOUNTS = -v "$(CURDIR)/analytics:/opt/app/analytics" -v "$(CURDIR)/tests:/opt/app/tests"
-APP_RUN = $(COMPOSE) run --rm $(APP_BUILD) --no-deps $(CODE_MOUNTS)
+APP_RUN = COMPOSE_PROJECT_NAME=$(CHECKS_PROJECT) $(COMPOSE) run --rm $(APP_BUILD) --no-deps $(CODE_MOUNTS)
 
-.PHONY: help up down clean spark-submit spark-sql spark-history test lint format typecheck test-infra hooks
+.PHONY: help up down clean spark-submit spark-sql spark-history data-quality test lint format typecheck test-infra hooks
 
 help:
 	@printf '%s\n' \
@@ -35,6 +38,7 @@ help:
 		'spark-submit   Run SPARK_APP (repo path; default: UI check job) in its own driver container; options SPARK_APP_ARGS, SPARK_CONF, SPARK_UI_PORT.' \
 		'spark-sql      Open the Spark SQL shell in its own driver container; SPARK_SQL_FILE runs a file instead; SPARK_SQL_VARS (key=value ...) and LANDING_ROOT set its variables.' \
 		'spark-history  Toggle the optional Spark History Server (localhost:18080): start it if stopped, stop it if running.' \
+		'data-quality   Run the data quality checks against the running stack (landing versus Kafka); fails if any check fails.' \
 		'test           Run the unit tests with coverage (fails below 90%) in the app container.' \
 		'lint           Check linting and formatting with ruff in the app container.' \
 		'format         Format the code and apply safe lint fixes with ruff.' \
@@ -69,6 +73,10 @@ spark-history:
 		$(COMPOSE) --profile history up -d --wait spark-history \
 			&& echo "Spark History Server running at http://localhost:18080"; \
 	fi
+
+data-quality:
+	@$(MAKE) --no-print-directory spark-submit SPARK_APP=analytics/pipelines/src/pipelines/jobs/landing_quality.py \
+		SPARK_UI_PORT=0 SPARK_CONF="spark.cores.max=2 $(SPARK_CONF)"
 
 test:
 	@$(APP_RUN) spark-app pytest -p no:cacheprovider
