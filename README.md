@@ -351,15 +351,16 @@ analytics/
   pipelines/                project "pipelines": the Spark pipelines, depends on common
     src/pipelines/
       settings.py           pipeline settings (Kafka, lake, analytics database)
-      bronze/               source entities and the transforms from landing records to bronze rows
-      jobs/                 Spark jobs
-      quality/              data quality checks on the lake (run by make data-quality)
+      schemas.py            the landing record schema
+      quality/checks.py     the data quality check framework
+      landing/              landing layer: job.py (streaming job), quality.py and quality_job.py (data quality checks)
+      bronze/               bronze layer: source entities and the transforms from landing records to bronze rows
     tests/
 tests/infra/                infra tests that drive an isolated copy of the stack
   apps/                     Spark applications they submit (UI check, Iceberg smoke check, version and hold apps)
 ```
 
-Tests mirror the source tree of their project: `analytics/<project>/src/<project>/<module>.py` is tested in `analytics/<project>/tests/test_<module>.py`.
+Pipeline code is grouped by layer, `pipelines/<layer>/` (for example `pipelines/landing/job.py` for the landing job). Tests mirror the source tree of their project: `analytics/<project>/src/<project>/<path>/<module>.py` is tested in `analytics/<project>/tests/<path>/test_<module>.py`.
 
 PySpark is not a dependency: it comes from the Spark image, so the pipelines always run the cluster's exact Spark version.
 
@@ -403,11 +404,11 @@ The code holds no deployment details: anything that depends on where it runs (br
 
 #### Landing zone
 
-The landing job (`analytics/pipelines/src/pipelines/jobs/landing.py`) streams every record of the CDC topics into raw Avro files, exactly as Kafka delivered it, so the lake keeps a replayable copy of the sources:
+The landing job (`analytics/pipelines/src/pipelines/landing/job.py`) streams every record of the CDC topics into raw Avro files, exactly as Kafka delivered it, so the lake keeps a replayable copy of the sources:
 
 ```sh
 make pipeline PIPELINE=landing   # as a long-running service; see Running the pipeline below
-make spark-submit SPARK_APP=analytics/pipelines/src/pipelines/jobs/landing.py SPARK_CONF="spark.cores.max=2" SPARK_UI_PORT=4042   # or ad hoc, in the foreground
+make spark-submit SPARK_APP=analytics/pipelines/src/pipelines/landing/job.py SPARK_CONF="spark.cores.max=2" SPARK_UI_PORT=4042   # or ad hoc, in the foreground
 ```
 
 - **One streaming query per topic,** reading from the earliest offset and writing to `<LAKE_ROOT>/landing/<topic>/`: one folder per topic, with no partition folders.
@@ -444,7 +445,7 @@ The cluster has two workers with 2 cores each, and each job takes at most 2 core
 
 #### Data quality checks
 
-Data quality checks verify the data itself, on the running stack. They are separate from unit tests (the code, on synthetic data) and from infra tests (the platform, on a throwaway stack), and run on demand. They live in `analytics/pipelines/src/pipelines/quality/` and run as a Spark job:
+Data quality checks verify the data itself, on the running stack. They are separate from unit tests (the code, on synthetic data) and from infra tests (the platform, on a throwaway stack), and run on demand. The framework lives in `analytics/pipelines/src/pipelines/quality/`, and each layer's checks next to its code (`pipelines/landing/quality.py`); they run as a Spark job:
 
 ```sh
 make data-quality

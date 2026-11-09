@@ -8,7 +8,7 @@ pytest.importorskip("pyspark")
 from pyspark.sql import DataFrame, Row, SparkSession
 from pyspark.sql.functions import lit
 
-from pipelines.jobs.landing import TopicReader, landing_records, read_topic, run
+from pipelines.landing.job import TopicReader, landing_records, read_topic, run
 from pipelines.schemas import KAFKA_RECORD_SCHEMA
 from pipelines.settings import KafkaSettings, LandingSettings
 

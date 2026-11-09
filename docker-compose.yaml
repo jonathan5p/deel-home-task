@@ -216,7 +216,7 @@ services:
   landing-job:
     <<: *pipeline-job
     hostname: landing-job
-    command: [sh, -c, *pipeline-submit, spark-submit, /opt/app/analytics/pipelines/src/pipelines/jobs/landing.py]
+    command: [sh, -c, *pipeline-submit, spark-submit, /opt/app/analytics/pipelines/src/pipelines/landing/job.py]
     ports:
       - "4040:4040"
 
