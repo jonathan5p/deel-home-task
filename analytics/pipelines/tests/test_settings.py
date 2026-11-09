@@ -2,6 +2,7 @@ import pytest
 
 from common.settings import AnalyticsDbSettings, InvalidSettingError, MissingSettingsError
 from pipelines.settings import (
+    BronzeSettings,
     KafkaSettings,
     LakeSettings,
     LandingQualitySettings,
@@ -83,6 +84,43 @@ def test_landing_settings_report_every_missing_variable_at_once() -> None:
         LandingSettings.from_env({})
 
     assert error.value.names == KafkaSettings.REQUIRED + LakeSettings.REQUIRED
+
+
+def test_bronze_settings_need_only_the_topics_and_the_lake() -> None:
+    settings = BronzeSettings.from_env({"KAFKA_TOPICS": "topic-a, topic-b"} | LAKE)
+
+    assert settings.topics == ("topic-a", "topic-b")
+    assert settings.lake == LakeSettings.from_env(LAKE)
+    assert settings.trigger_seconds == 10
+
+
+def test_bronze_trigger_interval_can_be_overridden() -> None:
+    settings = BronzeSettings.from_env(KAFKA | LAKE | {"BRONZE_TRIGGER_SECONDS": "30"})
+
+    assert settings.trigger_seconds == 30
+
+
+@pytest.mark.parametrize("value", ["0", "-5", "ten", "1.5"])
+def test_bronze_trigger_interval_must_be_a_positive_integer(value: str) -> None:
+    with pytest.raises(InvalidSettingError, match="BRONZE_TRIGGER_SECONDS"):
+        BronzeSettings.from_env(KAFKA | LAKE | {"BRONZE_TRIGGER_SECONDS": value})
+
+
+def test_bronze_settings_report_every_missing_variable_at_once() -> None:
+    with pytest.raises(MissingSettingsError) as error:
+        BronzeSettings.from_env({})
+
+    assert error.value.names == ("KAFKA_TOPICS", *LakeSettings.REQUIRED)
+
+
+def test_bronze_reads_the_landing_folders_and_writes_one_namespace_per_catalog() -> None:
+    settings = BronzeSettings.from_env(KAFKA | LAKE)
+
+    assert settings.landing_path("topic-a") == LandingSettings.from_env(KAFKA | LAKE).landing_path(
+        "topic-a"
+    )
+    assert settings.table("customers") == "catalog.bronze.customers"
+    assert settings.checkpoint_path("customers") == "s3a://bucket/checkpoints/bronze/customers"
 
 
 def test_pipeline_settings_compose_every_section() -> None:

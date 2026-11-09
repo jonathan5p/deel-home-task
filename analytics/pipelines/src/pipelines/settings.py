@@ -12,6 +12,7 @@ from common.settings import (
 )
 
 DEFAULT_LANDING_TRIGGER_SECONDS = 10
+DEFAULT_BRONZE_TRIGGER_SECONDS = 10
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,6 +43,9 @@ class LakeSettings:
         checkpoint_root = optional(env, "CHECKPOINT_ROOT", f"{root}/checkpoints").rstrip("/")
         return cls(root=root, checkpoint_root=checkpoint_root, catalog=catalog)
 
+    def landing_path(self, topic: str) -> str:
+        return f"{self.root}/landing/{topic}"
+
 
 @dataclass(frozen=True, slots=True)
 class LandingSettings:
@@ -61,10 +65,37 @@ class LandingSettings:
         )
 
     def landing_path(self, topic: str) -> str:
-        return f"{self.lake.root}/landing/{topic}"
+        return self.lake.landing_path(topic)
 
     def checkpoint_path(self, topic: str) -> str:
         return f"{self.lake.checkpoint_root}/landing/{topic}"
+
+
+@dataclass(frozen=True, slots=True)
+class BronzeSettings:
+    topics: tuple[str, ...]
+    lake: LakeSettings
+    trigger_seconds: int
+
+    @classmethod
+    def from_env(cls, env: Mapping[str, str]) -> Self:
+        topics, *_ = require(env, "KAFKA_TOPICS", *LakeSettings.REQUIRED)
+        return cls(
+            topics=split_list("KAFKA_TOPICS", topics),
+            lake=LakeSettings.from_env(env),
+            trigger_seconds=positive_int(
+                env, "BRONZE_TRIGGER_SECONDS", DEFAULT_BRONZE_TRIGGER_SECONDS
+            ),
+        )
+
+    def landing_path(self, topic: str) -> str:
+        return self.lake.landing_path(topic)
+
+    def table(self, name: str) -> str:
+        return f"{self.lake.catalog}.bronze.{name}"
+
+    def checkpoint_path(self, name: str) -> str:
+        return f"{self.lake.checkpoint_root}/bronze/{name}"
 
 
 @dataclass(frozen=True, slots=True)
