@@ -8,7 +8,7 @@ FROM (
         count(*) AS open_orders
     FROM gold.current_orders AS o
     JOIN gold.dim_order_status AS s ON s.status_key = o.status_key
-    WHERE s.is_open AND NOT o._is_deleted
+    WHERE s.is_open
     GROUP BY o.delivery_date
     ORDER BY open_orders DESC
     FETCH FIRST 3 ROWS WITH TIES

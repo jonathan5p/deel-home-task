@@ -5,7 +5,7 @@ from tests.infra.stack import REPO_ROOT, Stack
 GOLD_DDL = REPO_ROOT / "docker/analytics-db/initdb/02-gold-model.sql"
 GOLD_QUERIES = REPO_ROOT / "sql/gold"
 
-GOLD_TABLES = {
+INTERNAL_TABLES = {
     "dim_customer",
     "dim_product",
     "dim_date",
@@ -15,13 +15,13 @@ GOLD_TABLES = {
     "current_orders",
     "current_order_items",
 }
-GOLD_VIEWS = {"fact_order_history_versions", "fact_order_item_history_versions", "data_freshness"}
+PUBLIC_VIEWS = INTERNAL_TABLES | {"data_freshness"}
 
 UNDESCRIBED_RELATIONS = """
-SELECT c.relname
+SELECT n.nspname || '.' || c.relname
 FROM pg_class AS c
 JOIN pg_namespace AS n ON n.oid = c.relnamespace
-WHERE n.nspname = 'gold'
+WHERE n.nspname IN ('gold', 'gold_internal')
   AND c.relkind IN ('r', 'p', 'v')
   AND coalesce(obj_description(c.oid, 'pg_class'), '') = ''
 ORDER BY 1;
@@ -29,11 +29,11 @@ ORDER BY 1;
 
 # Partitions share their parent's columns, so only the parents' columns are checked.
 UNDESCRIBED_COLUMNS = """
-SELECT c.relname || '.' || a.attname
+SELECT n.nspname || '.' || c.relname || '.' || a.attname
 FROM pg_attribute AS a
 JOIN pg_class AS c ON c.oid = a.attrelid
 JOIN pg_namespace AS n ON n.oid = c.relnamespace
-WHERE n.nspname = 'gold'
+WHERE n.nspname IN ('gold', 'gold_internal')
   AND c.relkind IN ('r', 'p', 'v')
   AND NOT c.relispartition
   AND a.attnum > 0
@@ -42,11 +42,35 @@ WHERE n.nspname = 'gold'
 ORDER BY 1;
 """
 
-TOP_LEVEL_RELATIONS = """
-SELECT c.relname
+UNDESCRIBED_SCHEMAS = """
+SELECT nspname
+FROM pg_namespace
+WHERE nspname IN ('gold', 'gold_internal')
+  AND coalesce(obj_description(oid, 'pg_namespace'), '') = ''
+ORDER BY 1;
+"""
+
+
+def top_level_relations(schema: str) -> str:
+    """Tables (r, p) and views (v) of a schema, partitions left out, as name|kind rows."""
+    return f"""
+SELECT c.relname, c.relkind
 FROM pg_class AS c
 JOIN pg_namespace AS n ON n.oid = c.relnamespace
-WHERE n.nspname = 'gold' AND c.relkind IN ('r', 'p', 'v') AND NOT c.relispartition;
+WHERE n.nspname = '{schema}' AND c.relkind IN ('r', 'p', 'v') AND NOT c.relispartition;
+"""
+
+
+PUBLIC_PIPELINE_ONLY_COLUMNS = """
+SELECT c.relname || '.' || a.attname
+FROM pg_attribute AS a
+JOIN pg_class AS c ON c.oid = a.attrelid
+JOIN pg_namespace AS n ON n.oid = c.relnamespace
+WHERE n.nspname = 'gold'
+  AND a.attnum > 0
+  AND NOT a.attisdropped
+  AND a.attname IN ('_commit_sequence', '_is_deleted')
+ORDER BY 1;
 """
 
 HISTORY_PARTITIONS = """
@@ -55,7 +79,7 @@ FROM pg_inherits AS i
 JOIN pg_class AS parent ON parent.oid = i.inhparent
 JOIN pg_class AS child ON child.oid = i.inhrelid
 JOIN pg_namespace AS n ON n.oid = parent.relnamespace
-WHERE n.nspname = 'gold' AND parent.relkind = 'p'
+WHERE n.nspname = 'gold_internal' AND parent.relkind = 'p'
 ORDER BY 1, 2;
 """
 
@@ -63,7 +87,7 @@ ORDER BY 1, 2;
 # deleted order (110), an UNKNOWN status (103), a customer with two versions (1), a customer
 # missing from dim_customer (4), and ties for third place in the top-3 questions.
 CURRENT_STATE = """
-INSERT INTO gold.dim_customer (
+INSERT INTO gold_internal.dim_customer (
     customer_id, customer_name, customer_address, is_active,
     _commit_sequence, _valid_from, _valid_to, _is_current
 )
@@ -73,7 +97,7 @@ VALUES
     (2, 'Grace Hopper', 'Main Street 3', true, 110, '2026-11-01 08:00', null, true),
     (3, 'Alan Turing', 'Side Street 4', true, 120, '2026-11-01 08:00', null, true);
 
-INSERT INTO gold.current_orders (
+INSERT INTO gold_internal.current_orders (
     order_id, status_key, customer_id, order_date, delivery_date,
     order_date_key, delivery_date_key, _commit_sequence, _changed_at, _is_deleted
 )
@@ -94,9 +118,9 @@ FROM (
         (109, 'PROCESSING', 4, date '2026-11-13', false),
         (110, 'PENDING', 4, date '2026-11-14', true)
 ) AS o (order_id, status_code, customer_id, delivery_date, is_deleted)
-JOIN gold.dim_order_status AS s ON s.status_code = o.status_code;
+JOIN gold_internal.dim_order_status AS s ON s.status_code = o.status_code;
 
-INSERT INTO gold.current_order_items (
+INSERT INTO gold_internal.current_order_items (
     order_item_id, order_id, product_id, quantity, _commit_sequence, _changed_at, _is_deleted
 )
 SELECT
@@ -161,10 +185,10 @@ def order_change(
     """Insert one order history row; changed_at is a SQL timestamp expression."""
     conflict = " ON CONFLICT DO NOTHING" if ignore_duplicate else ""
     return f"""
-INSERT INTO gold.fact_order_history
+INSERT INTO gold_internal.fact_order_history
     (order_id, _commit_sequence, _changed_at, _change_op, status_key)
 SELECT {order_id}, {commit_sequence}, {changed_at}, 'update', status_key
-FROM gold.dim_order_status
+FROM gold_internal.dim_order_status
 WHERE status_code = '{status}'{conflict};
 """
 
@@ -172,7 +196,7 @@ WHERE status_code = '{status}'{conflict};
 def item_change(order_item_id: int, commit_sequence: int, changed_at: str, quantity: int) -> str:
     """Insert one order item history row; changed_at is a SQL timestamp expression."""
     return f"""
-INSERT INTO gold.fact_order_item_history
+INSERT INTO gold_internal.fact_order_item_history
     (order_item_id, _commit_sequence, _changed_at, _change_op, order_id, product_id, quantity)
 VALUES ({order_item_id}, {commit_sequence}, {changed_at}, 'update', 1, 1, {quantity});
 """
@@ -190,13 +214,22 @@ def answer(stack: Stack, query_file: str) -> list[list[str]]:
 
 
 FRESHNESS_FIXTURE = """
-INSERT INTO gold.dim_customer (customer_id, _commit_sequence, _valid_from, _valid_to, _is_current)
+INSERT INTO gold_internal.dim_customer
+    (customer_id, _commit_sequence, _valid_from, _valid_to, _is_current)
 VALUES (1, 10, timestamp '2026-11-08 10:00', timestamp '2026-11-09 08:00', false),
        (1, 20, timestamp '2026-11-09 08:00', NULL, true);
-INSERT INTO gold.current_orders (order_id, status_key, _commit_sequence, _changed_at)
+INSERT INTO gold_internal.current_orders (order_id, status_key, _commit_sequence, _changed_at)
 VALUES (1, 1, 30, timestamp '2026-11-09 09:00'), (2, 1, 40, timestamp '2026-11-09 09:30');
 """
 
 FRESHNESS = (
     "SELECT entity, coalesce(last_changed_at::text, '') FROM gold.data_freshness ORDER BY entity;"
 )
+
+DELETED_ROWS = """
+SELECT 'orders', count(*) FILTER (WHERE order_id = 110), count(*)
+FROM gold.current_orders
+UNION ALL
+SELECT 'order_items', count(*) FILTER (WHERE order_item_id = 1006), count(*)
+FROM gold.current_order_items;
+"""

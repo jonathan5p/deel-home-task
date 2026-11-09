@@ -1,6 +1,6 @@
 # Gold dimensional model
 
-Gold is the serving layer: a star schema in PostgreSQL (schema `gold` of the `analytics` database) that answers the four business questions with near-real-time current state and keeps the history of every change. Spark builds it from the silver history tables in the lake, and writes the same rows to Iceberg gold tables in the lake as a second sink.
+Gold is the serving layer: a star schema in PostgreSQL (the `analytics` database) that answers the four business questions with near-real-time current state and keeps the history of every change. Spark builds it from the silver history tables in the lake, and writes the same rows to Iceberg gold tables in the lake as a second sink.
 
 ## Inputs from silver
 
@@ -20,7 +20,24 @@ Silver keeps one row per version of each source entity (customers, products, ord
 
 `_commit_sequence` is the PostgreSQL log sequence number (LSN) of the change, as a 64-bit integer: the byte position of the change in the source database's write-ahead log. It only grows, in commit order, across the whole database. For one key, a later change always has a higher position than an earlier one; snapshot rows carry the position of the snapshot, which is lower than any change streamed after it. Gold uses it to order versions of a key and to tell a late or replayed event from a newer one. Arrival order and Kafka offsets are not used for ordering.
 
+## Internal tables and public views
+
+Gold has two schemas:
+
+- **`gold_internal`** holds the tables. Only the gold streaming query writes them, and they keep the metadata it needs: `_commit_sequence` to skip replayed batches and to order versions, and `_is_deleted` for soft deletes in current state.
+- **`gold`** holds one view per table, with the same name, for consumers: the business queries, the API and anyone browsing the model. The views leave out `_commit_sequence` and `_is_deleted`; the current-state views leave out deleted rows, and the history views add each version's validity range.
+
+Consumers never need to know how the pipeline orders or deduplicates changes, and the tables can change for the pipeline without breaking them.
+
+| Column | In `gold_internal` | In the `gold` views |
+| --- | --- | --- |
+| `_commit_sequence` | every table except `dim_date` and `dim_order_status` | left out |
+| `_is_deleted` | `current_orders`, `current_order_items` | left out; deleted rows are filtered |
+| `_valid_to`, `_is_current` of history facts | not stored | computed from the next version by `_commit_sequence` |
+
 ## Model
+
+The diagram shows the `gold` views; the keys and relations are enforced on the `gold_internal` tables.
 
 ```mermaid
 erDiagram
@@ -40,7 +57,6 @@ erDiagram
         varchar customer_name
         varchar customer_address
         boolean is_active
-        bigint _commit_sequence
         timestamp _valid_from
         timestamp _valid_to
         boolean _is_current
@@ -52,7 +68,6 @@ erDiagram
         varchar barcode
         numeric unit_price
         boolean is_active
-        bigint _commit_sequence
         timestamp _valid_from
         timestamp _valid_to
         boolean _is_current
@@ -73,20 +88,20 @@ erDiagram
         boolean is_open
     }
     fact_order_history {
-        bigint order_id PK
-        bigint _commit_sequence PK
-        timestamp _changed_at PK
+        bigint order_id
+        timestamp _changed_at
         varchar _change_op
         smallint status_key FK
         bigint customer_id
         bigint customer_key FK
         int order_date_key FK
         int delivery_date_key FK
+        timestamp _valid_to
+        boolean _is_current
     }
     fact_order_item_history {
-        bigint order_item_id PK
-        bigint _commit_sequence PK
-        timestamp _changed_at PK
+        bigint order_item_id
+        timestamp _changed_at
         varchar _change_op
         bigint order_id
         bigint product_id
@@ -94,6 +109,8 @@ erDiagram
         int quantity
         numeric unit_price
         numeric line_amount
+        timestamp _valid_to
+        boolean _is_current
     }
     current_orders {
         bigint order_id PK
@@ -103,24 +120,20 @@ erDiagram
         date delivery_date
         int order_date_key FK
         int delivery_date_key FK
-        bigint _commit_sequence
         timestamp _changed_at
-        boolean _is_deleted
     }
     current_order_items {
         bigint order_item_id PK
         bigint order_id
         bigint product_id
         int quantity
-        bigint _commit_sequence
         timestamp _changed_at
-        boolean _is_deleted
     }
 ```
 
 ### Tables and grain
 
-| Table | Kind | Grain | Key |
+| Table | Kind | Grain | Key (in `gold_internal`) |
 | --- | --- | --- | --- |
 | `dim_customer` | SCD2 dimension | one row per customer version | `customer_key` (surrogate); unique (`customer_id`, `_commit_sequence`); one row with `_is_current` per `customer_id` |
 | `dim_product` | SCD2 dimension | one row per product version; a new price is a new version | `product_key` (surrogate); unique (`product_id`, `_commit_sequence`); one row with `_is_current` per `product_id` |
@@ -128,8 +141,8 @@ erDiagram
 | `dim_order_status` | seeded dimension | one row per status: `PENDING`, `PROCESSING`, `REPROCESSING`, `COMPLETED`, `UNKNOWN` | `status_key` |
 | `fact_order_history` | history fact | one row per change to an order | (`order_id`, `_commit_sequence`, `_changed_at`) |
 | `fact_order_item_history` | history fact | one row per change to an order item | (`order_item_id`, `_commit_sequence`, `_changed_at`) |
-| `current_orders` | current state | one row per order | `order_id` |
-| `current_order_items` | current state | one row per order item | `order_item_id` |
+| `current_orders` | current state | one row per order; the view leaves deleted orders out | `order_id` |
+| `current_order_items` | current state | one row per order item; the view leaves deleted items out | `order_item_id` |
 
 Notes:
 
@@ -138,7 +151,7 @@ Notes:
 - `product_key`, `unit_price` and `line_amount` (`quantity × unit_price`) in `fact_order_item_history` come from the product version valid at the item's `_changed_at`, which is when the order was placed: the source inserts an order's items right after the order. This keeps the price the order was placed at, even after the product's price changes.
 - A delete is a history row with `_change_op = 'delete'` and the row's last values. History has no `_is_deleted` column: `_change_op` already says it.
 - The history facts' keys include `_changed_at` because PostgreSQL requires the partition column in the primary key. A change always has the same `_changed_at`, so the key still identifies one change.
-- Views on the history facts add `_valid_to` (the next version's `_changed_at`, ordered by `_commit_sequence`) and `_is_current`, so history can be queried as of any time, for example "open orders on 2026-11-01".
+- The `gold` history views add `_valid_to` (the next version's `_changed_at`, ordered by `_commit_sequence`) and `_is_current`, so history can be queried as of any time, for example "open orders on 2026-11-01".
 
 ## Rules
 
@@ -148,7 +161,7 @@ Notes:
 - **Current state only moves forward.** A version replaces the current row only if its `_commit_sequence` is higher than the stored one. A late version is still appended to history, where its validity range lands in the right place, but it never overwrites newer current state.
 
   Example: order 7 is stored as `PROCESSING` at position 500. A delayed event `PENDING` at position 420 arrives. History gets the 420 row (valid until the 500 change); `current_orders` stays `PROCESSING`. Then `COMPLETED` at 610 arrives and replaces it.
-- **Deletes are soft in current state.** A delete sets `_is_deleted` and keeps the row with the delete's `_commit_sequence`, so a late event older than the delete cannot bring the row back.
+- **Deletes are soft in current state.** A delete sets `_is_deleted` and keeps the row with the delete's `_commit_sequence`, so a late event older than the delete cannot bring the row back. The `gold` current-state views leave deleted rows out.
 - **SCD2 dimensions.** A new version closes the current row (`_valid_to` = the new version's `_valid_from`, `_is_current` false) and inserts the new one. Silver already skips versions whose business columns did not change.
 
 ### Open orders and pending items
@@ -185,13 +198,13 @@ The alternatives were rejected:
 
 For each micro-batch, the gold streaming query:
 
-1. writes the batch's versions to staging tables in PostgreSQL;
-2. in one transaction: closes and inserts SCD2 dimension versions, inserts the new history rows, applies newer versions to the current-state tables;
+1. writes the batch's versions to staging tables in `gold_internal`;
+2. in one transaction, on the `gold_internal` tables: closes and inserts SCD2 dimension versions, inserts the new history rows, applies newer versions to the current-state tables;
 3. merges the same rows into the Iceberg gold tables in the lake, by key and `_commit_sequence`; they are partitioned by month and keep the full history.
 
 No transaction spans PostgreSQL and the lake, so both writes are idempotent: a failed batch is simply replayed.
 
-**Freshness is temporary for now.** `gold.data_freshness` reports, per entity, the source commit time of the newest change gold holds. It is a deliberately simple proxy, to be replaced later: when the source stops changing it ages even though the pipeline is healthy. Real pipeline statistics (per micro-batch rows, durations, last `_commit_sequence`, last event time) are planned in a separate `observability` catalog in the lake, apart from the business data (#127).
+**Freshness.** `gold.data_freshness` reports, per entity, how up to date gold is. For now it is computed from the data, as the source commit time of the newest change gold holds, so it ages when the source stops changing even though the pipeline is healthy. Later it will be filled from the pipeline statistics, with the same shape. Those statistics (per micro-batch rows, durations, last `_commit_sequence`, last event time) are planned in a separate `observability` catalog in the lake, apart from the business data (#127).
 
 ## The four business questions
 
@@ -202,13 +215,13 @@ No transaction spans PostgreSQL and the lake, so both writes are idempotent: a f
 | Number of open pending items by product | `current_order_items` joined to open `current_orders`, grouped by `product_id`: item count and total quantity | [03](../../sql/gold/03_pending_items_by_product.sql) |
 | Top 3 customers with more pending orders | open `current_orders` by `customer_id`, with the name from the current `dim_customer`, top 3 with ties | [04](../../sql/gold/04_top_customers_by_pending_orders.sql) |
 
-The queries are in [`sql/gold/`](../../sql/gold/). For example, the core of question 2:
+The queries are in [`sql/gold/`](../../sql/gold/) and read only the `gold` views. For example, the core of question 2:
 
 ```sql
 SELECT o.delivery_date, count(*) AS open_orders
 FROM gold.current_orders AS o
 JOIN gold.dim_order_status AS s ON s.status_key = o.status_key
-WHERE s.is_open AND NOT o._is_deleted
+WHERE s.is_open
 GROUP BY o.delivery_date
 ORDER BY open_orders DESC
 FETCH FIRST 3 ROWS WITH TIES;

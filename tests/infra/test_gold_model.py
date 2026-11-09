@@ -3,21 +3,25 @@ import subprocess
 import pytest
 
 from tests.infra.gold_fixtures import (
+    CURRENT_STATE,
+    DELETED_ROWS,
     FRESHNESS,
     FRESHNESS_FIXTURE,
     GOLD_DDL,
-    GOLD_TABLES,
-    GOLD_VIEWS,
     HISTORY_PARTITIONS,
-    TOP_LEVEL_RELATIONS,
+    INTERNAL_TABLES,
+    PUBLIC_PIPELINE_ONLY_COLUMNS,
+    PUBLIC_VIEWS,
     UNDESCRIBED_COLUMNS,
     UNDESCRIBED_RELATIONS,
+    UNDESCRIBED_SCHEMAS,
     answer,
     item_change,
     order_change,
     psql,
     rolled_back,
     rows,
+    top_level_relations,
 )
 from tests.infra.stack import Stack
 
@@ -48,13 +52,33 @@ def test_ddl_applies_again_to_an_existing_database(
         assert "ERROR" not in run.stderr
 
 
-def test_schema_holds_the_model_tables_and_views(gold: Stack) -> None:
-    names = {row[0] for row in rows(gold, TOP_LEVEL_RELATIONS)}
+def test_internal_schema_holds_the_model_tables(gold: Stack) -> None:
+    relations = rows(gold, top_level_relations("gold_internal"))
 
-    assert names == GOLD_TABLES | GOLD_VIEWS
+    assert {name for name, _ in relations} == INTERNAL_TABLES
+    assert {kind for _, kind in relations} <= {"r", "p"}
 
 
-def test_every_table_and_column_has_a_description(gold: Stack) -> None:
+def test_public_schema_holds_only_views(gold: Stack) -> None:
+    relations = rows(gold, top_level_relations("gold"))
+
+    assert {name for name, _ in relations} == PUBLIC_VIEWS
+    assert {kind for _, kind in relations} == {"v"}
+
+
+def test_public_views_hide_the_pipeline_only_columns(gold: Stack) -> None:
+    assert rows(gold, PUBLIC_PIPELINE_ONLY_COLUMNS) == []
+
+
+def test_public_current_views_hide_deleted_rows(gold: Stack) -> None:
+    assert rows(gold, rolled_back(CURRENT_STATE, DELETED_ROWS)) == [
+        ["orders", "0", "9"],
+        ["order_items", "0", "7"],
+    ]
+
+
+def test_every_schema_table_and_column_has_a_description(gold: Stack) -> None:
+    assert rows(gold, UNDESCRIBED_SCHEMAS) == []
     assert rows(gold, UNDESCRIBED_RELATIONS) == []
     assert rows(gold, UNDESCRIBED_COLUMNS) == []
 
@@ -133,16 +157,16 @@ def test_history_rows_land_in_their_month_or_the_default_partition(gold: Stack) 
             order_change(2, 10, BEFORE_ANY_PARTITION),
             item_change(1, 10, IN_TWO_MONTHS, quantity=1),
             "SELECT order_id, tableoid::regclass, to_char(_changed_at, 'YYYY_MM')"
-            " FROM gold.fact_order_history ORDER BY 1;",
+            " FROM gold_internal.fact_order_history ORDER BY 1;",
             "SELECT order_item_id, tableoid::regclass, to_char(_changed_at, 'YYYY_MM')"
-            " FROM gold.fact_order_item_history;",
+            " FROM gold_internal.fact_order_item_history;",
         ),
     )
     first, out_of_range, item = placed
 
-    assert first[1] == f"gold.fact_order_history_{first[2]}"
-    assert out_of_range[1] == "gold.fact_order_history_default"
-    assert item[1] == f"gold.fact_order_item_history_{item[2]}"
+    assert first[1] == f"gold_internal.fact_order_history_{first[2]}"
+    assert out_of_range[1] == "gold_internal.fact_order_history_default"
+    assert item[1] == f"gold_internal.fact_order_item_history_{item[2]}"
 
 
 def test_new_partition_takes_over_rows_from_the_default_partition(gold: Stack) -> None:
@@ -150,16 +174,16 @@ def test_new_partition_takes_over_rows_from_the_default_partition(gold: Stack) -
         gold,
         rolled_back(
             order_change(1, 10, IN_SIX_MONTHS),
-            "SELECT tableoid::regclass FROM gold.fact_order_history;",
-            "DO $$ BEGIN PERFORM gold.ensure_history_partitions(6); END $$;",
+            "SELECT tableoid::regclass FROM gold_internal.fact_order_history;",
+            "DO $$ BEGIN PERFORM gold_internal.ensure_history_partitions(6); END $$;",
             "SELECT tableoid::regclass, to_char(_changed_at, 'YYYY_MM')"
-            " FROM gold.fact_order_history;",
+            " FROM gold_internal.fact_order_history;",
         ),
     )
     before, after = placed
 
-    assert before == ["gold.fact_order_history_default"]
-    assert after[0] == f"gold.fact_order_history_{after[1]}"
+    assert before == ["gold_internal.fact_order_history_default"]
+    assert after[0] == f"gold_internal.fact_order_history_{after[1]}"
 
 
 def test_a_replayed_history_row_is_rejected(gold: Stack) -> None:
@@ -191,15 +215,15 @@ def test_order_versions_are_ordered_by_commit_sequence_despite_a_late_event(
             order_change(7, 500, "timestamp '2026-11-02 10:00'", "PROCESSING"),
             order_change(7, 610, "timestamp '2026-11-02 11:00'", "COMPLETED"),
             order_change(7, 420, "timestamp '2026-11-02 09:00'", "PENDING"),
-            "SELECT _commit_sequence, _valid_to, _is_current"
-            " FROM gold.fact_order_history_versions ORDER BY _changed_at;",
+            "SELECT status_key, _valid_to, _is_current"
+            " FROM gold.fact_order_history ORDER BY _changed_at;",
         ),
     )
 
     assert versions == [
-        ["420", "2026-11-02 10:00:00", "f"],
-        ["500", "2026-11-02 11:00:00", "f"],
-        ["610", "", "t"],
+        ["1", "2026-11-02 10:00:00", "f"],
+        ["2", "2026-11-02 11:00:00", "f"],
+        ["4", "", "t"],
     ]
 
 
@@ -211,12 +235,12 @@ def test_item_versions_are_ordered_by_commit_sequence_despite_a_late_event(
         rolled_back(
             item_change(3, 700, "timestamp '2026-11-03 10:00'", quantity=2),
             item_change(3, 650, "timestamp '2026-11-03 09:00'", quantity=1),
-            "SELECT _commit_sequence, quantity, _valid_to, _is_current"
-            " FROM gold.fact_order_item_history_versions ORDER BY _changed_at;",
+            "SELECT quantity, _valid_to, _is_current"
+            " FROM gold.fact_order_item_history ORDER BY _changed_at;",
         ),
     )
 
-    assert versions == [["650", "1", "2026-11-03 10:00:00", "f"], ["700", "2", "", "t"]]
+    assert versions == [["1", "2026-11-03 10:00:00", "f"], ["2", "", "t"]]
 
 
 def test_open_orders_by_delivery_date_and_status(gold: Stack) -> None:
