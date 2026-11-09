@@ -11,7 +11,7 @@ from analytics.pipelines.tests.schemas.render_setup import (
     THING_ID,
     THING_NAME,
     THINGS,
-    published_schemas,
+    schema_files,
     silver_schemas,
 )
 from pipelines.schemas.definitions import load_entities, load_table_templates
@@ -27,15 +27,7 @@ from pipelines.schemas.render import (
 RENDERED = render_tables(load_table_templates().values(), load_entities())
 
 
-def test_the_published_schemas_are_the_rendered_ones() -> None:
-    expected = {path: schema_text(schema) for path, schema in RENDERED.items()}
-
-    assert published_schemas() == expected, (
-        "docs/schemas/ is stale: run `make schemas` and commit the result"
-    )
-
-
-def test_every_entity_has_a_published_bronze_and_quarantine_schema() -> None:
+def test_every_entity_has_a_rendered_bronze_and_quarantine_schema() -> None:
     assert sorted(RENDERED) == [
         "bronze/customers.avsc",
         "bronze/customers_quarantine.avsc",
@@ -109,7 +101,7 @@ def test_writing_the_schemas_replaces_stale_files_of_their_layers(tmp_path: Path
     write_schemas(tmp_path, silver_schemas())
     write_schemas(tmp_path, silver_schemas())
 
-    assert published_schemas(tmp_path) == {
+    assert schema_files(tmp_path) == {
         "gold/kept.avsc": "{}",
         **{path: schema_text(schema) for path, schema in silver_schemas().items()},
     }
@@ -118,4 +110,6 @@ def test_writing_the_schemas_replaces_stale_files_of_their_layers(tmp_path: Path
 def test_the_command_writes_every_table_schema_to_the_given_folder(tmp_path: Path) -> None:
     main([str(tmp_path / "schemas")])
 
-    assert published_schemas(tmp_path / "schemas") == published_schemas()
+    assert schema_files(tmp_path / "schemas") == {
+        path: schema_text(schema) for path, schema in RENDERED.items()
+    }

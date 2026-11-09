@@ -10,8 +10,6 @@ from pipelines.schemas.definitions import (
 )
 from pipelines.schemas.render import Schema, render_tables
 
-PUBLISHED_SCHEMAS = Path(__file__).resolve().parents[4] / "docs" / "schemas"
-
 THING_ID = ColumnDefinition("thing_id", ColumnType.LONG, "Thing identifier", not_null=True)
 THING_NAME = ColumnDefinition("thing_nmae", ColumnType.STRING, "Name", renamed_to="thing_name")
 THINGS = EntityDefinition(
@@ -27,7 +25,7 @@ SILVER = TableTemplate(
 SILVER_ARCHIVE = TableTemplate(name="silver_archive", description="Old {entity}", fields=(PRICE,))
 
 
-def published_schemas(root: Path = PUBLISHED_SCHEMAS) -> dict[str, str]:
+def schema_files(root: Path) -> dict[str, str]:
     """The text of every schema file under `root`, by its path relative to `root`."""
     files = sorted(root.rglob(f"*{SCHEMA_SUFFIX}"))
     return {file.relative_to(root).as_posix(): file.read_text(encoding="utf-8") for file in files}

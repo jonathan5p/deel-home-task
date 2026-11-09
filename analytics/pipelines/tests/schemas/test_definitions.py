@@ -175,20 +175,20 @@ def test_a_column_defined_in_several_schemas_is_defined_the_same_in_each() -> No
 
 def test_differing_definitions_of_a_column_are_found_in_any_folder(schemas: SchemasTree) -> None:
     schemas.write_silver(("fields", 1, "doc"), "Something else")
-    (schemas.root / "gold").mkdir()
-    schemas.write("gold/facts.avsc", edited(SILVER, ("fields", 1, "type"), "long"))
+    (schemas.root / "example_layer").mkdir()
+    schemas.write("example_layer/facts.avsc", edited(SILVER, ("fields", 1, "type"), "long"))
 
     differing = column_definitions(schemas.root)["_is_current"]
 
     assert sorted(file for files in differing.values() for file in files) == [
-        "gold/facts.avsc",
+        "example_layer/facts.avsc",
         "tables/silver_template.avsc",
     ]
     assert len(differing) == 2
 
 
 def test_business_columns_may_differ_between_schemas(schemas: SchemasTree) -> None:
-    (schemas.root / "gold").mkdir()
+    (schemas.root / "example_layer").mkdir()
     thing = {
         "type": "record",
         "name": "facts",
@@ -196,7 +196,7 @@ def test_business_columns_may_differ_between_schemas(schemas: SchemasTree) -> No
             {"name": "customer_id", "type": ["null", "long"], "default": None, "doc": "A reference"}
         ],
     }
-    schemas.write("gold/facts.avsc", json.dumps(thing))
+    schemas.write("example_layer/facts.avsc", json.dumps(thing))
 
     assert "customer_id" not in column_definitions(schemas.root)
 

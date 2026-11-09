@@ -29,8 +29,7 @@ DRIVER_CONF = --master "$$SPARK_MASTER_URL" \
 # APP_BUILD= reuses an already built app image, as CI does after building it with a layer cache.
 CHECKS_PROJECT ?= deel-checks-$(shell basename "$(CURDIR)" | LC_ALL=C tr 'A-Z' 'a-z' | LC_ALL=C sed 's/[^a-z0-9_-]/-/g')
 APP_BUILD ?= --build
-CODE_MOUNTS = -v "$(CURDIR)/analytics:/opt/app/analytics" -v "$(CURDIR)/tests:/opt/app/tests" \
-	-v "$(CURDIR)/docs/schemas:/opt/app/docs/schemas:ro"
+CODE_MOUNTS = -v "$(CURDIR)/analytics:/opt/app/analytics" -v "$(CURDIR)/tests:/opt/app/tests"
 APP_RUN = COMPOSE_PROJECT_NAME=$(CHECKS_PROJECT) $(COMPOSE) run --rm $(APP_BUILD) --no-deps $(CODE_MOUNTS)
 
 PIPELINE_JOBS = $(addsuffix -job,$(if $(filter all,$(PIPELINE)),$(PIPELINES),$(filter $(PIPELINES),$(PIPELINE))))
@@ -54,7 +53,8 @@ help:
 		'lint           Check linting and formatting with ruff in the app container.' \
 		'format         Format the code and apply safe lint fixes with ruff.' \
 		'typecheck      Check types with ty in the app container; any diagnostic fails.' \
-		'schemas        Write every lake table as a flat Avro schema to docs/schemas/ from the schema definitions.' \
+		'schemas        Render the full flat Avro schema of every lake table to target/schemas/<layer>/<table>.avsc, for reading.' \
+		'               Build output: git-ignored, regenerated each run; edit analytics/pipelines/src/pipelines/schemas/ instead.' \
 		'test-infra     Run the infra tests against an isolated copy of the stack (local only, a few minutes).' \
 		'hooks          Install the pre-commit hooks in this clone (once).' \
 		'Optional profiles: monitoring (Conduktor), history (Spark History Server). See README.md.'
@@ -114,7 +114,7 @@ typecheck:
 	@$(APP_RUN) spark-app ty check
 
 schemas:
-	@uv run --frozen python -m pipelines.schemas.render docs/schemas
+	@uv run --frozen python -m pipelines.schemas.render target/schemas
 
 test-infra:
 	@uv run --frozen pytest tests/infra --no-cov -p no:cacheprovider -v
