@@ -338,6 +338,7 @@ analytics/
   pipelines/                project "pipelines": the Spark pipelines, depends on common
     src/pipelines/
       settings.py           pipeline settings (Kafka, lake, analytics database)
+      bronze/               source entities and the transforms from landing records to bronze rows
       jobs/                 Spark jobs
       quality/              data quality checks on the lake (run by make data-quality)
     tests/
@@ -427,6 +428,63 @@ The landing checks reconcile the landing zone with Kafka for every configured to
 Each result is printed as one JSON line prefixed with `LANDING QUALITY`, with the check's description, followed by a summary line, and the job exits with code 1 if any check fails. The `partition_landed` result also reports the row count, the offset range, the number of tombstones, Kafka's offset range (`kafka_min_offset`, `kafka_max_offset`) and the lag behind Kafka; lag is expected while landing runs and is not a failure. The `contiguous_offsets` result reports the compared range (`from_offset`, `to_offset`) and the number of `missing_offsets`.
 
 By default every landed offset is compared, from the first to the last landed offset of each partition. For large topics, `LANDING_CHECK_LAST_OFFSETS=<n> make data-quality` limits the comparison to a window of the last `n` offsets up to the last landed offset of each partition, and skips `starts_at_kafka_min_offset`. The window limits what is compared; Kafka is still read in full. The job runs with `spark.cores.max=2` and a random UI port, so it can run while the landing job is running.
+
+#### Bronze layer
+
+Bronze is a typed, faithful log of every change event: one row per event, no deduplication. The package `analytics/pipelines/src/pipelines/bronze/` holds:
+
+- `entities.py`: one `Entity` per source table, with its key, content and audit columns, its NOT NULL columns and the JSON row schema Debezium emits. `entity_for_topic` resolves the entity from the last segment of a `<prefix>.<schema>.<table>` topic and rejects unknown tables.
+- `parse.py`: `parse_changes(records, entity)` turns landing records (the Kafka columns as landed) into typed bronze rows and quarantine rows. It is a pure DataFrame transform, so it works on batch and streaming DataFrames.
+- `decimals.py` and `content_hash.py`: the decimal decoding and the content hash below, in plain Spark SQL functions (no Python UDFs).
+
+| Entity | Key | Content columns | Audit columns |
+| --- | --- | --- | --- |
+| `customers` | `customer_id` | `customer_name`, `is_active`, `customer_address` | `updated_at`, `updated_by`, `created_at`, `created_by` |
+| `products` | `product_id` | `product_name`, `barcode`, `unity_price`, `is_active` | same four |
+| `orders` | `order_id` | `order_date`, `delivery_date`, `customer_id`, `status` | same four |
+| `order_items` | `order_item_id` | `order_id`, `product_id`, `quantity` | same four |
+
+Bronze columns and where they come from:
+
+| Bronze column | Source | Type |
+| --- | --- | --- |
+| business columns | the row image: `before` for a delete, `after` otherwise; `quanity` is renamed to `quantity` | `TIMESTAMP(3)` → `timestamp` (`timestamp_millis`, wall clock read as UTC), `DATE` → `date` (`date_from_unix_date`), `DECIMAL` → `decimal(38,10)`, others as in the source |
+| `record_source` | Kafka topic | string |
+| `source_partition`, `source_offset` | Kafka partition and offset | int, long |
+| `published_at` | Kafka record timestamp | timestamp |
+| `change_op` | `op`: `c` → `create`, `u` → `update`, `d` → `delete`, `r` → `snapshot` | string |
+| `change_position` | `source.lsn` | long |
+| `changed_at` | `source.ts_ms` (commit time in the source) | timestamp |
+| `captured_at` | envelope `ts_ms` (when Debezium processed the change) | timestamp |
+| `content_hash` | the content columns, see below | string (hex SHA-256) |
+
+Kafka coordinates are lineage; the change identity is the entity key, `change_position` and `change_op`. `unity_price` is decoded from its base64 two's-complement bytes with `try_to_binary`, `hex` and `conv`, then scaled by its `scale`; values up to eight bytes (a signed long) that fit `decimal(38,10)` exactly are decoded without loss.
+
+**Tombstones** (records with a `null` value) are dropped: they only mark a key for log compaction, and landing keeps them. **Invalid records** do not fail the job; they become quarantine rows with `record_source`, `source_partition`, `source_offset`, `published_at`, the raw `key` and `value` as strings, and `failure_reason`, the first failed check:
+
+| `failure_reason` | When |
+| --- | --- |
+| `value is not a JSON Debezium envelope` | the value is not JSON, or lacks `op`, `ts_ms`, `source.lsn` or `source.ts_ms` |
+| `unknown op` | `op` is not `c`, `u`, `d` or `r` (for example a truncate, `t`) |
+| `missing key column: <column>` | the row image has no key value, or there is no row image |
+| `missing NOT NULL column: <column>` | a column that is NOT NULL in the source DDL is null or absent |
+| `undecodable or overflowing decimal: <column>` | not base64, empty, more than eight bytes, no scale, or not exactly representable as `decimal(38,10)` |
+
+**`content_hash`** is the SHA-256 (`sha2(…, 256)`) of the entity's content columns, so silver can skip a version whose content did not change (re-snapshots, audit-only updates):
+
+- each non-null content column contributes `name:length:value`, where `length` is the number of characters of `value`; parts are sorted by column name and joined with `|`;
+- null columns are left out entirely; an empty string still contributes `name:0:`, so null and `''` differ;
+- the key, the audit columns and the change metadata are excluded;
+- values are formatted as: dates `yyyy-MM-dd`; timestamps in UTC as `yyyy-MM-dd'T'HH:mm:ss.SSS'Z'`, whatever the session time zone; decimals at the fixed scale of 10 (`1.5300000000`); booleans `true`/`false`; integers and strings as is.
+
+**Schema evolution.** The schemas are explicit, so a source change never alters bronze silently:
+
+| Source change | What happens | Automatic or manual |
+| --- | --- | --- |
+| Column added | Ignored until it is added to the `Entity`. Once added, older rows read it as null and keep their hash, because nulls are left out of `content_hash`. | Adding it to the `Entity` is manual; old hashes stay valid automatically. |
+| Column removed | The field is absent from new events, so the column becomes null and drops out of the hash: silver records one new version per key. A removed NOT NULL column quarantines its events until it is no longer declared NOT NULL. | Automatic for nullable columns; manual for NOT NULL ones. |
+| Column renamed | The old column becomes null and the new one is ignored until the `Entity` maps it (`renamed_to` keeps the bronze name stable). | Manual change to the `Entity`; the next event per key gets a new hash, so silver records one new version per key. |
+| Type changed | Values that no longer parse are quarantined (NOT NULL columns, decimals) or read as null. | Manual change to the `Entity` and its conversion; one new version per key, as for a rename. |
 
 #### Tests, lint and format
 
