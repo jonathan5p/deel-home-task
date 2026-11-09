@@ -218,6 +218,7 @@ bootstrap.servers=localhost:9092
 | `spark-worker-2` | http://localhost:8082 | 2 cores, 2 GiB executor memory |
 | `spark-history` (optional) | http://localhost:18080 | History server for finished, crashed and running applications; started with `make spark-history` |
 | `spark-app` (one container per run) | http://localhost:4040 | Driver of an application started by `make spark-submit`; its UI is only available while it runs |
+| `landing-job` (optional) | http://localhost:4040 | Driver of the landing job, a long-running service started by `make pipeline` (see [Running the pipeline](#running-the-pipeline)) |
 
 Spark runs PySpark on **Python 3.14** (3.14.10), the newest version PySpark 4.1.4 supports. The official `apache/spark` images ship Python 3.10, so the Dockerfile installs CPython 3.14 with [uv](https://docs.astral.sh/uv/) at build time and points `PYSPARK_PYTHON` at it; every driver and executor uses it.
 
@@ -225,7 +226,7 @@ Worker resources are set with `SPARK_WORKER_CORES` and `SPARK_WORKER_MEMORY` in 
 
 `SPARK_MASTER_URL` defaults to `spark://spark-master:7077` in `.env`, which Docker Compose loads automatically. Exporting the variable in your shell overrides it; recreate the Spark services (`make up`) after changing it.
 
-`.env` also pins the Compose project name (`COMPOSE_PROJECT_NAME=deel_home_task`), so every checkout of the repository, including git worktrees, drives the same local stack. `make up` rebuilds the Spark images from the checkout it runs in.
+`.env` also pins the Compose project name (`COMPOSE_PROJECT_NAME=deel_home_task`), so every checkout of the repository, including git worktrees, drives the same local stack. `make up` rebuilds the Spark images from the checkout it runs in. A rebuild without changes keeps the image IDs, so running `make up` again does not restart the cluster or the jobs running on it. Two things keep the IDs stable: each Spark image has a single builder (`spark-master` builds the cluster image, which the workers and the History Server reuse; `spark-app` builds the driver image, which the pipeline jobs reuse), and the Makefile turns off build attestations (`BUILDX_NO_DEFAULT_ATTESTATIONS=1`), which would otherwise give every build a new ID.
 
 #### Submitting a job
 
@@ -256,6 +257,8 @@ flowchart LR
 Because every run has its own container, one application's memory, logs and lifecycle never affect another, and stopping `make spark-submit` (Ctrl+C) stops its driver. Executors reach the driver through the container's IP address, and the `common` and `pipelines` packages are shipped to them with `--py-files`.
 
 To run several applications at the same time, give each its own UI port and cap its cores: the standalone master gives an application every free core unless `spark.cores.max` is set, so a second application would wait until the first one ends.
+
+While the landing job runs (`make pipeline`), it holds port 4040, so give ad-hoc runs another port, for example `make spark-submit SPARK_UI_PORT=4042` (the same applies to `make spark-sql`); otherwise Docker refuses to start the driver with `port is already allocated`.
 
 #### Spark History Server (optional)
 
@@ -371,7 +374,7 @@ from pipelines.settings import PipelineSettings
 settings = PipelineSettings.from_env(os.environ)  # only a job's entry point reads os.environ
 ```
 
-The code holds no deployment details: anything that depends on where it runs (brokers, topics, the lake, the catalog, the database) is a required variable with no default. The local values live in `.env`, and Docker Compose passes them to the `spark-app` driver containers; another environment sets its own values. Only tuning settings have defaults; set them in the shell for one run, for example `LANDING_TRIGGER_SECONDS=30 make spark-submit ...`.
+The code holds no deployment details: anything that depends on where it runs (brokers, topics, the lake, the catalog, the database) is a required variable with no default. The local values live in `.env`, and Docker Compose passes them to the `spark-app` driver containers and the pipeline job services; another environment sets its own values. Only tuning settings have defaults; set them in the shell for one run, for example `LANDING_TRIGGER_SECONDS=30 make spark-submit ...`.
 
 | Variable | Settings | Default | Local value in `.env` | Purpose |
 | --- | --- | --- | --- | --- |
@@ -393,13 +396,41 @@ The code holds no deployment details: anything that depends on where it runs (br
 The landing job (`analytics/pipelines/src/pipelines/jobs/landing.py`) streams every record of the CDC topics into raw Avro files, exactly as Kafka delivered it, so the lake keeps a replayable copy of the sources:
 
 ```sh
-make spark-submit SPARK_APP=analytics/pipelines/src/pipelines/jobs/landing.py SPARK_CONF="spark.cores.max=2"
+make pipeline PIPELINE=landing   # as a long-running service; see Running the pipeline below
+make spark-submit SPARK_APP=analytics/pipelines/src/pipelines/jobs/landing.py SPARK_CONF="spark.cores.max=2" SPARK_UI_PORT=4042   # or ad hoc, in the foreground
 ```
 
 - **One streaming query per topic,** reading from the earliest offset and writing to `<LAKE_ROOT>/landing/<topic>/`: one folder per topic, with no partition folders.
 - **Each record is stored unchanged:** `key` and `value` as raw bytes, plus `topic`, `partition`, `offset`, `timestamp` and `timestampType`. Tombstones keep their `null` value.
 - **Restart-safe:** each query keeps its checkpoint in `<CHECKPOINT_ROOT>/landing/<topic>/`, and Spark's file sink records the committed files in `_spark_metadata`. Stopping and restarting the job neither skips nor duplicates records; Spark readers of the folder see only committed files.
-- **Micro-batches** run every `LANDING_TRIGGER_SECONDS`. `spark.cores.max` keeps cores free for the other jobs; the job runs until it is stopped (Ctrl+C).
+- **Micro-batches** run every `LANDING_TRIGGER_SECONDS`. `spark.cores.max` keeps cores free for the other jobs; the job runs until it is stopped.
+
+#### Running the pipeline
+
+`make pipeline` runs the streaming jobs as long-running Compose services (profile `pipeline`), one driver container per job. Name the job with `PIPELINE`, or use `all` for every job:
+
+```sh
+make pipeline PIPELINE=landing        # start the stack, the History Server and the landing job
+make pipeline PIPELINE=all            # the same with every job
+make pipeline-logs PIPELINE=landing   # follow the job's logs (Ctrl+C stops following, not the job)
+make pipeline-stop PIPELINE=landing   # stop and remove the job; the rest of the stack keeps running
+```
+
+`make pipeline` rebuilds changed images like `make up`, starts the default stack and the Spark History Server, then starts the selected jobs. Running it again after a code change restarts only the jobs whose image changed. A change to the Spark image restarts the cluster, and a job's driver does not survive that; `make pipeline` restarts the jobs along with it, but after a plain `make up`, run `make pipeline` again. Without a valid `PIPELINE` (`landing` or `all`), the targets fail and list the valid names. `make down` stops the jobs with the rest of the stack.
+
+| Job | Service | Application UI |
+| --- | --- | --- |
+| landing | `landing-job` | http://localhost:4040 |
+
+Where to look while a job runs:
+
+- **Application UI** on the job's port (table above), including the Structured Streaming tab with one query per topic.
+- **History Server** at http://localhost:18080, for current and past runs, since every driver writes event logs to the `spark-events` volume.
+- **Landing files** in the SeaweedFS filer UI at http://localhost:8888/buckets/lake/landing/, one folder per topic.
+
+Each job service submits its application with the same settings as `make spark-submit`, plus `spark.cores.max=2` and the service name as the driver host, so executors on the workers can connect back to it. The services restart unless they were stopped (`restart: unless-stopped`): a job whose driver fails is restarted and resumes from its checkpoints, without skipping or duplicating records. A container stopped with `make pipeline-stop` or `docker stop`/`docker kill` stays stopped until the next `make pipeline`.
+
+The cluster has two workers with 2 cores each, and each job takes at most 2 cores. With the landing job and a second job running, every core is in use, so ad-hoc runs (`make spark-submit`, `make spark-sql`) wait for free cores until a job is stopped.
 
 #### Data quality checks
 
