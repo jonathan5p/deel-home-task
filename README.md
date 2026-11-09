@@ -408,19 +408,25 @@ Data quality checks verify the data itself, on the running stack. They are separ
 make data-quality
 ```
 
-The landing checks reconcile the landing zone with Kafka for every topic partition. Landed records are read through Spark, so only files committed by the file sink count:
+The landing checks reconcile the landing zone with Kafka for every configured topic and every topic partition. Landed records are read through Spark, so only files committed by the file sink count; files in a topic folder that `_spark_metadata` does not record are ignored. Kafka is the reference, and it is read once per run into one snapshot, so every check sees the same records:
 
-| Check | Fails when |
+| Check | Checks that |
 | --- | --- |
-| `landed` | a Kafka partition has no landed records |
-| `unique` | an offset landed more than once |
-| `contiguous` | an offset between the first and last landed offset is missing |
-| `complete_from_start` | landing starts after Kafka's earliest offset |
-| `identical` | a landed key or value differs from Kafka, or a landed offset that Kafka still retains is missing there |
+| `topic_found` | a configured topic has records in Kafka or in the landing zone |
+| `partition_landed` | every Kafka partition has landed records |
+| `unique_offsets` | every offset landed exactly once |
+| `contiguous_offsets` | every offset Kafka holds in the compared range landed |
+| `starts_at_kafka_min_offset` | landing starts at or before Kafka's earliest retained offset |
+| `same_bytes_as_kafka` | landed keys and values equal Kafka's, and Kafka holds every landed offset it still retains |
 
-Each result is printed as one JSON line prefixed with `LANDING QUALITY`, followed by a summary line, and the job exits with code 1 if any check fails. The `landed` result also reports the row count, the offset range, the number of tombstones and the lag behind Kafka; lag is expected while landing runs and is not a failure.
+- **Contiguity is measured against the offsets Kafka actually holds,** not against a dense range of numbers: transaction markers and compaction leave offsets with no record, and those are not gaps. Kafka offsets after the last landed offset are lag, not gaps.
+- **Retention:** landed offsets that Kafka no longer retains are not counted as missing in Kafka, including in a partition whose records have all expired.
+- **Empty runs fail:** a configured topic with no records anywhere fails `topic_found`, and a run with no results fails.
+- **Schema drift fails loudly:** a topic folder whose committed files do not hold the Kafka record columns and types raises an error instead of reading as empty. Only a missing folder, or one without committed files, reads as no records.
 
-By default every landed offset is checked. For large topics, `LANDING_CHECK_LAST_OFFSETS=<n> make data-quality` limits the comparison to the latest `n` landed offsets of each partition (and skips `complete_from_start`). The job runs with `spark.cores.max=2` and a random UI port, so it can run while the landing job is running.
+Each result is printed as one JSON line prefixed with `LANDING QUALITY`, with the check's description, followed by a summary line, and the job exits with code 1 if any check fails. The `partition_landed` result also reports the row count, the offset range, the number of tombstones, Kafka's offset range (`kafka_min_offset`, `kafka_max_offset`) and the lag behind Kafka; lag is expected while landing runs and is not a failure. The `contiguous_offsets` result reports the compared range (`from_offset`, `to_offset`) and the number of `missing_offsets`.
+
+By default every landed offset is compared, from the first to the last landed offset of each partition. For large topics, `LANDING_CHECK_LAST_OFFSETS=<n> make data-quality` limits the comparison to a window of the last `n` offsets up to the last landed offset of each partition, and skips `starts_at_kafka_min_offset`. The window limits what is compared; Kafka is still read in full. The job runs with `spark.cores.max=2` and a random UI port, so it can run while the landing job is running.
 
 #### Tests, lint and format
 

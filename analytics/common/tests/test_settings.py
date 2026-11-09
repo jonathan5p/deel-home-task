@@ -49,7 +49,7 @@ def test_positive_int_parses_the_variable() -> None:
     assert positive_int({"TRIGGER_SECONDS": "30"}, "TRIGGER_SECONDS", 10) == 30
 
 
-@pytest.mark.parametrize("value", ["0", "-5", "ten", "1.5"])
+@pytest.mark.parametrize("value", ["0", "-5", "ten", "1.5", " 10", "²"])
 def test_positive_int_rejects_values_that_are_not_positive_integers(value: str) -> None:
     with pytest.raises(InvalidSettingError, match="TRIGGER_SECONDS"):
         positive_int({"TRIGGER_SECONDS": value}, "TRIGGER_SECONDS", 10)

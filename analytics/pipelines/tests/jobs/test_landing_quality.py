@@ -5,9 +5,11 @@ import pytest
 pytest.importorskip("pyspark")
 
 from pyspark.sql import DataFrame, Row, SparkSession
+from pyspark.sql import functions as F
+from pyspark.sql.types import LongType
 
 from pipelines.jobs.landing_quality import run_checks
-from pipelines.quality.landing import RECORD_SCHEMA
+from pipelines.schemas import KAFKA_RECORD_SCHEMA
 from pipelines.settings import KafkaSettings, LandingQualitySettings, LandingSettings
 
 ENV = {
@@ -31,7 +33,7 @@ def records(spark: SparkSession, offsets: range) -> DataFrame:
         )
         for offset in offsets
     ]
-    return spark.createDataFrame(rows, RECORD_SCHEMA)
+    return spark.createDataFrame(rows, KAFKA_RECORD_SCHEMA)
 
 
 def test_run_checks_reconciles_the_injected_landing_and_kafka_records(spark: SparkSession) -> None:
@@ -49,5 +51,32 @@ def test_run_checks_reconciles_the_injected_landing_and_kafka_records(spark: Spa
     results = run_checks(spark, settings, read_landed=landed, read_records=kafka)
 
     assert seen == ["landing ('topic-a',)", "kafka broker:9092"]
+    assert results
     assert all(result.passed for result in results)
-    assert "complete_from_start" not in {result.check for result in results}
+    assert "starts_at_kafka_min_offset" not in {result.check for result in results}
+
+
+# PySpark warns that a plain Python UDF's type hints do not name a pandas UDF type.
+@pytest.mark.filterwarnings("ignore:Cannot infer the eval type:UserWarning")
+def test_run_checks_reads_each_kafka_record_once(spark: SparkSession) -> None:
+    settings = LandingQualitySettings.from_env(ENV)
+    reads = spark.sparkContext.accumulator(0)
+
+    def count_read(offset: int) -> int:
+        reads.add(1)
+        return offset
+
+    read_offset = F.udf(count_read, LongType())
+
+    def kafka(session: SparkSession, kafka_settings: KafkaSettings) -> DataFrame:
+        return records(session, range(5)).withColumn("offset", read_offset("offset"))
+
+    results = run_checks(
+        spark,
+        settings,
+        read_landed=lambda session, _: records(session, range(5)),
+        read_records=kafka,
+    )
+
+    assert all(result.passed for result in results)
+    assert reads.value == 5

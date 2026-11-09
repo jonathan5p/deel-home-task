@@ -22,8 +22,15 @@ def run_checks(
     read_records: RecordReader = read_kafka,
 ) -> list[CheckResult]:
     landed = read_landed(spark, settings.landing)
-    kafka = read_records(spark, settings.landing.kafka)
-    return reconcile(landed, kafka, last_offsets=settings.last_offsets)
+    # Kafka keeps receiving records while the checks run; one materialised snapshot keeps the
+    # partition bounds and the record comparison consistent with each other.
+    kafka = read_records(spark, settings.landing.kafka).localCheckpoint(eager=True)
+    return reconcile(
+        landed,
+        kafka,
+        topics=settings.landing.kafka.topics,
+        last_offsets=settings.last_offsets,
+    )
 
 
 def main() -> int:

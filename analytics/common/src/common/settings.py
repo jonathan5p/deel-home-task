@@ -30,7 +30,7 @@ def optional_positive_int(env: Mapping[str, str], name: str) -> int | None:
     value = env.get(name)
     if not value:
         return None
-    if not value.isdigit() or int(value) == 0:
+    if not value.isdecimal() or int(value) == 0:
         raise InvalidSettingError(name, value, "a positive integer")
     return int(value)
 

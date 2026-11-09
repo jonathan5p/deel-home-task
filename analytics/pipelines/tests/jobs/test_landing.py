@@ -7,36 +7,11 @@ pytest.importorskip("pyspark")
 
 from pyspark.sql import DataFrame, Row, SparkSession
 from pyspark.sql.functions import lit
-from pyspark.sql.types import (
-    BinaryType,
-    IntegerType,
-    LongType,
-    StringType,
-    StructField,
-    StructType,
-    TimestampType,
-)
 
-from pipelines.jobs.landing import (
-    KAFKA_RECORD_COLUMNS,
-    TopicReader,
-    landing_records,
-    read_topic,
-    run,
-)
+from pipelines.jobs.landing import TopicReader, landing_records, read_topic, run
+from pipelines.schemas import KAFKA_RECORD_SCHEMA
 from pipelines.settings import KafkaSettings, LandingSettings
 
-KAFKA_SCHEMA = StructType(
-    [
-        StructField("key", BinaryType()),
-        StructField("value", BinaryType()),
-        StructField("topic", StringType()),
-        StructField("partition", IntegerType()),
-        StructField("offset", LongType()),
-        StructField("timestamp", TimestampType()),
-        StructField("timestampType", IntegerType()),
-    ]
-)
 TOPICS = ("cdc.orders", "cdc.customers")
 
 
@@ -70,7 +45,7 @@ def landing_settings(tmp_path: Path) -> LandingSettings:
 def file_reader(source: Path) -> TopicReader:
     def read(spark: SparkSession, kafka: KafkaSettings, topic: str) -> DataFrame:
         return (
-            spark.readStream.schema(KAFKA_SCHEMA)
+            spark.readStream.schema(KAFKA_RECORD_SCHEMA)
             .option("recursiveFileLookup", "true")
             .parquet(str(source / topic))
         )
@@ -80,7 +55,7 @@ def file_reader(source: Path) -> TopicReader:
 
 def stage(spark: SparkSession, source: Path, rows: list[Row], batch: str) -> None:
     topic = rows[0].topic
-    spark.createDataFrame(rows, KAFKA_SCHEMA).write.parquet(str(source / topic / batch))
+    spark.createDataFrame(rows, KAFKA_RECORD_SCHEMA).write.parquet(str(source / topic / batch))
 
 
 def landed(spark: SparkSession, settings: LandingSettings, topic: str) -> list[Row]:
@@ -95,13 +70,13 @@ def run_until_caught_up(spark: SparkSession, settings: LandingSettings, source: 
 
 def test_landing_records_keep_exactly_the_kafka_record(spark: SparkSession) -> None:
     rows = kafka_rows("cdc.orders", range(3))
-    records = spark.createDataFrame(rows, KAFKA_SCHEMA).withColumn(
+    records = spark.createDataFrame(rows, KAFKA_RECORD_SCHEMA).withColumn(
         "headers", lit(None).cast("string")
     )
 
     result = landing_records(records)
 
-    assert tuple(result.columns) == KAFKA_RECORD_COLUMNS
+    assert result.schema == KAFKA_RECORD_SCHEMA
     assert result.collect() == rows
 
 
@@ -111,7 +86,7 @@ def test_read_topic_streams_the_kafka_record_schema(spark: SparkSession) -> None
     records = read_topic(spark, kafka, "topic-a")
 
     assert records.isStreaming
-    assert set(KAFKA_RECORD_COLUMNS) <= set(records.columns)
+    assert landing_records(records).schema == KAFKA_RECORD_SCHEMA
 
 
 def test_each_topic_lands_unchanged_in_its_own_folder(spark: SparkSession, tmp_path: Path) -> None:
