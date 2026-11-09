@@ -1,32 +1,14 @@
-import io
 import json
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from fastavro import parse_schema, writer
 
+from tests.infra.bronze_setup import BronzeRuns, run_bronze_scenario
+from tests.infra.landing_avro import landing_avro
 from tests.infra.stack import Stack
 
 LANDING_FIXTURE_ROOT = "test-fixtures/landing"
-LANDING_AVRO_SCHEMA = parse_schema(
-    {
-        "type": "record",
-        "name": "topLevelRecord",
-        "fields": [
-            {"name": "key", "type": ["bytes", "null"]},
-            {"name": "value", "type": ["bytes", "null"]},
-            {"name": "topic", "type": ["string", "null"]},
-            {"name": "partition", "type": ["int", "null"]},
-            {"name": "offset", "type": ["long", "null"]},
-            {
-                "name": "timestamp",
-                "type": [{"type": "long", "logicalType": "timestamp-micros"}, "null"],
-            },
-            {"name": "timestampType", "type": ["int", "null"]},
-        ],
-    }
-)
 
 
 @pytest.fixture(scope="session")
@@ -81,7 +63,10 @@ def landing_records(now: datetime) -> dict[str, list[dict[str, object]]]:
 def landing_fixture(stack: Stack) -> str:
     """Upload the neutral landing records as Avro files and return their landing root path."""
     for topic, records in landing_records(datetime.now(UTC)).items():
-        buffer = io.BytesIO()
-        writer(buffer, LANDING_AVRO_SCHEMA, records)
-        stack.put_object(f"{LANDING_FIXTURE_ROOT}/{topic}/part-00000.avro", buffer.getvalue())
+        stack.put_object(f"{LANDING_FIXTURE_ROOT}/{topic}/part-00000.avro", landing_avro(records))
     return LANDING_FIXTURE_ROOT
+
+
+@pytest.fixture(scope="module")
+def bronze_runs(stack: Stack) -> BronzeRuns:
+    return run_bronze_scenario(stack)

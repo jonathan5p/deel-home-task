@@ -91,8 +91,13 @@ class Stack:
         )
 
     def start_app(
-        self, app: str, *args: str, conf: Mapping[str, str] | None = None
+        self,
+        app: str,
+        *args: str,
+        conf: Mapping[str, str] | None = None,
+        env: Mapping[str, str] | None = None,
     ) -> subprocess.Popen[str]:
+        """Submit an app; `env` overrides the settings Compose passes to the driver container."""
         command = ["make", "--no-print-directory", "spark-submit", f"SPARK_APP={app}"]
         command.append("SPARK_UI_PORT=0")
         if args:
@@ -102,7 +107,7 @@ class Stack:
         process = subprocess.Popen(
             command,
             cwd=REPO_ROOT,
-            env=self.env,
+            env={**self.env, **(env or {})},
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
@@ -114,8 +119,14 @@ class Stack:
         output, _ = process.communicate(timeout=timeout)
         return process.returncode, output
 
-    def run_app(self, app: str, *args: str, timeout: float = 300) -> tuple[int, str]:
-        return self.finish(self.start_app(app, *args), timeout=timeout)
+    def run_app(
+        self,
+        app: str,
+        *args: str,
+        env: Mapping[str, str] | None = None,
+        timeout: float = 300,
+    ) -> tuple[int, str]:
+        return self.finish(self.start_app(app, *args, env=env), timeout=timeout)
 
     def run_sql_file(
         self,
