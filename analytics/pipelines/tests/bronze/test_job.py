@@ -7,13 +7,7 @@ pytest.importorskip("pyspark")
 from pyspark.errors import StreamingQueryException
 from pyspark.sql import SparkSession
 from pyspark.sql.streaming import StreamingQueryManager
-from pyspark.sql.types import (
-    DecimalType,
-    LongType,
-    StructField,
-    StructType,
-    TimestampType,
-)
+from pyspark.sql.types import TimestampType
 
 from analytics.pipelines.tests.bronze.job_setup import (
     BronzeSettingsFactory,
@@ -28,89 +22,23 @@ from analytics.pipelines.tests.bronze.job_setup import (
     record,
     run_until_caught_up,
     start,
-    stored_description,
     valid,
 )
 from analytics.pipelines.tests.bronze.parse_samples import ENTITY_IDS, landing_records, topic
-from pipelines.bronze.columns import (
-    CHANGE_OP,
-    FAILURE_REASON,
-    LANDING_FILE,
-    PUBLISHED_AT,
-    QUARANTINE_COLUMNS,
-    QUARANTINED_AT,
-    RAW_VALUE,
-    SOURCE_OFFSET,
-)
-from pipelines.bronze.descriptions import (
-    TableDescription,
-    UndescribedColumnError,
-    bronze_table_description,
-    quarantine_table_description,
-)
+from analytics.pipelines.tests.bronze.tables_setup import stored_description
+from pipelines.bronze.columns import QUARANTINE_COLUMNS, MetadataColumn, RawColumn
 from pipelines.bronze.entities import CUSTOMERS, ENTITIES, PRODUCTS, Entity, UnknownEntityError
 from pipelines.bronze.job import (
     BronzeStream,
     StreamsFailedError,
     await_queries,
-    column_definitions,
-    create_table,
     entity_streams,
     read_landing,
     run,
-    sql_string,
-    table_ddl,
     wants_available_now,
 )
 from pipelines.bronze.parse import FailureReason, parse_changes
-
-SCHEMA = StructType(
-    [
-        StructField("customer_id", LongType()),
-        StructField("unity_price", DecimalType(38, 10)),
-        StructField(PUBLISHED_AT, TimestampType()),
-    ]
-)
-DESCRIPTION = TableDescription(
-    comment="Customers",
-    columns={"customer_id": "Key", "unity_price": "Price", PUBLISHED_AT: "Published"},
-)
-
-
-def test_column_definitions_keep_the_names_and_spark_types_with_a_comment() -> None:
-    assert column_definitions(SCHEMA, DESCRIPTION.columns) == (
-        "`customer_id` bigint COMMENT 'Key', `unity_price` decimal(38,10) COMMENT 'Price',"
-        f" `{PUBLISHED_AT}` timestamp COMMENT 'Published'"
-    )
-
-
-def test_the_table_ddl_comments_the_table() -> None:
-    ddl = table_ddl("catalog.bronze.customers", SCHEMA, DESCRIPTION)
-
-    assert ddl.startswith("CREATE TABLE IF NOT EXISTS catalog.bronze.customers (`customer_id`")
-    assert f" USING iceberg PARTITIONED BY (days({PUBLISHED_AT})) COMMENT 'Customers' " in ddl
-
-
-@pytest.mark.parametrize(
-    ("text", "literal"),
-    [
-        ("plain", "'plain'"),
-        ("the customer's name", "'the customer\\'s name'"),
-        ("a \\ path", "'a \\\\ path'"),
-    ],
-)
-def test_sql_strings_escape_quotes_and_backslashes(text: str, literal: str) -> None:
-    assert sql_string(text) == literal
-
-
-@pytest.mark.parametrize("blank", ["", "  "])
-def test_a_table_with_an_undescribed_column_is_refused(blank: str) -> None:
-    description = DESCRIPTION._replace(columns={"customer_id": "Key", "unity_price": blank})
-
-    with pytest.raises(
-        UndescribedColumnError, match=rf"customers .*: unity_price, {PUBLISHED_AT}$"
-    ):
-        table_ddl("catalog.bronze.customers", SCHEMA, description)
+from pipelines.bronze.tables import bronze_table, described_schema, quarantine_table
 
 
 @pytest.mark.parametrize("entity", ENTITIES, ids=ENTITY_IDS)
@@ -122,8 +50,10 @@ def test_every_column_of_every_bronze_table_is_described(
     streams = entity_streams(spark, settings, topic(entity), no_landed_records)
 
     for stream in streams:
-        assert stream.description.undescribed(stream.rows.schema.fieldNames()) == []
-        assert stream.description.comment
+        schema = stream.table_schema()
+        assert all(field.metadata["comment"] for field in schema)
+        assert schema.fieldNames() == stream.rows.schema.fieldNames()
+        assert stream.definition.comment
 
 
 def test_a_stream_is_named_after_its_table_and_has_its_own_checkpoint(
@@ -132,9 +62,9 @@ def test_a_stream_is_named_after_its_table_and_has_its_own_checkpoint(
     settings = bronze_settings(topic(CUSTOMERS))
     rows = landing_records(spark)
 
-    description = quarantine_table_description(CUSTOMERS)
+    definition = quarantine_table(CUSTOMERS)
 
-    stream = BronzeStream.for_table(settings, "customers_quarantine", rows, description)
+    stream = BronzeStream.for_table(settings, "customers_quarantine", rows, definition)
 
     assert (stream.name, stream.table, stream.checkpoint) == (
         "bronze customers_quarantine",
@@ -142,7 +72,7 @@ def test_a_stream_is_named_after_its_table_and_has_its_own_checkpoint(
         f"{settings.lake.checkpoint_root}/bronze/customers_quarantine",
     )
     assert stream.rows is rows
-    assert stream.description is description
+    assert stream.definition is definition
 
 
 def test_each_entity_gets_a_bronze_and_a_quarantine_table(
@@ -161,17 +91,16 @@ def test_each_entity_gets_a_bronze_and_a_quarantine_table(
         "catalog.bronze.products_quarantine",
     }
     for entity in (CUSTOMERS, PRODUCTS):
+        table = f"catalog.bronze.{entity.name}"
         bronze = parse_changes(landing_records(spark), entity).bronze
-        assert fake_catalog.schemas[f"catalog.bronze.{entity.name}"] == bronze.schema
-        quarantine = fake_catalog.schemas[f"catalog.bronze.{entity.name}_quarantine"]
-        assert quarantine.fieldNames() == [*QUARANTINE_COLUMNS, QUARANTINED_AT]
-        assert fake_catalog.descriptions[f"catalog.bronze.{entity.name}"] == (
-            bronze_table_description(entity)
+        assert fake_catalog.schemas[table] == (
+            described_schema(table, bronze.schema, bronze_table(entity))
         )
-        assert fake_catalog.descriptions[f"catalog.bronze.{entity.name}_quarantine"] == (
-            quarantine_table_description(entity)
-        )
-    assert quarantine[QUARANTINED_AT].dataType == TimestampType()
+        assert fake_catalog.comments[table] == bronze_table(entity).comment
+        quarantine = fake_catalog.schemas[f"{table}_quarantine"]
+        assert quarantine.fieldNames() == [*QUARANTINE_COLUMNS, MetadataColumn.QUARANTINED_AT]
+        assert fake_catalog.comments[f"{table}_quarantine"] == quarantine_table(entity).comment
+    assert quarantine[MetadataColumn.QUARANTINED_AT].dataType == TimestampType()
 
 
 def test_valid_records_reach_bronze_and_invalid_ones_the_quarantine(
@@ -188,15 +117,21 @@ def test_valid_records_reach_bronze_and_invalid_ones_the_quarantine(
     run_until_caught_up(spark, settings, fake_catalog)
 
     (bronze,) = fake_catalog.rows(spark, "catalog.bronze.customers")
-    assert (bronze.customer_id, bronze[CHANGE_OP], bronze[SOURCE_OFFSET]) == (7, "create", 0)
-    assert LANDING_FILE not in bronze.asDict()
+    assert (
+        bronze.customer_id,
+        bronze[MetadataColumn.CHANGE_OP],
+        bronze[MetadataColumn.SOURCE_OFFSET],
+    ) == (7, "create", 0)
+    assert MetadataColumn.LANDING_FILE not in bronze.asDict()
     (quarantine,) = fake_catalog.rows(spark, "catalog.bronze.customers_quarantine")
-    assert quarantine[SOURCE_OFFSET] == 1
-    assert quarantine[FAILURE_REASON] == FailureReason.NOT_AN_ENVELOPE
-    assert quarantine[RAW_VALUE] == "not json"
-    assert quarantine[QUARANTINED_AT] is not None
-    assert local(quarantine[LANDING_FILE]).parent == local(settings.landing_path(topic(CUSTOMERS)))
-    assert local(quarantine[LANDING_FILE]).is_file()
+    assert quarantine[MetadataColumn.SOURCE_OFFSET] == 1
+    assert quarantine[MetadataColumn.FAILURE_REASON] == FailureReason.NOT_AN_ENVELOPE
+    assert quarantine[RawColumn.VALUE] == "not json"
+    assert quarantine[MetadataColumn.QUARANTINED_AT] is not None
+    assert local(quarantine[MetadataColumn.LANDING_FILE]).parent == local(
+        settings.landing_path(topic(CUSTOMERS))
+    )
+    assert local(quarantine[MetadataColumn.LANDING_FILE]).is_file()
 
 
 def test_each_stream_keeps_its_own_checkpoint(
@@ -246,7 +181,7 @@ def test_landing_records_are_read_with_their_committed_landing_file(
     committed = set(local(landing_folder).glob("*.avro")) - {stray}
     assert records.isStreaming
     assert landed.offset == 0
-    assert {local(landed[LANDING_FILE])} == committed
+    assert {local(landed[MetadataColumn.LANDING_FILE])} == committed
 
 
 def test_an_unknown_topic_fails_before_any_table_is_created(
@@ -298,14 +233,14 @@ def test_bronze_lands_in_day_partitioned_iceberg_tables_exactly_once(
 
     bronze = spark.table(f"{iceberg_catalog}.bronze.customers")
     quarantine = spark.table(f"{iceberg_catalog}.bronze.customers_quarantine")
-    assert offsets(bronze.orderBy(SOURCE_OFFSET).collect()) == [0, 2]
+    assert offsets(bronze.orderBy(MetadataColumn.SOURCE_OFFSET).collect()) == [0, 2]
     assert offsets(quarantine.collect()) == [1]
-    assert LANDING_FILE in quarantine.columns
-    assert LANDING_FILE not in bronze.columns
+    assert MetadataColumn.LANDING_FILE in quarantine.columns
+    assert MetadataColumn.LANDING_FILE not in bronze.columns
     for table in ("customers", "customers_quarantine"):
         ddl = spark.sql(f"SHOW CREATE TABLE {iceberg_catalog}.bronze.{table}").first()
         assert ddl is not None
-        assert f"PARTITIONED BY (days({PUBLISHED_AT}))" in ddl[0]
+        assert f"PARTITIONED BY (days({MetadataColumn.PUBLISHED_AT}))" in ddl[0]
 
 
 def test_iceberg_tables_store_the_table_comment_and_every_column_doc(
@@ -317,27 +252,15 @@ def test_iceberg_tables_store_the_table_comment_and_every_column_doc(
     await_queries(spark.streams, run(spark, settings, available_now=True), available_now=True)
 
     expected = {
-        f"{iceberg_catalog}.bronze.products": bronze_table_description(PRODUCTS),
-        f"{iceberg_catalog}.bronze.products_quarantine": quarantine_table_description(PRODUCTS),
+        f"{iceberg_catalog}.bronze.products": bronze_table(PRODUCTS),
+        f"{iceberg_catalog}.bronze.products_quarantine": quarantine_table(PRODUCTS),
     }
-    for table, description in expected.items():
+    for table, definition in expected.items():
         stored = stored_description(spark, table)
-        assert stored.comment == description.comment
-        assert stored.columns == {name: description.columns[name] for name in stored.columns}
-
-
-def test_quotes_and_backslashes_in_descriptions_reach_iceberg_verbatim(
-    spark: SparkSession, iceberg_catalog: str
-) -> None:
-    table = f"{iceberg_catalog}.bronze.customers"
-    description = TableDescription(
-        comment="It's a \\ table",
-        columns={name: f"The '{name}' column \\ doc" for name in SCHEMA.fieldNames()},
-    )
-
-    create_table(spark, table, SCHEMA, description)
-
-    assert stored_description(spark, table) == (description.comment, description.columns)
+        assert stored.comment == definition.comment
+        assert stored.columns == {
+            name: definition.columns[name].description for name in stored.columns
+        }
 
 
 def test_a_failed_stream_stops_the_running_ones_and_fails_the_job(

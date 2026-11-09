@@ -1,6 +1,6 @@
 import shutil
 from pathlib import Path
-from typing import NamedTuple, Protocol
+from typing import Protocol
 from urllib.parse import urlparse
 
 from pyspark.sql import DataFrame, Row, SparkSession
@@ -9,11 +9,7 @@ from pyspark.sql.streaming import DataStreamWriter, StreamingQuery
 from pyspark.sql.types import StructType
 
 from analytics.pipelines.tests.bronze.parse_samples import Json, change, landing, landing_records
-from pipelines.bronze.columns import (
-    RECORD_SOURCE,
-    SOURCE_OFFSET,
-)
-from pipelines.bronze.descriptions import TableDescription
+from pipelines.bronze.columns import MetadataColumn
 from pipelines.bronze.entities import Entity
 from pipelines.bronze.job import TableSink, await_queries, run
 from pipelines.schemas import KAFKA_RECORD_SCHEMA
@@ -72,13 +68,11 @@ class FakeCatalog:
     def __init__(self, root: Path) -> None:
         self.root = root
         self.schemas: dict[str, StructType] = {}
-        self.descriptions: dict[str, TableDescription] = {}
+        self.comments: dict[str, str] = {}
 
-    def create(
-        self, spark: SparkSession, table: str, schema: StructType, description: TableDescription
-    ) -> None:
+    def create(self, spark: SparkSession, table: str, schema: StructType, comment: str) -> None:
         self.schemas[table] = schema
-        self.descriptions[table] = description
+        self.comments[table] = comment
 
     def sink(self) -> TableSink:
         def append(writer: DataStreamWriter, table: str) -> StreamingQuery:
@@ -88,7 +82,10 @@ class FakeCatalog:
 
     def rows(self, spark: SparkSession, table: str) -> list[Row]:
         stored = spark.read.schema(self.schemas[table]).parquet(str(self.root / table))
-        return sorted(stored.collect(), key=lambda row: (row[RECORD_SOURCE], row[SOURCE_OFFSET]))
+        return sorted(
+            stored.collect(),
+            key=lambda row: (row[MetadataColumn.RECORD_SOURCE], row[MetadataColumn.SOURCE_OFFSET]),
+        )
 
 
 def run_until_caught_up(
@@ -99,7 +96,7 @@ def run_until_caught_up(
 
 
 def offsets(rows: list[Row]) -> list[int]:
-    return [row[SOURCE_OFFSET] for row in rows]
+    return [row[MetadataColumn.SOURCE_OFFSET] for row in rows]
 
 
 def numbers(spark: SparkSession, folder: Path, count: int) -> DataFrame:
@@ -131,17 +128,3 @@ def start(rows: DataFrame, name: str, tmp_path: Path, *, available_now: bool) ->
 def no_landed_records(spark: SparkSession, path: str) -> DataFrame:
     """A landing reader that finds nothing, for checks that only need the parsed schemas."""
     return landing_records(spark)
-
-
-class StoredDescription(NamedTuple):
-    comment: str | None
-    columns: dict[str, str | None]
-
-
-def stored_description(spark: SparkSession, table: str) -> StoredDescription:
-    """The table comment and column docs an Iceberg table carries in its metadata."""
-    # SHOW TBLPROPERTIES hides the reserved `comment` property; DESCRIBE lists it as a row.
-    details = spark.sql(f"DESCRIBE TABLE EXTENDED {table}").collect()
-    comment = next((row.data_type for row in details if row.col_name == "Comment"), None)
-    columns = {field.name: field.metadata.get("comment") for field in spark.table(table).schema}
-    return StoredDescription(comment=comment, columns=columns)

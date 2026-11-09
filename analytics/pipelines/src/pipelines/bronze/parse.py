@@ -6,24 +6,11 @@ from pyspark.sql import Column, DataFrame
 from pyspark.sql import functions as F
 from pyspark.sql.types import LongType, StringType, StructField, StructType
 
-from pipelines.bronze.columns import (
-    CAPTURED_AT,
-    CHANGE_OP,
-    CHANGED_AT,
-    COMMIT_SEQUENCE,
-    CONTENT_HASH,
-    FAILURE_REASON,
-    LANDING_FILE,
-    PUBLISHED_AT,
-    RAW_KEY,
-    RAW_VALUE,
-    RECORD_SOURCE,
-    SOURCE_OFFSET,
-    SOURCE_PARTITION,
-)
+from common.definitions import ColumnDefinition, LogicalType
+from pipelines.bronze.columns import MetadataColumn, RawColumn
 from pipelines.bronze.content_hash import content_hash
 from pipelines.bronze.decimals import decode_decimal, is_valid_decimal
-from pipelines.bronze.entities import Entity, SourceColumn, SourceType
+from pipelines.bronze.entities import Entity
 
 CHANGE_OPS: Mapping[str, str] = {
     "c": "create",
@@ -53,14 +40,14 @@ def _identity(value: Column) -> Column:
     return value
 
 
-LANDING_TO_BRONZE_TYPE_CONVERSIONS: Mapping[SourceType, Callable[[Column], Column]] = {
-    SourceType.BIGINT: _identity,
-    SourceType.INTEGER: _identity,
-    SourceType.VARCHAR: _identity,
-    SourceType.BOOLEAN: _identity,
-    SourceType.TIMESTAMP: F.timestamp_millis,
-    SourceType.DATE: F.date_from_unix_date,
-    SourceType.DECIMAL: decode_decimal,
+LANDING_TO_BRONZE_TYPE_CONVERSIONS: Mapping[LogicalType, Callable[[Column], Column]] = {
+    LogicalType.BIGINT: _identity,
+    LogicalType.INTEGER: _identity,
+    LogicalType.VARCHAR: _identity,
+    LogicalType.BOOLEAN: _identity,
+    LogicalType.TIMESTAMP: F.timestamp_millis,
+    LogicalType.DATE: F.date_from_unix_date,
+    LogicalType.DECIMAL: decode_decimal,
 }
 
 
@@ -99,7 +86,7 @@ def _failure_checks(entity: Entity) -> list[tuple[Column, str]]:
     checks += [
         (~is_valid_decimal(row[column.name]), f"{FailureReason.INVALID_DECIMAL}: {column.name}")
         for column in entity.columns
-        if column.type is SourceType.DECIMAL
+        if column.type is LogicalType.DECIMAL
     ]
     return checks
 
@@ -130,7 +117,7 @@ def _checked(records: DataFrame, entity: Entity) -> DataFrame:
         records.where(F.col("value").isNotNull())
         .withColumn(_ENVELOPE, envelope)
         .withColumn(_ROW, row)
-        .withColumn(FAILURE_REASON, failure_reason(entity))
+        .withColumn(MetadataColumn.FAILURE_REASON, failure_reason(entity))
     )
 
 
@@ -142,40 +129,42 @@ def _change_op(op: Column) -> Column:
     return result
 
 
-def _business_column(column: SourceColumn) -> Column:
+def _business_column(column: ColumnDefinition) -> Column:
     convert = LANDING_TO_BRONZE_TYPE_CONVERSIONS[column.type]
-    return convert(F.col(_ROW)[column.name]).alias(column.bronze_name)
+    return convert(F.col(_ROW)[column.name]).alias(column.lake_name)
 
 
 def _source_coordinates() -> list[Column]:
     return [
-        F.col("topic").alias(RECORD_SOURCE),
-        F.col("partition").alias(SOURCE_PARTITION),
-        F.col("offset").alias(SOURCE_OFFSET),
-        F.col("timestamp").alias(PUBLISHED_AT),
+        F.col("topic").alias(MetadataColumn.RECORD_SOURCE),
+        F.col("partition").alias(MetadataColumn.SOURCE_PARTITION),
+        F.col("offset").alias(MetadataColumn.SOURCE_OFFSET),
+        F.col("timestamp").alias(MetadataColumn.PUBLISHED_AT),
     ]
 
 
 def _bronze(checked: DataFrame, entity: Entity) -> DataFrame:
     envelope = F.col(_ENVELOPE)
-    typed = checked.where(F.col(FAILURE_REASON).isNull()).select(
+    typed = checked.where(F.col(MetadataColumn.FAILURE_REASON).isNull()).select(
         *(_business_column(column) for column in entity.columns),
         *_source_coordinates(),
-        _change_op(envelope["op"]).alias(CHANGE_OP),
-        envelope["source"]["lsn"].alias(COMMIT_SEQUENCE),
-        F.timestamp_millis(envelope["source"]["ts_ms"]).alias(CHANGED_AT),
-        F.timestamp_millis(envelope["ts_ms"]).alias(CAPTURED_AT),
+        _change_op(envelope["op"]).alias(MetadataColumn.CHANGE_OP),
+        envelope["source"]["lsn"].alias(MetadataColumn.COMMIT_SEQUENCE),
+        F.timestamp_millis(envelope["source"]["ts_ms"]).alias(MetadataColumn.CHANGED_AT),
+        F.timestamp_millis(envelope["ts_ms"]).alias(MetadataColumn.CAPTURED_AT),
     )
-    return typed.withColumn(CONTENT_HASH, content_hash(typed.schema, entity.content_columns))
+    return typed.withColumn(
+        MetadataColumn.CONTENT_HASH, content_hash(typed.schema, entity.content_columns)
+    )
 
 
 def _quarantine(checked: DataFrame) -> DataFrame:
-    return checked.where(F.col(FAILURE_REASON).isNotNull()).select(
+    return checked.where(F.col(MetadataColumn.FAILURE_REASON).isNotNull()).select(
         *_source_coordinates(),
-        F.col(LANDING_FILE),
-        F.col("key").cast(StringType()).alias(RAW_KEY),
-        F.col("value").cast(StringType()).alias(RAW_VALUE),
-        F.col(FAILURE_REASON),
+        F.col(MetadataColumn.LANDING_FILE),
+        F.col("key").cast(StringType()).alias(RawColumn.KEY),
+        F.col("value").cast(StringType()).alias(RawColumn.VALUE),
+        F.col(MetadataColumn.FAILURE_REASON),
     )
 
 

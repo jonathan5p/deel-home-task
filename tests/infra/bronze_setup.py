@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TypedDict
 
-from pipelines.bronze.columns import SOURCE_OFFSET
+from pipelines.bronze.columns import MetadataColumn
 from tests.infra.landing_avro import landing_avro
 from tests.infra.stack import Stack
 
@@ -174,7 +174,7 @@ class BronzeRuns:
 
 
 def offset(row: dict[str, str | None]) -> int:
-    return int(str(row[SOURCE_OFFSET]))
+    return int(str(row[MetadataColumn.SOURCE_OFFSET]))
 
 
 def submit(stack: Stack, app: str, *args: str) -> str:

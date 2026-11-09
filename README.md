@@ -347,6 +347,7 @@ uv.lock                     locked versions for the whole workspace (install wit
 analytics/
   common/                   project "common": code shared by the components
     src/common/settings.py  shared settings (analytics database) and environment helpers
+    src/common/definitions/ table and column definitions in TOML, and their loader
     tests/
   pipelines/                project "pipelines": the Spark pipelines, depends on common
     src/pipelines/
@@ -372,6 +373,31 @@ uv run pytest --no-cov    # run the tests that do not need Spark
 ```
 
 Outside Docker the Spark tests are skipped, so coverage is only meaningful with `make test`, which runs every test in the image.
+
+#### Table and column definitions
+
+Every layer names and describes its tables and columns from one set of TOML files in `analytics/common/src/common/definitions/`, shipped as package data of `common` (in the wheel and in the executors' `packages.zip`):
+
+```text
+columns.toml          columns the pipeline adds (_commit_sequence, _valid_from, ...) and the raw Kafka key and value
+audit.toml            the audit columns every source table ends with (updated_at, updated_by, created_at, created_by)
+tables.toml           per-entity table descriptions of each layer, with {entity} and {entity_description} placeholders
+entities/<name>.toml  one source table: name, key, description, audit_columns, then one [columns.<name>] table per column
+```
+
+```toml
+name = "order_items"
+key = "order_item_id"
+description = "Line items of orders: a product and the quantity ordered"
+audit_columns = true
+
+[columns.quanity]  # misspelled in the source
+renamed_to = "quantity"
+type = "integer"
+description = "Number of units ordered (source column quanity)"
+```
+
+Column order in an entity file is the source's column order; the audit columns follow when `audit_columns = true`. A column has a logical `type` (`bigint`, `integer`, `varchar`, `boolean`, `timestamp`, `date` or `decimal`) that each layer maps to its engine's types, a `description`, and optionally `not_null = true` (NOT NULL in the source) and `renamed_to` (its name in the lake). `common.definitions` loads them with `tomllib` into frozen dataclasses (`load_entities()`, `load_entity(name)`, `load_columns()`, `load_audit_columns()`, `load_table_templates()`) and refuses, naming the file, an unknown type or field, a missing or blank description, a key that is not a column, or two columns with the same lake name. Column names used in code stay typed (for example bronze's `MetadataColumn` enum), and a test checks each of them has a definition.
 
 #### Configuration
 
@@ -476,11 +502,11 @@ By default every landed offset is compared, from the first to the last landed of
 
 Bronze is a typed, faithful log of every change event: one row per event, no deduplication. The package `analytics/pipelines/src/pipelines/bronze/` holds:
 
-- `entities.py`: one `Entity` per source table, with its key, content and audit columns, a description of each column, its NOT NULL columns and the JSON row schema Debezium emits. `entity_for_topic` resolves the entity from the last segment of a `<prefix>.<schema>.<table>` topic and rejects unknown tables.
+- `entities.py`: one `Entity` per source table, built from its definition in `common/definitions/entities/`, with its key, content and audit columns, its NOT NULL columns and the JSON row schema Debezium emits. `entity_for_topic` resolves the entity from the last segment of a `<prefix>.<schema>.<table>` topic and rejects unknown tables.
 - `parse.py`: `parse_changes(records, entity)` turns landing records (the Kafka columns as landed, plus `_landing_file`, the path of the landing file each record was read from) into typed bronze rows and quarantine rows. It is a pure DataFrame transform, so it works on batch and streaming DataFrames.
-- `columns.py`: the names of the metadata and quarantine columns, each defined once and used everywhere through its constant.
-- `descriptions.py`: the descriptions of the metadata and quarantine columns, and the table comments.
-- `decimals.py` and `_content_hash.py`: the decimal decoding and the content hash below, in plain Spark SQL functions (no Python UDFs).
+- `columns.py`: the names of the metadata columns (`MetadataColumn`) and of the raw Kafka columns quarantine keeps (`RawColumn`), as string enums used everywhere instead of literals.
+- `tables.py`: the definitions of the bronze and quarantine tables (descriptions and logical types from the TOML definitions), and the creation of the Iceberg tables and the update of their descriptions.
+- `decimals.py` and `content_hash.py`: the decimal decoding and the content hash below, in plain Spark SQL functions (no Python UDFs).
 - `job.py`: the bronze streaming job, which runs `parse_changes` on every landing topic folder and appends the results to Iceberg tables.
 
 Run it with:
@@ -491,8 +517,9 @@ make spark-submit SPARK_APP=analytics/pipelines/src/pipelines/bronze/job.py SPAR
 
 - **Two streaming queries per topic** in `KAFKA_TOPICS`, for the entity the topic names: bronze rows are appended to `<ICEBERG_CATALOG>.bronze.<entity>` (checkpoint `<CHECKPOINT_ROOT>/bronze/<entity>/`), quarantine rows, plus `_quarantined_at` (the micro-batch's processing time), to `<ICEBERG_CATALOG>.bronze.<entity>_quarantine` (checkpoint `<CHECKPOINT_ROOT>/bronze/<entity>_quarantine/`). Locally that is `lake.bronze.customers`, `lake.bronze.customers_quarantine` and so on.
 - **Quarantine rows record their landing file:** the reader adds `_landing_file` from the file source's `_metadata.file_path` column, so each quarantined record points at the Avro file it was read from. Bronze rows do not carry it.
-- **Tables are created at start** when missing (`CREATE NAMESPACE` and `CREATE TABLE IF NOT EXISTS`), with the columns of the `parse_changes` output, partitioned by `days(_published_at)`. `write.distribution-mode` is `none`, because streaming runs without adaptive execution and a hash distribution would shuffle every micro-batch into `spark.sql.shuffle.partitions` tasks. An existing table is never altered.
-- **Every table and column is described:** the `CREATE TABLE` statement is generated with a table `COMMENT` and a `COMMENT` on every column, which Iceberg stores as the field's `doc`. Business columns take the `description` of their `SourceColumn` in `entities.py`; the metadata and quarantine columns and the table comments come from `descriptions.py`. The job refuses to create a table with a column that has no description, and a unit test checks every entity's tables, so a new column cannot be added undocumented. `DESCRIBE TABLE EXTENDED lake.bronze.customers` shows them.
+- **Tables are created at start** when missing (`spark.catalog.tableExists`): `CREATE NAMESPACE IF NOT EXISTS`, then `writeTo(...).create()` from an empty DataFrame with the schema of the `parse_changes` output, partitioned by `days(_published_at)`. `write.distribution-mode` is `none`, because streaming runs without adaptive execution and a hash distribution would shuffle every micro-batch into `spark.sql.shuffle.partitions` tasks. Every column is nullable. The schema of an existing table is never altered (see schema evolution below).
+- **Every table and column is described from the TOML definitions:** each field of the created schema carries its definition's description as its `comment`, which Iceberg stores as the field's `doc`, and the `comment` table property is the table description from `tables.toml`. Business columns take the description in their entity file (under their lake name, so `quantity`), the metadata and quarantine columns the one in `columns.toml`. The job refuses to start when a column has no definition or its Spark type differs from its definition's type (checked for every table before any is created), and a unit test checks every entity's tables. `DESCRIBE TABLE EXTENDED lake.bronze.customers` shows them.
+- **Descriptions are kept in sync:** on every start the job compares the stored table comment and column docs of each existing table with the definitions and runs `ALTER TABLE ... SET TBLPROPERTIES ('comment' = ...)` and `ALTER TABLE ... ALTER COLUMN ... COMMENT ...` only for those that differ, so an unchanged table gets no new metadata version. To change a description, edit the TOML file and restart the job.
 - **Only committed landing files are read:** the file stream source follows the landing sink's `_spark_metadata` log, so files left by a failed landing micro-batch are ignored. The landing topic folders must exist when the job starts, so start it after the landing job has written to them.
 - **Restart-safe, exactly once:** each query's checkpoint records the landing files it has processed, and Iceberg's streaming sink stores the query id and batch id in every snapshot and skips a batch it has already committed. Stopping and restarting the job neither skips nor duplicates rows: each `_source_partition` and `_source_offset` of a topic appears once.
 - **Micro-batches** run every `BRONZE_TRIGGER_SECONDS` until the job is stopped (Ctrl+C); `SPARK_APP_ARGS=--available-now` processes what has landed so far and then stops.
@@ -544,12 +571,12 @@ Kafka coordinates are lineage; the change identity is the entity key, `_commit_s
 
 | Source change | What happens | Automatic or manual |
 | --- | --- | --- |
-| Column added | Ignored until it is added to the `Entity`. Once added, older rows read it as null and keep their hash, because nulls are left out of `_content_hash`. | Adding it to the `Entity` is manual; old hashes stay valid automatically. |
+| Column added | Ignored until it is added to the entity's TOML file. Once added, older rows read it as null and keep their hash, because nulls are left out of `_content_hash`; the table needs the column too (`ALTER TABLE ... ADD COLUMN`, the job does not add it). | Adding it to the entity file and the table is manual; old hashes stay valid automatically. |
 | Column removed | The field is absent from new events, so the column becomes null and drops out of the hash: silver records one new version per key. A removed NOT NULL column quarantines its events until it is no longer declared NOT NULL. | Automatic for nullable columns; manual for NOT NULL ones. |
-| Column renamed | The old column becomes null and the new one is ignored until the `Entity` maps it (`renamed_to` keeps the bronze name stable). | Manual change to the `Entity`; the next event per key gets a new hash, so silver records one new version per key. |
-| Type changed | Values that no longer parse are quarantined (NOT NULL columns, decimals) or read as null. | Manual change to the `Entity` and its conversion; one new version per key, as for a rename. |
+| Column renamed | The old column becomes null and the new one is ignored until the entity file maps it (`renamed_to` keeps the bronze name stable). | Manual change to the entity file; the next event per key gets a new hash, so silver records one new version per key. |
+| Type changed | Values that no longer parse are quarantined (NOT NULL columns, decimals) or read as null. | Manual change to the entity file and its conversion; one new version per key, as for a rename. |
 
-**Tables created by an earlier version of the job.** `CREATE TABLE IF NOT EXISTS` leaves an existing table as it is, so column and table descriptions apply only to newly created tables. A local lake whose bronze tables predate them has no comments, and still has `change_position` where the job now writes `_commit_sequence`, so appends to it fail. Drop those tables (`DROP TABLE lake.bronze.<entity> PURGE` in `make spark-sql`) together with their checkpoints under `<CHECKPOINT_ROOT>/bronze/`, so the job recreates them and reprocesses the landing zone; `make clean CONFIRM=1` does the same by discarding all local data. A table that is kept can get its descriptions by hand with `ALTER TABLE ... ALTER COLUMN ... COMMENT '...'`.
+**Tables created by an earlier version of the job.** A local lake whose bronze tables predate the `_` prefix still has `change_position` and unprefixed metadata columns where the job now writes `_commit_sequence` and the other `_` columns, so appends to it fail. Drop those tables (`DROP TABLE lake.bronze.<entity> PURGE` in `make spark-sql`) together with their checkpoints under `<CHECKPOINT_ROOT>/bronze/`, so the job recreates them and reprocesses the landing zone; `make clean CONFIRM=1` does the same by discarding all local data. Tables with the current columns only need a restart of the job to get their descriptions.
 
 #### Tests, lint and format
 

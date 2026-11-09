@@ -1,0 +1,8 @@
+# Descriptions of the tables a layer keeps per entity. {entity} is replaced with the entity's
+# name and {entity_description} with its description.
+
+[bronze]
+description = "{entity_description}. Change log of source table {entity}: one typed row per Debezium change event (create, update, delete or snapshot), append-only and not deduplicated"
+
+[bronze_quarantine]
+description = "Change events of source table {entity} that failed bronze validation, kept raw with the reason"

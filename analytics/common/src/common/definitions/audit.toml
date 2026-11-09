@@ -1,0 +1,17 @@
+# Audit columns every source table ends with; an entity takes them with `audit_columns = true`.
+
+[updated_at]
+type = "timestamp"
+description = "Time the source row was last updated (source wall clock read as UTC)"
+
+[updated_by]
+type = "bigint"
+description = "Identifier of the user who last updated the source row"
+
+[created_at]
+type = "timestamp"
+description = "Time the source row was created (source wall clock read as UTC)"
+
+[created_by]
+type = "bigint"
+description = "Identifier of the user who created the source row"

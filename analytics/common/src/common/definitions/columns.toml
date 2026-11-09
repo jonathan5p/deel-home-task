@@ -1,0 +1,76 @@
+# Columns the pipeline adds to the lake tables, shared by every layer. Each key is the column
+# name; metadata columns start with an underscore.
+
+[_record_source]
+type = "varchar"
+description = "Kafka topic the change event was read from"
+
+[_source_partition]
+type = "integer"
+description = "Kafka partition of the record"
+
+[_source_offset]
+type = "bigint"
+description = "Offset of the record in its Kafka partition"
+
+[_published_at]
+type = "timestamp"
+description = "Kafka record timestamp (UTC); the table is partitioned by its day"
+
+[_change_op]
+type = "varchar"
+description = "Kind of change: create, update, delete or snapshot (Debezium op c, u, d or r)"
+
+[_commit_sequence]
+type = "bigint"
+description = "Position of the change in the source's commit log (Debezium source.lsn); increases in commit order"
+
+[_changed_at]
+type = "timestamp"
+description = "Time the change was committed in the source database (Debezium source.ts_ms)"
+
+[_captured_at]
+type = "timestamp"
+description = "Time Debezium processed the change (envelope ts_ms)"
+
+[_content_hash]
+type = "varchar"
+description = "Hex SHA-256 of the content columns (key and audit columns excluded); unchanged content keeps its hash"
+
+[_landing_file]
+type = "varchar"
+description = "Path of the landing Avro file the record was read from"
+
+[_failure_reason]
+type = "varchar"
+description = "First validation check the record failed"
+
+[_quarantined_at]
+type = "timestamp"
+description = "Processing time of the micro-batch that quarantined the record"
+
+[_valid_from]
+type = "timestamp"
+description = "Time this version of the row became current: the change's commit time in the source"
+
+[_valid_to]
+type = "timestamp"
+description = "Time the next version of the row replaced this one; null while this version is current"
+
+[_is_current]
+type = "boolean"
+description = "Whether this is the latest version of the row"
+
+[_is_deleted]
+type = "boolean"
+description = "Whether the row was deleted in the source; the version keeps its last known values"
+
+# Quarantine tables keep the raw Kafka key and value under Kafka's own names.
+
+[key]
+type = "varchar"
+description = "Raw Kafka record key, as text"
+
+[value]
+type = "varchar"
+description = "Raw Kafka record value, as text"

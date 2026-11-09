@@ -11,8 +11,9 @@ from pyspark.sql.types import (
     StructType,
 )
 
+from analytics.pipelines.tests.bronze.parse_samples import AUDIT_JSON
+from common.definitions import load_entity
 from pipelines.bronze.entities import (
-    AUDIT_COLUMNS,
     CUSTOMERS,
     ENTITIES,
     ORDER_ITEMS,
@@ -20,8 +21,6 @@ from pipelines.bronze.entities import (
     PRODUCTS,
     VARIABLE_SCALE_DECIMAL,
     Entity,
-    SourceColumn,
-    SourceType,
     UnknownEntityError,
     entity_for_topic,
 )
@@ -30,10 +29,15 @@ from pipelines.bronze.entities import (
 def test_there_is_one_entity_per_source_table() -> None:
     assert [entity.name for entity in ENTITIES] == [
         "customers",
-        "products",
-        "orders",
         "order_items",
+        "orders",
+        "products",
     ]
+
+
+def test_entities_are_built_from_their_definitions() -> None:
+    assert CUSTOMERS.definition == load_entity("customers")
+    assert CUSTOMERS.columns == CUSTOMERS.definition.all_columns
 
 
 @pytest.mark.parametrize(
@@ -50,7 +54,7 @@ def test_each_entity_splits_its_columns_into_key_content_and_audit(
 ) -> None:
     assert entity.key == key
     assert entity.content_columns == content
-    assert entity.audit_columns == AUDIT_COLUMNS
+    assert entity.audit_columns == tuple(AUDIT_JSON)
 
 
 @pytest.mark.parametrize(
@@ -93,15 +97,6 @@ def test_a_renamed_column_keeps_its_source_name_in_the_row_schema() -> None:
     assert "quantity" in ORDER_ITEMS.content_columns
 
 
-def test_an_entity_needs_its_key_among_its_columns() -> None:
-    with pytest.raises(ValueError, match="'id' is not a column of entity 'things'"):
-        Entity(
-            name="things",
-            key="id",
-            columns=(SourceColumn("name", SourceType.VARCHAR, "Name of the thing"),),
-        )
-
-
 @pytest.mark.parametrize("entity", ENTITIES, ids=lambda entity: entity.name)
 def test_the_entity_is_resolved_from_the_last_topic_segment(entity: Entity) -> None:
     assert entity_for_topic(f"test.operations.{entity.name}") is entity
@@ -111,7 +106,7 @@ def test_an_unknown_table_is_reported_with_the_known_ones() -> None:
     with pytest.raises(UnknownEntityError, match=r"'test\.operations\.invoices'") as error:
         entity_for_topic("test.operations.invoices")
 
-    assert "customers, products, orders, order_items" in str(error.value)
+    assert "customers, order_items, orders, products" in str(error.value)
 
 
 def test_the_entities_to_resolve_from_can_be_injected() -> None:
