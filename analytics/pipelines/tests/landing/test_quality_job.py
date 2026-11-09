@@ -8,7 +8,7 @@ from pyspark.sql import DataFrame, Row, SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import LongType
 
-from pipelines.jobs.landing_quality import run_checks
+from pipelines.landing.quality_job import run_checks
 from pipelines.schemas import KAFKA_RECORD_SCHEMA
 from pipelines.settings import KafkaSettings, LandingQualitySettings, LandingSettings
 

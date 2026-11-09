@@ -85,7 +85,7 @@ spark-history:
 	fi
 
 data-quality:
-	@$(MAKE) --no-print-directory spark-submit SPARK_APP=analytics/pipelines/src/pipelines/jobs/landing_quality.py \
+	@$(MAKE) --no-print-directory spark-submit SPARK_APP=analytics/pipelines/src/pipelines/landing/quality_job.py \
 		SPARK_UI_PORT=0 SPARK_CONF="spark.cores.max=2 $(SPARK_CONF)"
 
 pipeline:

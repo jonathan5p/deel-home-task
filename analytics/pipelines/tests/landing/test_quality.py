@@ -10,15 +10,15 @@ from pyspark.errors import SparkRuntimeException
 from pyspark.sql import DataFrame, Row, SparkSession
 from pyspark.sql import functions as F
 
-from pipelines.jobs.landing import start_landing
-from pipelines.quality.checks import CheckResult, all_passed
-from pipelines.quality.landing import (
+from pipelines.landing.job import start_landing
+from pipelines.landing.quality import (
     LandingSchemaError,
     read_folder,
     read_kafka,
     read_landing,
     reconcile,
 )
+from pipelines.quality.checks import CheckResult, all_passed
 from pipelines.schemas import KAFKA_RECORD_SCHEMA
 from pipelines.settings import KafkaSettings, LandingSettings
 

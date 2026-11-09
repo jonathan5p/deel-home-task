@@ -4,8 +4,8 @@ from collections.abc import Callable
 
 from pyspark.sql import DataFrame, SparkSession
 
+from pipelines.landing.quality import read_kafka, read_landing, reconcile
 from pipelines.quality.checks import CheckResult, all_passed, report_lines
-from pipelines.quality.landing import read_kafka, read_landing, reconcile
 from pipelines.settings import KafkaSettings, LandingQualitySettings, LandingSettings
 
 REPORT_PREFIX = "LANDING QUALITY"
