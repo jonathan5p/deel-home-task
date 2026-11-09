@@ -65,6 +65,16 @@ docker compose down -v analytics-db  # Removes only the analytics container and 
 make up
 ```
 
+#### Gold layer
+
+The `gold` schema holds a star schema built from the silver history tables: SCD2 customer and product dimensions, seeded date and order-status dimensions, append-only history facts for orders and order items (partitioned by month, 3 years kept), and current-state tables for orders and items that the four business questions read. The design, with the ERD, the grain of every table, the open and pending rules, versioning by `change_position`, and retention, is in [docs/architecture/gold-model.md](docs/architecture/gold-model.md).
+
+In short:
+
+- **Open order:** current status other than `COMPLETED`, not deleted. **Pending orders** are open orders, and **pending items** are the items of open orders.
+- **Current state only moves forward:** a version replaces the current row only if its `change_position` is higher, so late or replayed events never overwrite newer state; they are still kept as history.
+- **Top 3 questions include ties**, so more than three rows can come back.
+
 ### Data lake (SeaweedFS)
 
 [SeaweedFS](https://github.com/seaweedfs/seaweedfs) provides the S3-compatible object store for the data lake. It runs as a single `seaweedfs` container (`weed mini`), starts with `make up`, and keeps its data in the `seaweedfs-data` volume. It creates the `lake` bucket on startup if it does not exist, and the service reports healthy only once the bucket is there.
