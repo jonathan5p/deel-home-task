@@ -59,6 +59,7 @@ def test_run_checks_reconciles_the_injected_landing_and_kafka_records(spark: Spa
 # PySpark warns that a plain Python UDF's type hints do not name a pandas UDF type.
 @pytest.mark.filterwarnings("ignore:Cannot infer the eval type:UserWarning")
 def test_run_checks_reads_each_kafka_record_once(spark: SparkSession) -> None:
+    record_count = 5
     settings = LandingQualitySettings.from_env(ENV)
     reads = spark.sparkContext.accumulator(0)
 
@@ -69,14 +70,14 @@ def test_run_checks_reads_each_kafka_record_once(spark: SparkSession) -> None:
     read_offset = F.udf(count_read, LongType())
 
     def kafka(session: SparkSession, kafka_settings: KafkaSettings) -> DataFrame:
-        return records(session, range(5)).withColumn("offset", read_offset("offset"))
+        return records(session, range(record_count)).withColumn("offset", read_offset("offset"))
 
     results = run_checks(
         spark,
         settings,
-        read_landed=lambda session, _: records(session, range(5)),
+        read_landed=lambda session, _: records(session, range(record_count)),
         read_records=kafka,
     )
 
     assert all(result.passed for result in results)
-    assert reads.value == 5
+    assert reads.value == record_count
