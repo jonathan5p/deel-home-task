@@ -33,6 +33,7 @@ QUARANTINE_COLUMNS = (
     "source_partition",
     "source_offset",
     "published_at",
+    "landing_file",
     "key",
     "value",
     "failure_reason",
@@ -60,7 +61,7 @@ def _identity(value: Column) -> Column:
     return value
 
 
-TO_BRONZE: Mapping[SourceType, Callable[[Column], Column]] = {
+LANDING_TO_BRONZE_TYPE_CONVERSIONS: Mapping[SourceType, Callable[[Column], Column]] = {
     SourceType.BIGINT: _identity,
     SourceType.INTEGER: _identity,
     SourceType.VARCHAR: _identity,
@@ -150,7 +151,8 @@ def _change_op(op: Column) -> Column:
 
 
 def _business_column(column: SourceColumn) -> Column:
-    return TO_BRONZE[column.type](F.col(_ROW)[column.name]).alias(column.bronze_name)
+    convert = LANDING_TO_BRONZE_TYPE_CONVERSIONS[column.type]
+    return convert(F.col(_ROW)[column.name]).alias(column.bronze_name)
 
 
 def _source_coordinates() -> list[Column]:
@@ -178,6 +180,7 @@ def _bronze(checked: DataFrame, entity: Entity) -> DataFrame:
 def _quarantine(checked: DataFrame) -> DataFrame:
     return checked.where(F.col(_FAILURE).isNotNull()).select(
         *_source_coordinates(),
+        F.col("landing_file"),
         F.col("key").cast(StringType()).alias("key"),
         F.col("value").cast(StringType()).alias("value"),
         F.col(_FAILURE),
@@ -187,7 +190,9 @@ def _quarantine(checked: DataFrame) -> DataFrame:
 def parse_changes(records: DataFrame, entity: Entity) -> ParsedChanges:
     """Split landing records of one entity into typed bronze rows and quarantine rows.
 
-    Tombstones (null values) are dropped from both.
+    `records` holds the Kafka columns as landed plus `landing_file`, the path of the landing
+    file each record was read from; quarantine rows keep it so a failure can be traced back
+    to its file. Tombstones (null values) are dropped from both.
     """
     checked = _checked(records, entity)
     return ParsedChanges(bronze=_bronze(checked, entity), quarantine=_quarantine(checked))

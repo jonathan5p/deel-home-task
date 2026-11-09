@@ -23,8 +23,11 @@ def _signed_unscaled(raw: Column) -> Column:
 def decode_decimal(value: Column) -> Column:
     """Decode Debezium's variable-scale decimal `{"scale": n, "value": "<base64>"}`.
 
-    Returns a DECIMAL(38,10), or null when the value is null, undecodable, wider than
-    eight bytes or not exactly representable at the bronze scale.
+    The source column has no declared precision, so Debezium sends the unscaled value as
+    big-endian bytes plus a per-value scale. Returns a DECIMAL(38,10), or null when the value is
+    null, undecodable, wider than eight bytes or not exactly representable at the bronze scale:
+    `try_cast` to a decimal rounds silently, so a value that does not fit exactly is left for
+    quarantine instead of being rounded.
     """
     raw = F.try_to_binary(value["value"], F.lit("base64"))
     scale = value["scale"]

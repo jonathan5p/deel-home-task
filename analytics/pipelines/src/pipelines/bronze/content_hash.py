@@ -56,7 +56,9 @@ def content_hash(schema: StructType, columns: Iterable[str]) -> Column:
     """SHA-256 of `name:length:value` for each non-null column, sorted by name.
 
     Null columns are left out, so a new column that is still null changes no hash, while an
-    empty string still contributes `name:0:`.
+    empty string still contributes `name:0:`. A plain concatenation would be ambiguous:
+    `concat_ws` skips nulls, so values could shift between columns, and a value containing the
+    delimiter could run into the next one; the name and length prefixes rule out both.
     """
     parts = [_part(column, schema[column].dataType) for column in sorted(columns)]
     return F.sha2(F.concat_ws(DELIMITER, *parts), 256)

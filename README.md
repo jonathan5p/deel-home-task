@@ -434,7 +434,7 @@ By default every landed offset is compared, from the first to the last landed of
 Bronze is a typed, faithful log of every change event: one row per event, no deduplication. The package `analytics/pipelines/src/pipelines/bronze/` holds:
 
 - `entities.py`: one `Entity` per source table, with its key, content and audit columns, its NOT NULL columns and the JSON row schema Debezium emits. `entity_for_topic` resolves the entity from the last segment of a `<prefix>.<schema>.<table>` topic and rejects unknown tables.
-- `parse.py`: `parse_changes(records, entity)` turns landing records (the Kafka columns as landed) into typed bronze rows and quarantine rows. It is a pure DataFrame transform, so it works on batch and streaming DataFrames.
+- `parse.py`: `parse_changes(records, entity)` turns landing records (the Kafka columns as landed, plus `landing_file`, the path of the landing file each record was read from) into typed bronze rows and quarantine rows. It is a pure DataFrame transform, so it works on batch and streaming DataFrames.
 - `decimals.py` and `content_hash.py`: the decimal decoding and the content hash below, in plain Spark SQL functions (no Python UDFs).
 
 | Entity | Key | Content columns | Audit columns |
@@ -460,7 +460,7 @@ Bronze columns and where they come from:
 
 Kafka coordinates are lineage; the change identity is the entity key, `change_position` and `change_op`. `unity_price` is decoded from its base64 two's-complement bytes with `try_to_binary`, `hex` and `conv`, then scaled by its `scale`; values up to eight bytes (a signed long) that fit `decimal(38,10)` exactly are decoded without loss.
 
-**Tombstones** (records with a `null` value) are dropped: they only mark a key for log compaction, and landing keeps them. **Invalid records** do not fail the job; they become quarantine rows with `record_source`, `source_partition`, `source_offset`, `published_at`, the raw `key` and `value` as strings, and `failure_reason`, the first failed check:
+**Tombstones** (records with a `null` value) are dropped: they only mark a key for log compaction, and landing keeps them. **Invalid records** do not fail the job; they become quarantine rows with `record_source`, `source_partition`, `source_offset`, `published_at`, `landing_file` (the landing file the record was read from), the raw `key` and `value` as strings, and `failure_reason`, the first failed check:
 
 | `failure_reason` | When |
 | --- | --- |

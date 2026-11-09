@@ -1,5 +1,5 @@
 import hashlib
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from datetime import date, datetime
 from decimal import Decimal
 
@@ -7,49 +7,22 @@ import pytest
 
 pytest.importorskip("pyspark")
 
-from pyspark.sql import DataFrame, SparkSession
+from pyspark.sql import SparkSession
 
+from analytics.pipelines.tests.bronze.content_hash_samples import COLUMNS, content, frame, hashes
 from pipelines.bronze.content_hash import UnsupportedHashTypeError, content_hash
 
-SCHEMA = (
-    "name string, active boolean, units int, owner_id bigint, price decimal(38,10),"
-    " placed_on date, changed timestamp, note string"
-)
-COLUMNS = ("name", "active", "units", "owner_id", "price", "placed_on", "changed", "note")
-
-
-def content(**overrides: object) -> dict[str, object]:
-    values: dict[str, object] = {
-        "name": "ACME INC",
-        "active": True,
-        "units": 3,
-        "owner_id": 42,
-        "price": Decimal("1.53"),
-        "placed_on": date(2026, 11, 18),
-        "changed": datetime(2026, 11, 8, 14, 21, 0, 22000),
-        "note": None,
-    }
-    return values | overrides
-
-
-def frame(spark: SparkSession, *rows: dict[str, object]) -> DataFrame:
-    return spark.createDataFrame([tuple(row[name] for name in COLUMNS) for row in rows], SCHEMA)
-
-
-def hashes(records: DataFrame, columns: tuple[str, ...] = COLUMNS) -> list[str]:
-    hashed = records.select(content_hash(records.schema, columns).alias("hash"))
-    return [row.hash for row in hashed.collect()]
+TIME_ZONE = "spark.sql.session.timeZone"
 
 
 @pytest.fixture
-def bogota_session(spark: SparkSession) -> Iterator[SparkSession]:
-    previous = spark.conf.get("spark.sql.session.timeZone")
+def set_time_zone(spark: SparkSession) -> Iterator[Callable[[str], None]]:
+    previous = spark.conf.get(TIME_ZONE)
     assert previous is not None
-    spark.conf.set("spark.sql.session.timeZone", "America/Bogota")
     try:
-        yield spark
+        yield lambda zone: spark.conf.set(TIME_ZONE, zone)
     finally:
-        spark.conf.set("spark.sql.session.timeZone", previous)
+        spark.conf.set(TIME_ZONE, previous)
 
 
 def test_the_hash_covers_sorted_length_prefixed_non_null_values(spark: SparkSession) -> None:
@@ -124,13 +97,17 @@ def test_the_column_order_does_not_matter(spark: SparkSession) -> None:
     assert hashes(records) == hashes(records, tuple(reversed(COLUMNS)))
 
 
-def test_timestamps_hash_in_utc_whatever_the_session_time_zone(
-    bogota_session: SparkSession,
+@pytest.mark.parametrize("zone", ["-10:00", "-03:30", "UTC", "+05:30", "+05:45", "+14:00"])
+def test_timestamps_hash_as_in_utc_whatever_the_session_time_zone(
+    spark: SparkSession, set_time_zone: Callable[[str], None], zone: str
 ) -> None:
-    records = bogota_session.sql("select timestamp_millis(1794147660022) as changed")
-    expected = "changed:24:2026-11-08T14:21:00.022Z"
+    records = spark.sql("select timestamp_millis(1794147660022) as changed")
+    set_time_zone("UTC")
+    in_utc = hashes(records, ("changed",))
 
-    assert hashes(records, ("changed",)) == [hashlib.sha256(expected.encode()).hexdigest()]
+    set_time_zone(zone)
+
+    assert hashes(records, ("changed",)) == in_utc
 
 
 def test_unsupported_types_are_rejected(spark: SparkSession) -> None:

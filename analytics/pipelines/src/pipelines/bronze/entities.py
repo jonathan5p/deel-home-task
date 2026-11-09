@@ -155,7 +155,11 @@ ENTITIES = (CUSTOMERS, PRODUCTS, ORDERS, ORDER_ITEMS)
 
 
 def entity_for_topic(topic: str, entities: Iterable[Entity] = ENTITIES) -> Entity:
-    """Resolve the entity from the table name, the last segment of `<prefix>.<schema>.<table>`."""
+    """Resolve the entity from a Debezium topic name.
+
+    The last segment of the topic `<prefix>.<schema>.<table>` names the source table, which
+    identifies the entity.
+    """
     by_table = {entity.name: entity for entity in entities}
     table = topic.rsplit(".", 1)[-1]
     if table not in by_table:
