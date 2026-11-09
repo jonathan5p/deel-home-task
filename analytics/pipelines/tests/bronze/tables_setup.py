@@ -4,9 +4,9 @@ from typing import NamedTuple
 from pyspark.sql import SparkSession
 from pyspark.sql.types import DecimalType, LongType, StructField, StructType, TimestampType
 
-from common.definitions import ColumnDefinition, LogicalType
 from pipelines.bronze.columns import MetadataColumn
 from pipelines.bronze.tables import TableDefinition, table_comment
+from pipelines.schemas.definitions import ColumnDefinition, ColumnType
 
 TABLE = "catalog.bronze.customers"
 SCHEMA = StructType(
@@ -19,10 +19,10 @@ SCHEMA = StructType(
 DEFINITION = TableDefinition(
     comment="Customers",
     columns={
-        "customer_id": ColumnDefinition("customer_id", LogicalType.BIGINT, "Key"),
-        "unity_price": ColumnDefinition("unity_price", LogicalType.DECIMAL, "Price"),
+        "customer_id": ColumnDefinition("customer_id", ColumnType.LONG, "Key"),
+        "unity_price": ColumnDefinition("unity_price", ColumnType.DECIMAL, "Price"),
         MetadataColumn.PUBLISHED_AT: ColumnDefinition(
-            MetadataColumn.PUBLISHED_AT, LogicalType.TIMESTAMP, "Published"
+            MetadataColumn.PUBLISHED_AT, ColumnType.TIMESTAMP_MILLIS, "Published"
         ),
     },
 )

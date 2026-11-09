@@ -347,12 +347,11 @@ uv.lock                     locked versions for the whole workspace (install wit
 analytics/
   common/                   project "common": code shared by the components
     src/common/settings.py  shared settings (analytics database) and environment helpers
-    src/common/definitions/ table and column definitions in TOML, and their loader
     tests/
   pipelines/                project "pipelines": the Spark pipelines, depends on common
     src/pipelines/
       settings.py           pipeline settings (Kafka, lake, analytics database)
-      schemas.py            the landing record schema
+      schemas/              the Avro table and column schemas, their loader, and the landing record schema
       quality/checks.py     the data quality check framework
       landing/              landing layer: job.py (streaming job), quality.py and quality_job.py (data quality checks)
       bronze/               bronze layer: source entities, the transforms from landing records to bronze rows, and job.py (streaming job)
@@ -376,28 +375,53 @@ Outside Docker the Spark tests are skipped, so coverage is only meaningful with 
 
 #### Table and column definitions
 
-Every layer names and describes its tables and columns from one set of TOML files in `analytics/common/src/common/definitions/`, shipped as package data of `common` (in the wheel and in the executors' `packages.zip`):
+The pipelines name and describe their tables and columns from one set of [Avro schemas](https://avro.apache.org/docs/1.12.0/specification/) (`.avsc`, JSON) in `analytics/pipelines/src/pipelines/schemas/`, shipped as package data of `pipelines` (in the wheel and in the executors' `packages.zip`):
 
 ```text
-columns.toml          columns the pipeline adds (_commit_sequence, _valid_from, ...) and the raw Kafka key and value
-audit.toml            the audit columns every source table ends with (updated_at, updated_by, created_at, created_by)
-tables.toml           per-entity table descriptions of each layer, with {entity} and {entity_description} placeholders
-entities/<name>.toml  one source table: name, key, description, audit_columns, then one [columns.<name>] table per column
+audit.avsc               shared record: the audit columns every source table ends with (updated_at, updated_by, created_at, created_by)
+metadata.avsc            shared record: every column the pipeline adds (_record_source, ..., _content_hash, _landing_file, _failure_reason,
+                         _quarantined_at, _valid_from, _valid_to, _is_current, _is_deleted) and the raw Kafka key and value
+sources/<table>.avsc     one source table of the operations schema (customers, products, orders, order_items)
+tables/<table>.avsc      one table a layer keeps per entity (bronze, bronze_quarantine): its description and its metadata columns
+definitions.py           the loader
+landing.py               the Spark schema of the landed Kafka records (KAFKA_RECORD_SCHEMA)
 ```
 
-```toml
-name = "order_items"
-key = "order_item_id"
-description = "Line items of orders: a product and the quantity ordered"
-audit_columns = true
+A source table is one Avro record: `name` is the table, `namespace` the source schema, `doc` the table description, and each field carries its column's `name`, `type` and `doc` (its description), in the source's column order:
 
-[columns.quanity]  # misspelled in the source
-renamed_to = "quantity"
-type = "integer"
-description = "Number of units ordered (source column quanity)"
+```json
+{
+  "type": "record",
+  "name": "order_items",
+  "namespace": "operations",
+  "doc": "Line items of orders: a product and the quantity ordered",
+  "key": "order_item_id",
+  "include": ["audit"],
+  "fields": [
+    {
+      "name": "order_item_id",
+      "type": "long",
+      "doc": "Order item identifier, the source table's primary key"
+    },
+    {
+      "name": "quanity",
+      "type": ["null", "int"],
+      "default": null,
+      "doc": "Number of units ordered (source column quanity)",
+      "renamed_to": "quantity"
+    }
+  ]
+}
 ```
 
-Column order in an entity file is the source's column order; the audit columns follow when `audit_columns = true`. A column has a logical `type` (`bigint`, `integer`, `varchar`, `boolean`, `timestamp`, `date` or `decimal`) that each layer maps to its engine's types, a `description`, and optionally `not_null = true` (NOT NULL in the source) and `renamed_to` (its name in the lake). `common.definitions` loads them with `tomllib` into frozen dataclasses (`load_entities()`, `load_entity(name)`, `load_columns()`, `load_audit_columns()`, `load_table_templates()`) and refuses, naming the file, an unknown type or field, a missing or blank description, a key that is not a column, or two columns with the same lake name. Column names used in code stay typed (for example bronze's `MetadataColumn` enum), and a test checks each of them has a definition.
+- **Types** follow Avro: `long` (BIGINT), `int` (INTEGER), `string` (VARCHAR), `boolean`, `{"type": "long", "logicalType": "timestamp-millis"}` (TIMESTAMP(3)), `{"type": "int", "logicalType": "date"}` and `{"type": "bytes", "logicalType": "decimal", "precision": 38, "scale": 10}`. The source DECIMAL declares no precision, so it has no exact Avro equivalent: the schemas declare DECIMAL(38,10), the type bronze stores. Each layer maps these types to its engine's types (bronze: `tables.py`).
+- **Nullability** follows Avro too: a column that is NOT NULL in the source has the plain type; a nullable one is the union `["null", <type>]` with `"default": null`.
+- **Custom properties** carry what Avro has no attribute for (Avro allows extra attributes and ignores them): `key` on a source record names its primary key, `renamed_to` on a field gives its name in the lake when the source name is misspelled, `include` and `metadata` compose shared fields as below.
+- **Shared fields are defined once**, in the shared records `audit.avsc` and `metadata.avsc`. Avro has no include mechanism, so the loader composes them: `"include": ["audit"]` on a source record appends the fields of `audit.avsc` after the table's own fields, and a layer table (`tables/<table>.avsc`) lists the `metadata.avsc` columns it holds by name in `"metadata"`, with an empty `fields`. A layer table's `doc` is its description template: `{entity}` is replaced with the source table's name and `{entity_description}` with its description. The bronze table is the entity's columns (under their lake names) plus its metadata columns; the quarantine table is its metadata columns only.
+
+`pipelines.schemas.definitions` reads the files with the standard `json` module, so the Spark image needs no Avro library, into frozen dataclasses: `load_entities()` and `load_entity(name)` (`EntityDefinition`: `name`, `key`, `description`, `columns`, `included_columns`, `all_columns`), `load_shared_columns(name)`, `load_metadata_columns()` (by name) and `load_table_templates()` (`TableTemplate`: `name`, `description`, `metadata_columns`, `describe(entity)`). A column is a `ColumnDefinition` (`name`, `type`, `description`, `not_null`, `renamed_to`, `lake_name`). The loader refuses, naming the file, a type it does not support, an unknown property, a missing or blank `doc`, a nullable field without `"default": null`, a key that is not a field, an unknown include or metadata column, a record whose `name` differs from its file name, or two columns with the same lake name. A unit test also checks every file, and every source table with its included fields, with `fastavro.parse_schema` (a development dependency only).
+
+To add or change a column or a description, edit the schema file (a new field goes where the column is in the source; a new metadata column goes in `metadata.avsc` and in the `metadata` list of each table that holds it), then restart the job: the descriptions of existing tables are updated on start, while new columns also need `ALTER TABLE ... ADD COLUMN` (see schema evolution in the bronze layer). Column names used in code stay typed (bronze's `MetadataColumn` and `RawColumn` enums), and a test checks each of them is defined in `metadata.avsc` and that each bronze table schema lists exactly the metadata columns the job writes to it.
 
 #### Configuration
 
@@ -502,10 +526,10 @@ By default every landed offset is compared, from the first to the last landed of
 
 Bronze is a typed, faithful log of every change event: one row per event, no deduplication. The package `analytics/pipelines/src/pipelines/bronze/` holds:
 
-- `entities.py`: one `Entity` per source table, built from its definition in `common/definitions/entities/`, with its key, content and audit columns, its NOT NULL columns and the JSON row schema Debezium emits. `entity_for_topic` resolves the entity from the last segment of a `<prefix>.<schema>.<table>` topic and rejects unknown tables.
+- `entities.py`: one `Entity` per source table, built from its Avro schema in `pipelines/schemas/sources/`, with its key, content and audit columns, its NOT NULL columns and the JSON row schema Debezium emits. `entity_for_topic` resolves the entity from the last segment of a `<prefix>.<schema>.<table>` topic and rejects unknown tables.
 - `parse.py`: `parse_changes(records, entity)` turns landing records (the Kafka columns as landed, plus `_landing_file`, the path of the landing file each record was read from) into typed bronze rows and quarantine rows. It is a pure DataFrame transform, so it works on batch and streaming DataFrames.
 - `columns.py`: the names of the metadata columns (`MetadataColumn`) and of the raw Kafka columns quarantine keeps (`RawColumn`), as string enums used everywhere instead of literals.
-- `tables.py`: the definitions of the bronze and quarantine tables (descriptions and logical types from the TOML definitions), and the creation of the Iceberg tables and the update of their descriptions.
+- `tables.py`: the definitions of the bronze and quarantine tables (descriptions and types from the Avro schemas, mapped to Spark types), and the creation of the Iceberg tables and the update of their descriptions.
 - `decimals.py` and `content_hash.py`: the decimal decoding and the content hash below, in plain Spark SQL functions (no Python UDFs).
 - `job.py`: the bronze streaming job, which runs `parse_changes` on every landing topic folder and appends the results to Iceberg tables.
 
@@ -518,8 +542,8 @@ make spark-submit SPARK_APP=analytics/pipelines/src/pipelines/bronze/job.py SPAR
 - **Two streaming queries per topic** in `KAFKA_TOPICS`, for the entity the topic names: bronze rows are appended to `<ICEBERG_CATALOG>.bronze.<entity>` (checkpoint `<CHECKPOINT_ROOT>/bronze/<entity>/`), quarantine rows, plus `_quarantined_at` (the micro-batch's processing time), to `<ICEBERG_CATALOG>.bronze.<entity>_quarantine` (checkpoint `<CHECKPOINT_ROOT>/bronze/<entity>_quarantine/`). Locally that is `lake.bronze.customers`, `lake.bronze.customers_quarantine` and so on.
 - **Quarantine rows record their landing file:** the reader adds `_landing_file` from the file source's `_metadata.file_path` column, so each quarantined record points at the Avro file it was read from. Bronze rows do not carry it.
 - **Tables are created at start** when missing (`spark.catalog.tableExists`): `CREATE NAMESPACE IF NOT EXISTS`, then `writeTo(...).create()` from an empty DataFrame with the schema of the `parse_changes` output, partitioned by `days(_published_at)`. `write.distribution-mode` is `none`, because streaming runs without adaptive execution and a hash distribution would shuffle every micro-batch into `spark.sql.shuffle.partitions` tasks. Every column is nullable. The schema of an existing table is never altered (see schema evolution below).
-- **Every table and column is described from the TOML definitions:** each field of the created schema carries its definition's description as its `comment`, which Iceberg stores as the field's `doc`, and the `comment` table property is the table description from `tables.toml`. Business columns take the description in their entity file (under their lake name, so `quantity`), the metadata and quarantine columns the one in `columns.toml`. The job refuses to start when a column has no definition or its Spark type differs from its definition's type (checked for every table before any is created), and a unit test checks every entity's tables. `DESCRIBE TABLE EXTENDED lake.bronze.customers` shows them.
-- **Descriptions are kept in sync:** on every start the job compares the stored table comment and column docs of each existing table with the definitions and runs `ALTER TABLE ... SET TBLPROPERTIES ('comment' = ...)` and `ALTER TABLE ... ALTER COLUMN ... COMMENT ...` only for those that differ, so an unchanged table gets no new metadata version. To change a description, edit the TOML file and restart the job.
+- **Every table and column is described from the Avro schemas:** each field of the created schema carries its definition's description as its `comment`, which Iceberg stores as the field's `doc`, and the `comment` table property is the table description from `tables/bronze.avsc` or `tables/bronze_quarantine.avsc`. Business columns take the `doc` in their source schema (under their lake name, so `quantity`), the metadata and quarantine columns the one in `metadata.avsc`; each table holds only the metadata columns its table schema lists. The job refuses to start when a column has no definition or its Spark type differs from its definition's type (checked for every table before any is created), and a unit test checks every entity's tables. `DESCRIBE TABLE EXTENDED lake.bronze.customers` shows them.
+- **Descriptions are kept in sync:** on every start the job compares the stored table comment and column docs of each existing table with the definitions and runs `ALTER TABLE ... SET TBLPROPERTIES ('comment' = ...)` and `ALTER TABLE ... ALTER COLUMN ... COMMENT ...` only for those that differ, so an unchanged table gets no new metadata version. To change a description, edit the schema file and restart the job.
 - **Only committed landing files are read:** the file stream source follows the landing sink's `_spark_metadata` log, so files left by a failed landing micro-batch are ignored. The landing topic folders must exist when the job starts, so start it after the landing job has written to them.
 - **Restart-safe, exactly once:** each query's checkpoint records the landing files it has processed, and Iceberg's streaming sink stores the query id and batch id in every snapshot and skips a batch it has already committed. Stopping and restarting the job neither skips nor duplicates rows: each `_source_partition` and `_source_offset` of a topic appears once.
 - **Micro-batches** run every `BRONZE_TRIGGER_SECONDS` until the job is stopped (Ctrl+C); `SPARK_APP_ARGS=--available-now` processes what has landed so far and then stops.
@@ -571,10 +595,10 @@ Kafka coordinates are lineage; the change identity is the entity key, `_commit_s
 
 | Source change | What happens | Automatic or manual |
 | --- | --- | --- |
-| Column added | Ignored until it is added to the entity's TOML file. Once added, older rows read it as null and keep their hash, because nulls are left out of `_content_hash`; the table needs the column too (`ALTER TABLE ... ADD COLUMN`, the job does not add it). | Adding it to the entity file and the table is manual; old hashes stay valid automatically. |
+| Column added | Ignored until it is added to the source table's schema (`sources/<table>.avsc`). Once added, older rows read it as null and keep their hash, because nulls are left out of `_content_hash`; the table needs the column too (`ALTER TABLE ... ADD COLUMN`, the job does not add it). | Adding it to the schema and the table is manual; old hashes stay valid automatically. |
 | Column removed | The field is absent from new events, so the column becomes null and drops out of the hash: silver records one new version per key. A removed NOT NULL column quarantines its events until it is no longer declared NOT NULL. | Automatic for nullable columns; manual for NOT NULL ones. |
-| Column renamed | The old column becomes null and the new one is ignored until the entity file maps it (`renamed_to` keeps the bronze name stable). | Manual change to the entity file; the next event per key gets a new hash, so silver records one new version per key. |
-| Type changed | Values that no longer parse are quarantined (NOT NULL columns, decimals) or read as null. | Manual change to the entity file and its conversion; one new version per key, as for a rename. |
+| Column renamed | The old column becomes null and the new one is ignored until the source schema maps it (`renamed_to` keeps the bronze name stable). | Manual change to the source schema; the next event per key gets a new hash, so silver records one new version per key. |
+| Type changed | Values that no longer parse are quarantined (NOT NULL columns, decimals) or read as null. | Manual change to the source schema and its conversion; one new version per key, as for a rename. |
 
 **Tables created by an earlier version of the job.** A local lake whose bronze tables predate the `_` prefix still has `change_position` and unprefixed metadata columns where the job now writes `_commit_sequence` and the other `_` columns, so appends to it fail. Drop those tables (`DROP TABLE lake.bronze.<entity> PURGE` in `make spark-sql`) together with their checkpoints under `<CHECKPOINT_ROOT>/bronze/`, so the job recreates them and reprocesses the landing zone; `make clean CONFIRM=1` does the same by discarding all local data. Tables with the current columns only need a restart of the job to get their descriptions.
 

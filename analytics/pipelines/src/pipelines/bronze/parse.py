@@ -6,11 +6,11 @@ from pyspark.sql import Column, DataFrame
 from pyspark.sql import functions as F
 from pyspark.sql.types import LongType, StringType, StructField, StructType
 
-from common.definitions import ColumnDefinition, LogicalType
 from pipelines.bronze.columns import MetadataColumn, RawColumn
 from pipelines.bronze.content_hash import content_hash
 from pipelines.bronze.decimals import decode_decimal, is_valid_decimal
 from pipelines.bronze.entities import Entity
+from pipelines.schemas.definitions import ColumnDefinition, ColumnType
 
 CHANGE_OPS: Mapping[str, str] = {
     "c": "create",
@@ -40,14 +40,14 @@ def _identity(value: Column) -> Column:
     return value
 
 
-LANDING_TO_BRONZE_TYPE_CONVERSIONS: Mapping[LogicalType, Callable[[Column], Column]] = {
-    LogicalType.BIGINT: _identity,
-    LogicalType.INTEGER: _identity,
-    LogicalType.VARCHAR: _identity,
-    LogicalType.BOOLEAN: _identity,
-    LogicalType.TIMESTAMP: F.timestamp_millis,
-    LogicalType.DATE: F.date_from_unix_date,
-    LogicalType.DECIMAL: decode_decimal,
+LANDING_TO_BRONZE_TYPE_CONVERSIONS: Mapping[ColumnType, Callable[[Column], Column]] = {
+    ColumnType.LONG: _identity,
+    ColumnType.INT: _identity,
+    ColumnType.STRING: _identity,
+    ColumnType.BOOLEAN: _identity,
+    ColumnType.TIMESTAMP_MILLIS: F.timestamp_millis,
+    ColumnType.DATE: F.date_from_unix_date,
+    ColumnType.DECIMAL: decode_decimal,
 }
 
 
@@ -86,7 +86,7 @@ def _failure_checks(entity: Entity) -> list[tuple[Column, str]]:
     checks += [
         (~is_valid_decimal(row[column.name]), f"{FailureReason.INVALID_DECIMAL}: {column.name}")
         for column in entity.columns
-        if column.type is LogicalType.DECIMAL
+        if column.type is ColumnType.DECIMAL
     ]
     return checks
 

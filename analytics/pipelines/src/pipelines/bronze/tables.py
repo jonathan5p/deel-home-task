@@ -15,21 +15,20 @@ from pyspark.sql.types import (
     TimestampType,
 )
 
-from common.definitions import ColumnDefinition, LogicalType, load_columns, load_table_templates
 from pipelines.bronze.columns import MetadataColumn
 from pipelines.bronze.decimals import BRONZE_DECIMAL
 from pipelines.bronze.entities import Entity
+from pipelines.schemas.definitions import ColumnDefinition, ColumnType, load_table_templates
 
-SPARK_TYPES: Mapping[LogicalType, DataType] = {
-    LogicalType.BIGINT: LongType(),
-    LogicalType.INTEGER: IntegerType(),
-    LogicalType.VARCHAR: StringType(),
-    LogicalType.BOOLEAN: BooleanType(),
-    LogicalType.TIMESTAMP: TimestampType(),
-    LogicalType.DATE: DateType(),
-    LogicalType.DECIMAL: BRONZE_DECIMAL,
+SPARK_TYPES: Mapping[ColumnType, DataType] = {
+    ColumnType.LONG: LongType(),
+    ColumnType.INT: IntegerType(),
+    ColumnType.STRING: StringType(),
+    ColumnType.BOOLEAN: BooleanType(),
+    ColumnType.TIMESTAMP_MILLIS: TimestampType(),
+    ColumnType.DATE: DateType(),
+    ColumnType.DECIMAL: BRONZE_DECIMAL,
 }
-PIPELINE_COLUMNS = load_columns()
 TABLE_TEMPLATES = load_table_templates()
 COMMENT = "comment"
 
@@ -51,19 +50,25 @@ class ColumnTypeMismatchError(TypeError):
         )
 
 
+def _by_name(columns: Iterable[ColumnDefinition]) -> dict[str, ColumnDefinition]:
+    return {column.name: column for column in columns}
+
+
 def bronze_table(entity: Entity) -> TableDefinition:
-    """The pipeline columns plus the entity's columns, under their lake names."""
+    """The entity's columns, under their lake names, plus the bronze metadata columns."""
+    template = TABLE_TEMPLATES["bronze"]
     own = {column.lake_name: column for column in entity.columns}
     return TableDefinition(
-        comment=TABLE_TEMPLATES["bronze"].describe(entity.definition),
-        columns={**PIPELINE_COLUMNS, **own},
+        comment=template.describe(entity.definition),
+        columns={**own, **_by_name(template.metadata_columns)},
     )
 
 
 def quarantine_table(entity: Entity) -> TableDefinition:
+    template = TABLE_TEMPLATES["bronze_quarantine"]
     return TableDefinition(
-        comment=TABLE_TEMPLATES["bronze_quarantine"].describe(entity.definition),
-        columns=PIPELINE_COLUMNS,
+        comment=template.describe(entity.definition),
+        columns=_by_name(template.metadata_columns),
     )
 
 

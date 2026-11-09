@@ -1,0 +1,36 @@
+{
+  "type": "record",
+  "name": "products",
+  "namespace": "operations",
+  "doc": "Products that can be ordered, with their unit price",
+  "key": "product_id",
+  "include": ["audit"],
+  "fields": [
+    {
+      "name": "product_id",
+      "type": "long",
+      "doc": "Product identifier, the source table's primary key"
+    },
+    {
+      "name": "product_name",
+      "type": "string",
+      "doc": "Name of the product"
+    },
+    {
+      "name": "barcode",
+      "type": "string",
+      "doc": "Barcode of the product"
+    },
+    {
+      "name": "unity_price",
+      "type": {"type": "bytes", "logicalType": "decimal", "precision": 38, "scale": 10},
+      "doc": "Unit price of the product, decoded from Debezium's variable-scale decimal"
+    },
+    {
+      "name": "is_active",
+      "type": ["null", "boolean"],
+      "default": null,
+      "doc": "Whether the product is active"
+    }
+  ]
+}

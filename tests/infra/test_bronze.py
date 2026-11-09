@@ -1,7 +1,7 @@
 import pytest
 
-from common.definitions import load_columns, load_entity
 from pipelines.bronze.columns import MetadataColumn, RawColumn
+from pipelines.schemas.definitions import load_entity, load_metadata_columns
 from tests.infra.bronze_setup import (
     AUDIT_BRONZE,
     BRONZE_ROWS,
@@ -143,5 +143,5 @@ def test_every_bronze_table_and_column_is_described(stack: Stack, bronze_runs: B
     (quanity,) = (c for c in load_entity("order_items").columns if c.name == "quanity")
     assert order_items["quantity"] == quanity.description
     assert order_items[MetadataColumn.COMMIT_SEQUENCE] == (
-        load_columns()[MetadataColumn.COMMIT_SEQUENCE].description
+        load_metadata_columns()[MetadataColumn.COMMIT_SEQUENCE].description
     )

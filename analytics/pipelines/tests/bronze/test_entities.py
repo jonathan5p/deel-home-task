@@ -12,7 +12,6 @@ from pyspark.sql.types import (
 )
 
 from analytics.pipelines.tests.bronze.parse_samples import AUDIT_JSON
-from common.definitions import load_entity
 from pipelines.bronze.entities import (
     CUSTOMERS,
     ENTITIES,
@@ -24,6 +23,7 @@ from pipelines.bronze.entities import (
     UnknownEntityError,
     entity_for_topic,
 )
+from pipelines.schemas.definitions import load_entity
 
 
 def test_there_is_one_entity_per_source_table() -> None:

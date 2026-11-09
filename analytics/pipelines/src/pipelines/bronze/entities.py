@@ -11,20 +11,25 @@ from pyspark.sql.types import (
     StructType,
 )
 
-from common.definitions import ColumnDefinition, EntityDefinition, LogicalType, load_entities
+from pipelines.schemas.definitions import (
+    ColumnDefinition,
+    ColumnType,
+    EntityDefinition,
+    load_entities,
+)
 
 VARIABLE_SCALE_DECIMAL = StructType(
     [StructField("scale", IntegerType()), StructField("value", StringType())]
 )
 
-JSON_TYPES: Mapping[LogicalType, DataType] = {
-    LogicalType.BIGINT: LongType(),
-    LogicalType.INTEGER: IntegerType(),
-    LogicalType.VARCHAR: StringType(),
-    LogicalType.BOOLEAN: BooleanType(),
-    LogicalType.TIMESTAMP: LongType(),
-    LogicalType.DATE: IntegerType(),
-    LogicalType.DECIMAL: VARIABLE_SCALE_DECIMAL,
+JSON_TYPES: Mapping[ColumnType, DataType] = {
+    ColumnType.LONG: LongType(),
+    ColumnType.INT: IntegerType(),
+    ColumnType.STRING: StringType(),
+    ColumnType.BOOLEAN: BooleanType(),
+    ColumnType.TIMESTAMP_MILLIS: LongType(),
+    ColumnType.DATE: IntegerType(),
+    ColumnType.DECIMAL: VARIABLE_SCALE_DECIMAL,
 }
 
 
@@ -55,7 +60,8 @@ class Entity:
 
     @property
     def audit_columns(self) -> tuple[str, ...]:
-        return tuple(column.lake_name for column in self.definition.audit_columns)
+        """Lake names of the shared columns the source table includes (`audit.avsc`)."""
+        return tuple(column.lake_name for column in self.definition.included_columns)
 
     @property
     def content_columns(self) -> tuple[str, ...]:
