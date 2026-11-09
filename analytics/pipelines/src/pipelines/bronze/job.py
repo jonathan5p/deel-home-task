@@ -29,7 +29,8 @@ class BronzeStream(NamedTuple):
 def read_landing(spark: SparkSession, path: str) -> DataFrame:
     # The file source follows the landing file sink's _spark_metadata log, so files left behind
     # by failed landing micro-batches are never read.
-    return spark.readStream.format("avro").schema(KAFKA_RECORD_SCHEMA).load(path)
+    records = spark.readStream.format("avro").schema(KAFKA_RECORD_SCHEMA).load(path)
+    return records.select("*", F.col("_metadata.file_path").alias("landing_file"))
 
 
 def column_definitions(schema: StructType) -> str:

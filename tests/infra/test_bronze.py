@@ -256,6 +256,21 @@ def test_invalid_records_are_quarantined_while_valid_ones_flow(runs: BronzeRuns)
         assert offsets(runs.first[f"lake.bronze.{entity}"]) == [0, 1]
 
 
+def test_quarantine_rows_record_the_landing_file_they_were_read_from(
+    stack: Stack, runs: BronzeRuns
+) -> None:
+    for entity in FAILURE_REASONS:
+        folder = f"{LAKE_KEY}/landing/{TOPICS[entity]}/"
+        (row,) = runs.first[f"lake.bronze.{entity}_quarantine"]
+        landing_file = str(row["landing_file"])
+
+        assert landing_file.startswith(f"s3a://lake/{folder}part-")
+        assert landing_file.endswith(".avro")
+        assert landing_file.removeprefix(f"s3a://lake/{folder}") in stack.lake_entries(folder)
+    for entity in ENTITIES:
+        assert all("landing_file" not in row for row in runs.first[f"lake.bronze.{entity}"])
+
+
 def test_tombstones_reach_neither_table(runs: BronzeRuns) -> None:
     assert 2 not in offsets(runs.first["lake.bronze.orders"])
     assert runs.first["lake.bronze.orders_quarantine"] == []
