@@ -50,26 +50,22 @@ class ColumnTypeMismatchError(TypeError):
         )
 
 
-def _by_name(columns: Iterable[ColumnDefinition]) -> dict[str, ColumnDefinition]:
-    return {column.name: column for column in columns}
+def _table(template_name: str, entity: Entity) -> TableDefinition:
+    """The template's description and columns for the entity, by lake name."""
+    template = TABLE_TEMPLATES[template_name]
+    columns = template.columns_for(entity.definition)
+    return TableDefinition(
+        comment=template.describe(entity.definition),
+        columns={column.lake_name: column for column in columns},
+    )
 
 
 def bronze_table(entity: Entity) -> TableDefinition:
-    """The entity's columns, under their lake names, plus the bronze metadata columns."""
-    template = TABLE_TEMPLATES["bronze"]
-    own = {column.lake_name: column for column in entity.columns}
-    return TableDefinition(
-        comment=template.describe(entity.definition),
-        columns={**own, **_by_name(template.metadata_columns)},
-    )
+    return _table("bronze", entity)
 
 
 def quarantine_table(entity: Entity) -> TableDefinition:
-    template = TABLE_TEMPLATES["bronze_quarantine"]
-    return TableDefinition(
-        comment=template.describe(entity.definition),
-        columns=_by_name(template.metadata_columns),
-    )
+    return _table("bronze_quarantine", entity)
 
 
 def described_schema(table: str, schema: StructType, definition: TableDefinition) -> StructType:

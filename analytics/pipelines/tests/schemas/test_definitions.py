@@ -7,21 +7,24 @@ from fastavro import parse_schema
 from analytics.pipelines.tests.schemas.definitions_setup import (
     AUDIT_COLUMNS,
     DELETE,
+    SILVER,
     Location,
     SchemasTree,
+    column_definitions,
+    edited,
     schema_files,
 )
 from pipelines.schemas.definitions import (
     AVRO_TYPES,
     SCHEMAS,
     ColumnDefinition,
+    ColumnGroup,
     ColumnType,
     DefinitionError,
     EntityDefinition,
     TableTemplate,
     load_entities,
     load_entity,
-    load_metadata_columns,
     load_shared_columns,
     load_table_templates,
 )
@@ -34,13 +37,12 @@ def test_the_schemas_folder_holds_the_shared_sources_and_tables_schemas() -> Non
 
     assert [str(file.relative_to(root)) for file in SHIPPED] == [
         "audit.avsc",
-        "metadata.avsc",
         "sources/customers.avsc",
         "sources/order_items.avsc",
         "sources/orders.avsc",
         "sources/products.avsc",
-        "tables/bronze.avsc",
-        "tables/bronze_quarantine.avsc",
+        "tables/bronze_quarantine_template.avsc",
+        "tables/bronze_template.avsc",
     ]
 
 
@@ -145,10 +147,10 @@ def test_the_audit_columns_are_shared_by_every_entity() -> None:
     assert all(entity.included_columns == audit for entity in load_entities())
 
 
-def test_metadata_columns_are_described_by_name() -> None:
-    columns = load_metadata_columns()
+def test_a_template_defines_its_own_columns_in_its_fields() -> None:
+    fields = {column.name: column for column in load_table_templates()["bronze"].fields}
 
-    assert columns["_commit_sequence"] == ColumnDefinition(
+    assert fields["_commit_sequence"] == ColumnDefinition(
         name="_commit_sequence",
         type=ColumnType.LONG,
         description=(
@@ -157,11 +159,32 @@ def test_metadata_columns_are_described_by_name() -> None:
         ),
         not_null=True,
     )
-    assert {"_valid_from", "_valid_to", "_is_current", "_is_deleted", "key", "value"} <= set(
-        columns
-    )
-    assert columns["_is_current"].type is ColumnType.BOOLEAN
-    assert columns["_valid_to"].not_null is False
+    assert fields["_published_at"].type is ColumnType.TIMESTAMP_MILLIS
+
+
+def test_a_column_defined_in_several_schemas_is_defined_the_same_in_each() -> None:
+    definitions = column_definitions(Path(str(SCHEMAS)))
+
+    differing = {name: files for name, files in definitions.items() if len(files) > 1}
+
+    assert differing == {}
+    assert list(definitions["_record_source"].values()) == [
+        ["tables/bronze_quarantine_template.avsc", "tables/bronze_template.avsc"]
+    ]
+
+
+def test_differing_definitions_of_a_column_are_found_in_any_folder(schemas: SchemasTree) -> None:
+    schemas.write_silver(("fields", 1, "doc"), "Something else")
+    (schemas.root / "gold").mkdir()
+    schemas.write("gold/facts.avsc", edited(SILVER, ("fields", 1, "type"), "long"))
+
+    differing = column_definitions(schemas.root)["_is_current"]
+
+    assert sorted(file for files in differing.values() for file in files) == [
+        "gold/facts.avsc",
+        "tables/silver_template.avsc",
+    ]
+    assert len(differing) == 2
 
 
 def test_table_templates_describe_the_tables_of_an_entity() -> None:
@@ -171,7 +194,54 @@ def test_table_templates_describe_the_tables_of_an_entity() -> None:
     assert set(templates) == {"bronze", "bronze_quarantine"}
     assert templates["bronze"].describe(orders).startswith(f"{orders.description}. Change log")
     assert "source table orders" in templates["bronze_quarantine"].describe(orders)
-    assert templates["bronze"].metadata_columns[0] == load_metadata_columns()["_record_source"]
+
+
+def test_a_bronze_table_is_the_source_then_the_audit_then_the_metadata_columns() -> None:
+    bronze = load_table_templates()["bronze"]
+    order_items = load_entity("order_items")
+
+    columns = bronze.columns_for(order_items)
+
+    assert columns[: len(order_items.columns)] == order_items.columns
+    assert columns[len(order_items.columns) :][: len(AUDIT_COLUMNS)] == (
+        order_items.included_columns
+    )
+    assert columns[-len(bronze.fields) :] == bronze.fields
+    assert [column.lake_name for column in columns][:5] == [
+        "order_item_id",
+        "order_id",
+        "product_id",
+        "quantity",
+        "updated_at",
+    ]
+
+
+def test_a_quarantine_table_holds_its_own_fields_only() -> None:
+    quarantine = load_table_templates()["bronze_quarantine"]
+
+    columns = quarantine.columns_for(load_entity("orders"))
+
+    assert quarantine.include == ()
+    assert columns == quarantine.fields
+    assert [column.name for column in columns][-3:] == [
+        "value",
+        "_failure_reason",
+        "_quarantined_at",
+    ]
+
+
+def test_a_template_names_the_table_of_each_entity_in_its_layer() -> None:
+    templates = load_table_templates()
+    orders = load_entity("orders")
+
+    assert (templates["bronze"].layer, templates["bronze"].table_name(orders)) == (
+        "bronze",
+        "orders",
+    )
+    assert (
+        templates["bronze_quarantine"].layer,
+        templates["bronze_quarantine"].table_name(orders),
+    ) == ("bronze", "orders_quarantine")
 
 
 def test_a_template_fills_in_the_entity_name_and_description() -> None:
@@ -179,6 +249,19 @@ def test_a_template_fills_in_the_entity_name_and_description() -> None:
     entity = EntityDefinition(name="things", key="id", description="Things", columns=())
 
     assert template.describe(entity) == "things: Things"
+
+
+def test_a_shared_group_is_empty_for_an_entity_that_does_not_include_it() -> None:
+    audit = load_shared_columns("audit")
+    status = ColumnDefinition("status", ColumnType.STRING, "Status")
+    entity = EntityDefinition(name="things", key="status", description="Things", columns=(status,))
+    template = TableTemplate(
+        name="silver",
+        description="{entity}",
+        include=(ColumnGroup("source"), ColumnGroup("audit", audit)),
+    )
+
+    assert template.columns_for(entity) == (status,)
 
 
 def test_schemas_can_be_loaded_from_another_folder(schemas: SchemasTree) -> None:
@@ -195,11 +278,12 @@ def test_schemas_can_be_loaded_from_another_folder(schemas: SchemasTree) -> None
     ]
     assert "things" in [entity.name for entity in load_entities(schemas.root)]
     assert silver.describe(things) == "Versions of things: Things"
-    assert [column.name for column in silver.metadata_columns] == [
-        "_valid_from",
+    assert [column.lake_name for column in silver.columns_for(things)] == [
+        "thing_id",
+        "thing_name",
+        *AUDIT_COLUMNS,
         "_valid_to",
         "_is_current",
-        "_is_deleted",
     ]
 
 
@@ -294,25 +378,48 @@ def test_a_broken_shared_schema_is_refused(schemas: SchemasTree) -> None:
 @pytest.mark.parametrize(
     ("path", "value", "problem"),
     [
-        (("doc",), "{entity.name}", "unknown placeholders of record silver: entity.name"),
-        (("doc",), "{table}", "unknown placeholders of record silver: table"),
-        (("metadata",), "_valid_from", "metadata of record silver must be a list of names"),
-        (("metadata",), ["_nope"], "metadata of record silver not in metadata.avsc: _nope"),
-        (("metadata",), ["_is_current", "_is_current"], "two metadata columns are named _is_"),
-        (("key",), "id", "unknown properties of record silver: key"),
-        (
-            ("fields",),
-            [{"name": "x", "type": "long", "doc": "X"}],
-            "record silver names its metadata columns in metadata, not fields",
-        ),
+        (("doc",), "{entity.name}", "unknown placeholders of record silver_template: entity.name"),
+        (("doc",), "{table}", "unknown placeholders of record silver_template: table"),
+        (("include",), "source", "include of record silver_template must be a list of names"),
+        (("include",), ["things"], "unknown include of record silver_template: things; use source"),
+        (("include",), ["source", "source"], "two includes are named source"),
+        (("columns",), ["source"], "unknown properties of record silver_template: columns"),
+        (("key",), "id", "unknown properties of record silver_template: key"),
+        (("fields", 0, "renamed_to"), "x", "unknown properties of field _valid_to: renamed_to"),
+        (("fields", 0, "default"), DELETE, 'nullable field _valid_to needs "default": null'),
+        (("fields", 1, "name"), "_valid_to", "two fields are named _valid_to"),
     ],
 )
-def test_a_broken_table_schema_is_refused(
+def test_a_broken_table_template_is_refused(
     schemas: SchemasTree, path: Location, value: object, problem: str
 ) -> None:
     schemas.write_silver(path, value)
 
-    with pytest.raises(DefinitionError, match=r"silver\.avsc: ") as error:
+    with pytest.raises(DefinitionError, match=r"silver_template\.avsc: ") as error:
         load_table_templates(schemas.root)
 
     assert problem in str(error.value)
+
+
+def test_a_table_template_without_columns_is_refused(schemas: SchemasTree) -> None:
+    schemas.write("tables/silver_template.avsc", {**SILVER, "include": [], "fields": []})
+
+    with pytest.raises(DefinitionError, match=r"record silver_template has no columns"):
+        load_table_templates(schemas.root)
+
+
+def test_a_table_template_may_include_no_groups(schemas: SchemasTree) -> None:
+    schemas.write_silver(("include",), DELETE)
+
+    silver = load_table_templates(schemas.root)["silver"]
+
+    assert silver.columns_for(load_entity("orders")) == silver.fields
+
+
+def test_a_table_template_must_be_named_as_a_template(schemas: SchemasTree) -> None:
+    schemas.write("tables/silver.avsc", {**SILVER, "name": "silver"})
+
+    with pytest.raises(
+        DefinitionError, match=r"silver\.avsc: record silver must be named <table>_te"
+    ):
+        load_table_templates(schemas.root)

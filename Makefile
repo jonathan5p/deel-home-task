@@ -29,13 +29,14 @@ DRIVER_CONF = --master "$$SPARK_MASTER_URL" \
 # APP_BUILD= reuses an already built app image, as CI does after building it with a layer cache.
 CHECKS_PROJECT ?= deel-checks-$(shell basename "$(CURDIR)" | LC_ALL=C tr 'A-Z' 'a-z' | LC_ALL=C sed 's/[^a-z0-9_-]/-/g')
 APP_BUILD ?= --build
-CODE_MOUNTS = -v "$(CURDIR)/analytics:/opt/app/analytics" -v "$(CURDIR)/tests:/opt/app/tests"
+CODE_MOUNTS = -v "$(CURDIR)/analytics:/opt/app/analytics" -v "$(CURDIR)/tests:/opt/app/tests" \
+	-v "$(CURDIR)/docs/schemas:/opt/app/docs/schemas:ro"
 APP_RUN = COMPOSE_PROJECT_NAME=$(CHECKS_PROJECT) $(COMPOSE) run --rm $(APP_BUILD) --no-deps $(CODE_MOUNTS)
 
 PIPELINE_JOBS = $(addsuffix -job,$(if $(filter all,$(PIPELINE)),$(PIPELINES),$(filter $(PIPELINES),$(PIPELINE))))
 CHECK_PIPELINE = $(if $(and $(PIPELINE_JOBS),$(filter 1,$(words $(PIPELINE)))),,$(error Set PIPELINE to one of: $(PIPELINES) all (got "$(PIPELINE)"), e.g. make $@ PIPELINE=landing))
 
-.PHONY: help up down clean spark-submit spark-sql spark-history data-quality pipeline pipeline-logs pipeline-stop test lint format typecheck test-infra hooks
+.PHONY: help up down clean spark-submit spark-sql spark-history data-quality pipeline pipeline-logs pipeline-stop test lint format typecheck schemas test-infra hooks
 
 help:
 	@printf '%s\n' \
@@ -53,6 +54,7 @@ help:
 		'lint           Check linting and formatting with ruff in the app container.' \
 		'format         Format the code and apply safe lint fixes with ruff.' \
 		'typecheck      Check types with ty in the app container; any diagnostic fails.' \
+		'schemas        Write every lake table as a flat Avro schema to docs/schemas/ from the schema definitions.' \
 		'test-infra     Run the infra tests against an isolated copy of the stack (local only, a few minutes).' \
 		'hooks          Install the pre-commit hooks in this clone (once).' \
 		'Optional profiles: monitoring (Conduktor), history (Spark History Server). See README.md.'
@@ -110,6 +112,9 @@ format:
 
 typecheck:
 	@$(APP_RUN) spark-app ty check
+
+schemas:
+	@uv run --frozen python -m pipelines.schemas.render docs/schemas
 
 test-infra:
 	@uv run --frozen pytest tests/infra --no-cov -p no:cacheprovider -v

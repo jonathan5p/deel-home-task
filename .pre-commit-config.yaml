@@ -37,4 +37,4 @@ repos:
         entry: make --no-print-directory test
         language: system
         pass_filenames: false
-        files: ^(analytics/|tests/|pyproject\.toml$|uv\.lock$)
+        files: ^(analytics/|tests/|docs/schemas/|pyproject\.toml$|uv\.lock$)

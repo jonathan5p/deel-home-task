@@ -69,21 +69,62 @@ class EntityDefinition:
         return (*self.columns, *self.included_columns)
 
 
+SOURCE_GROUP = "source"
+TEMPLATE_SUFFIX = "_template"
+
+
+@dataclass(frozen=True, slots=True)
+class ColumnGroup:
+    """An `include` token of a table template, standing for some of the entity's columns.
+
+    `source` is the entity's own fields; the name of a shared schema (such as `audit`) is that
+    schema's fields, which only entities that include it have.
+    """
+
+    name: str
+    shared_columns: tuple[ColumnDefinition, ...] = ()
+
+    def expand(self, entity: EntityDefinition) -> tuple[ColumnDefinition, ...]:
+        if self.name == SOURCE_GROUP:
+            return entity.columns
+        return tuple(column for column in self.shared_columns if column in entity.included_columns)
+
+
 @dataclass(frozen=True, slots=True)
 class TableTemplate:
-    """A table a layer keeps per entity, such as bronze or its quarantine."""
+    """A table a layer keeps per entity, such as bronze or its quarantine.
+
+    `name` is the template's file name without `_template`: the layer, then the kind of table
+    if the layer keeps more than one per entity (`bronze`, `bronze_quarantine`). The table's
+    columns are the included groups, in order, then the template's own `fields`.
+    """
 
     name: str
     description: str
-    metadata_columns: tuple[ColumnDefinition, ...] = ()
+    include: tuple[ColumnGroup, ...] = ()
+    fields: tuple[ColumnDefinition, ...] = ()
+
+    @property
+    def layer(self) -> str:
+        return self.name.split("_", 1)[0]
 
     def describe(self, entity: EntityDefinition) -> str:
         return self.description.format(entity=entity.name, entity_description=entity.description)
 
+    def table_name(self, entity: EntityDefinition) -> str:
+        """The entity's table in the layer: `orders` for bronze, `orders_quarantine` for its
+        quarantine."""
+        return entity.name + self.name.removeprefix(self.layer)
+
+    def columns_for(self, entity: EntityDefinition) -> tuple[ColumnDefinition, ...]:
+        """The table's columns for `entity`, in order: the included groups, then `fields`."""
+        included = (column for group in self.include for column in group.expand(entity))
+        return (*included, *self.fields)
+
 
 RECORD_PROPERTIES = frozenset({"type", "name", "namespace", "doc", "fields"})
 SOURCE_PROPERTIES = RECORD_PROPERTIES | {"key", "include"}
-TABLE_PROPERTIES = RECORD_PROPERTIES | {"metadata"}
+TABLE_PROPERTIES = RECORD_PROPERTIES | {"include"}
 FIELD_PROPERTIES = frozenset({"name", "type", "doc", "default"})
 SOURCE_FIELD_PROPERTIES = FIELD_PROPERTIES | {"renamed_to"}
 TEMPLATE_PLACEHOLDERS = frozenset({"entity", "entity_description"})
@@ -212,43 +253,51 @@ def load_shared_columns(name: str, root: Traversable = SCHEMAS) -> tuple[ColumnD
     return _record(root / f"{name}{SCHEMA_SUFFIX}", RECORD_PROPERTIES, FIELD_PROPERTIES).columns
 
 
-def load_metadata_columns(root: Traversable = SCHEMAS) -> Mapping[str, ColumnDefinition]:
-    """The columns the pipeline adds to lake tables (`metadata.avsc`), by name."""
-    return {column.name: column for column in load_shared_columns("metadata", root)}
+def _include_group(name: str, root: Traversable) -> ColumnGroup | None:
+    if name == SOURCE_GROUP:
+        return ColumnGroup(name)
+    if name in {file.name.removesuffix(SCHEMA_SUFFIX) for file in _schema_files(root)}:
+        return ColumnGroup(name, load_shared_columns(name, root))
+    return None
+
+
+def _template(file: Traversable, root: Traversable) -> TableTemplate:
+    record = _record(file, TABLE_PROPERTIES, FIELD_PROPERTIES)
+    owner = f"record {record.name}"
+    if not record.name.endswith(TEMPLATE_SUFFIX):
+        raise DefinitionError(record.source, f"{owner} must be named <table>{TEMPLATE_SUFFIX}")
+    placeholders = {
+        field for _, field, _, _ in string.Formatter().parse(record.description) if field
+    }
+    unknown = sorted(placeholders - TEMPLATE_PLACEHOLDERS)
+    if unknown:
+        raise DefinitionError(
+            record.source, f"unknown placeholders of {owner}: {', '.join(unknown)}"
+        )
+    names = _names(record.source, record.properties, "include", owner)
+    _check_unique(record.source, names, "includes")
+    groups = {name: _include_group(name, root) for name in names}
+    undefined = [name for name, group in groups.items() if group is None]
+    if undefined:
+        raise DefinitionError(
+            record.source,
+            f"unknown include of {owner}: {', '.join(undefined)};"
+            f" use {SOURCE_GROUP} or the name of a shared schema such as audit",
+        )
+    if not names and not record.columns:
+        raise DefinitionError(record.source, f"{owner} has no columns")
+    return TableTemplate(
+        name=record.name.removesuffix(TEMPLATE_SUFFIX),
+        description=record.description,
+        include=tuple(group for group in groups.values() if group is not None),
+        fields=record.columns,
+    )
 
 
 def load_table_templates(root: Traversable = SCHEMAS) -> Mapping[str, TableTemplate]:
-    """The tables each layer keeps per entity (`tables/<name>.avsc`), by name."""
-    metadata = load_metadata_columns(root)
-    templates: dict[str, TableTemplate] = {}
-    for file in _schema_files(root / "tables"):
-        record = _record(file, TABLE_PROPERTIES, FIELD_PROPERTIES)
-        owner = f"record {record.name}"
-        if record.columns:
-            raise DefinitionError(
-                record.source, f"{owner} names its metadata columns in metadata, not fields"
-            )
-        placeholders = {
-            field for _, field, _, _ in string.Formatter().parse(record.description) if field
-        }
-        unknown = sorted(placeholders - TEMPLATE_PLACEHOLDERS)
-        if unknown:
-            raise DefinitionError(
-                record.source, f"unknown placeholders of {owner}: {', '.join(unknown)}"
-            )
-        names = _names(record.source, record.properties, "metadata", owner)
-        undefined = [name for name in names if name not in metadata]
-        if undefined:
-            raise DefinitionError(
-                record.source, f"metadata of {owner} not in metadata.avsc: {', '.join(undefined)}"
-            )
-        _check_unique(record.source, names, "metadata columns")
-        templates[record.name] = TableTemplate(
-            name=record.name,
-            description=record.description,
-            metadata_columns=tuple(metadata[name] for name in names),
-        )
-    return templates
+    """The tables each layer keeps per entity (`tables/<name>_template.avsc`), by name."""
+    templates = (_template(file, root) for file in _schema_files(root / "tables"))
+    return {template.name: template for template in templates}
 
 
 def _entity(file: Traversable, root: Traversable) -> EntityDefinition:

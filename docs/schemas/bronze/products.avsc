@@ -1,0 +1,103 @@
+{
+  "type": "record",
+  "name": "products",
+  "namespace": "lake.bronze",
+  "doc": "Products that can be ordered, with their unit price. Change log of source table products: one typed row per Debezium change event (create, update, delete or snapshot), append-only and not deduplicated",
+  "fields": [
+    {
+      "name": "product_id",
+      "type": "long",
+      "doc": "Product identifier, the source table's primary key"
+    },
+    {
+      "name": "product_name",
+      "type": "string",
+      "doc": "Name of the product"
+    },
+    {
+      "name": "barcode",
+      "type": "string",
+      "doc": "Barcode of the product"
+    },
+    {
+      "name": "unity_price",
+      "type": {"type": "bytes", "logicalType": "decimal", "precision": 38, "scale": 10},
+      "doc": "Unit price of the product, decoded from Debezium's variable-scale decimal"
+    },
+    {
+      "name": "is_active",
+      "type": ["null", "boolean"],
+      "default": null,
+      "doc": "Whether the product is active"
+    },
+    {
+      "name": "updated_at",
+      "type": ["null", {"type": "long", "logicalType": "timestamp-millis"}],
+      "default": null,
+      "doc": "Time the source row was last updated (source wall clock read as UTC)"
+    },
+    {
+      "name": "updated_by",
+      "type": ["null", "long"],
+      "default": null,
+      "doc": "Identifier of the user who last updated the source row"
+    },
+    {
+      "name": "created_at",
+      "type": ["null", {"type": "long", "logicalType": "timestamp-millis"}],
+      "default": null,
+      "doc": "Time the source row was created (source wall clock read as UTC)"
+    },
+    {
+      "name": "created_by",
+      "type": ["null", "long"],
+      "default": null,
+      "doc": "Identifier of the user who created the source row"
+    },
+    {
+      "name": "_record_source",
+      "type": "string",
+      "doc": "Kafka topic the change event was read from"
+    },
+    {
+      "name": "_source_partition",
+      "type": "int",
+      "doc": "Kafka partition of the record"
+    },
+    {
+      "name": "_source_offset",
+      "type": "long",
+      "doc": "Offset of the record in its Kafka partition"
+    },
+    {
+      "name": "_published_at",
+      "type": {"type": "long", "logicalType": "timestamp-millis"},
+      "doc": "Kafka record timestamp (UTC); the table is partitioned by its day"
+    },
+    {
+      "name": "_change_op",
+      "type": "string",
+      "doc": "Kind of change: create, update, delete or snapshot (Debezium op c, u, d or r)"
+    },
+    {
+      "name": "_commit_sequence",
+      "type": "long",
+      "doc": "Position of the change in the source's commit log (Debezium source.lsn); increases in commit order"
+    },
+    {
+      "name": "_changed_at",
+      "type": {"type": "long", "logicalType": "timestamp-millis"},
+      "doc": "Time the change was committed in the source database (Debezium source.ts_ms)"
+    },
+    {
+      "name": "_captured_at",
+      "type": {"type": "long", "logicalType": "timestamp-millis"},
+      "doc": "Time Debezium processed the change (envelope ts_ms)"
+    },
+    {
+      "name": "_content_hash",
+      "type": "string",
+      "doc": "Hex SHA-256 of the content columns (key and audit columns excluded); unchanged content keeps its hash"
+    }
+  ]
+}

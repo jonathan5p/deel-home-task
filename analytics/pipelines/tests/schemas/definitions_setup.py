@@ -30,11 +30,19 @@ THING: Schema = {
 }
 SILVER: Schema = {
     "type": "record",
-    "name": "silver",
+    "name": "silver_template",
     "namespace": "lake",
     "doc": "Versions of {entity}: {entity_description}",
-    "metadata": ["_valid_from", "_valid_to", "_is_current", "_is_deleted"],
-    "fields": [],
+    "include": ["source", "audit"],
+    "fields": [
+        {
+            "name": "_valid_to",
+            "type": ["null", {"type": "long", "logicalType": "timestamp-millis"}],
+            "default": None,
+            "doc": "End of the version's validity",
+        },
+        {"name": "_is_current", "type": "boolean", "doc": "Whether the version is current"},
+    ],
 }
 
 
@@ -56,6 +64,25 @@ def schema_files(root: Path) -> list[Path]:
     return sorted(root.rglob("*.avsc"))
 
 
+def column_definitions(root: Path, skip: str = "sources") -> dict[str, dict[str, list[str]]]:
+    """Every field definition (type, default and doc) under `root`, by field name, with the
+    files that define the field that way.
+
+    The source tables in `skip` are left out: each describes its own columns, so a foreign key
+    and the primary key it points to share a name but not a description or nullability.
+    """
+    definitions: dict[str, dict[str, list[str]]] = {}
+    for file in schema_files(root):
+        relative = file.relative_to(root)
+        if relative.parts[0] == skip:
+            continue
+        for field in json.loads(file.read_text(encoding="utf-8"))["fields"]:
+            definition = json.dumps({key: field.get(key) for key in ("type", "default", "doc")})
+            by_definition = definitions.setdefault(field["name"], {})
+            by_definition.setdefault(definition, []).append(relative.as_posix())
+    return definitions
+
+
 class SchemasTree:
     """A copy of the shipped schemas in a scratch folder, for tests that change one file."""
 
@@ -72,5 +99,5 @@ class SchemasTree:
         self.write("sources/things.avsc", edited(THING, path, value) if path else THING)
 
     def write_silver(self, path: Location = (), value: object = None) -> None:
-        """Write the valid `silver` layer table, with the value at `path` changed if given."""
-        self.write("tables/silver.avsc", edited(SILVER, path, value) if path else SILVER)
+        """Write the valid `silver` table template, with the value at `path` changed if given."""
+        self.write("tables/silver_template.avsc", edited(SILVER, path, value) if path else SILVER)

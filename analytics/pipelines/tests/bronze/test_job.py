@@ -38,7 +38,14 @@ from pipelines.bronze.job import (
     wants_available_now,
 )
 from pipelines.bronze.parse import FailureReason, parse_changes
-from pipelines.bronze.tables import bronze_table, described_schema, quarantine_table
+from pipelines.bronze.tables import (
+    SPARK_TYPES,
+    TABLE_TEMPLATES,
+    bronze_table,
+    described_schema,
+    quarantine_table,
+)
+from pipelines.schemas.render import avro_field, render_table_schema
 
 
 @pytest.mark.parametrize("entity", ENTITIES, ids=ENTITY_IDS)
@@ -54,6 +61,27 @@ def test_every_column_of_every_bronze_table_is_described(
         assert all(field.metadata["comment"] for field in schema)
         assert schema.fieldNames() == stream.rows.schema.fieldNames()
         assert stream.definition.comment
+
+
+@pytest.mark.parametrize("entity", ENTITIES, ids=ENTITY_IDS)
+def test_the_published_table_schemas_have_the_columns_and_types_the_job_writes(
+    spark: SparkSession, bronze_settings: BronzeSettingsFactory, entity: Entity
+) -> None:
+    settings = bronze_settings(topic(entity))
+
+    bronze, quarantine = entity_streams(spark, settings, topic(entity), no_landed_records)
+
+    for stream, template in (
+        (bronze, TABLE_TEMPLATES["bronze"]),
+        (quarantine, TABLE_TEMPLATES["bronze_quarantine"]),
+    ):
+        columns = template.columns_for(entity.definition)
+        published = render_table_schema(template, entity.definition)
+        assert [(c.lake_name, SPARK_TYPES[c.type]) for c in columns] == [
+            (field.name, field.dataType) for field in stream.rows.schema
+        ]
+        assert published["fields"] == [avro_field(column) for column in columns]
+        assert stream.table.endswith(f".{published['name']}")
 
 
 def test_a_stream_is_named_after_its_table_and_has_its_own_checkpoint(

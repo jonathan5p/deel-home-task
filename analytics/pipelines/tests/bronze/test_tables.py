@@ -26,7 +26,7 @@ from pipelines.bronze.tables import (
     sql_identifier,
     sql_string,
 )
-from pipelines.schemas.definitions import load_metadata_columns
+from pipelines.schemas.definitions import load_table_templates
 
 
 def test_bronze_tables_describe_entity_columns_by_their_lake_name() -> None:
@@ -34,7 +34,7 @@ def test_bronze_tables_describe_entity_columns_by_their_lake_name() -> None:
 
     assert columns["quantity"].description == "Number of units ordered (source column quanity)"
     assert "quanity" not in columns
-    assert columns[MetadataColumn.COMMIT_SEQUENCE] == load_metadata_columns()["_commit_sequence"]
+    assert columns[MetadataColumn.COMMIT_SEQUENCE] in load_table_templates()["bronze"].fields
     assert MetadataColumn.LANDING_FILE not in columns
     assert RawColumn.KEY not in columns
 

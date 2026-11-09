@@ -378,13 +378,13 @@ Outside Docker the Spark tests are skipped, so coverage is only meaningful with 
 The pipelines name and describe their tables and columns from one set of [Avro schemas](https://avro.apache.org/docs/1.12.0/specification/) (`.avsc`, JSON) in `analytics/pipelines/src/pipelines/schemas/`, shipped as package data of `pipelines` (in the wheel and in the executors' `packages.zip`):
 
 ```text
-audit.avsc               shared record: the audit columns every source table ends with (updated_at, updated_by, created_at, created_by)
-metadata.avsc            shared record: every column the pipeline adds (_record_source, ..., _content_hash, _landing_file, _failure_reason,
-                         _quarantined_at, _valid_from, _valid_to, _is_current, _is_deleted) and the raw Kafka key and value
-sources/<table>.avsc     one source table of the operations schema (customers, products, orders, order_items)
-tables/<table>.avsc      one table a layer keeps per entity (bronze, bronze_quarantine): its description and its metadata columns
-definitions.py           the loader
-landing.py               the Spark schema of the landed Kafka records (KAFKA_RECORD_SCHEMA)
+audit.avsc                        shared record: the audit columns every source table ends with (updated_at, updated_by, created_at, created_by)
+sources/<table>.avsc              one source table of the operations schema (customers, products, orders, order_items)
+tables/<table>_template.avsc      one table a layer keeps per entity (bronze, bronze_quarantine): its description, the column
+                                  groups it includes and the full definition of the layer's own columns
+definitions.py                    the loader
+render.py                         writes every resulting table as a flat Avro schema (make schemas)
+landing.py                        the Spark schema of the landed Kafka records (KAFKA_RECORD_SCHEMA)
 ```
 
 A source table is one Avro record: `name` is the table, `namespace` the source schema, `doc` the table description, and each field carries its column's `name`, `type` and `doc` (its description), in the source's column order:
@@ -414,14 +414,43 @@ A source table is one Avro record: `name` is the table, `namespace` the source s
 }
 ```
 
+A table template is the layout of one table a layer keeps per entity. It is an ordinary Avro record whose `fields` fully define the columns the layer adds itself, and whose `include` lists the column groups that come before them: `source` is the entity's own fields (under their lake names) and `audit` the shared fields of `audit.avsc` (for the entities that include them). Its `doc` is the table description, with `{entity}` replaced by the source table's name and `{entity_description}` by its description:
+
+```json
+{
+  "type": "record",
+  "name": "bronze_template",
+  "namespace": "lake",
+  "doc": "{entity_description}. Change log of source table {entity}: one typed row per Debezium change event ...",
+  "include": ["source", "audit"],
+  "fields": [
+    {
+      "name": "_record_source",
+      "type": "string",
+      "doc": "Kafka topic the change event was read from"
+    },
+    ...
+    {
+      "name": "_content_hash",
+      "type": "string",
+      "doc": "Hex SHA-256 of the content columns (key and audit columns excluded); unchanged content keeps its hash"
+    }
+  ]
+}
+```
+
+So `lake.bronze.order_items` is the source fields of `order_items`, then its audit fields, then the nine fields of `bronze_template.avsc`; the quarantine template includes nothing (`"include": []`) and its table is just its own fields.
+
+- **Why this shape:** every description is defined once, next to the table that owns the column, and each template reads as the table it produces. Avro can reference a named record from another file, but a reference nests the fields under one column instead of flattening them, so the flat composition (`include` on source records and templates) is our own convention, done by the loader.
+- **The resulting tables, flat:** `make schemas` writes every template rendered for every entity as a plain, standard Avro record to `docs/schemas/<layer>/<table>.avsc` ([`docs/schemas/bronze/`](docs/schemas/bronze/): `orders.avsc`, `orders_quarantine.avsc` and so on), with namespace `lake.<layer>`, the filled-in description and every column with its type and description. Read those to see a table's columns. They are generated, so edit the definitions and run `make schemas` instead of editing them; a unit test fails when they are stale, and another checks their columns and types against the schema the bronze job actually writes.
 - **Types** follow Avro: `long` (BIGINT), `int` (INTEGER), `string` (VARCHAR), `boolean`, `{"type": "long", "logicalType": "timestamp-millis"}` (TIMESTAMP(3)), `{"type": "int", "logicalType": "date"}` and `{"type": "bytes", "logicalType": "decimal", "precision": 38, "scale": 10}`. The source DECIMAL declares no precision, so it has no exact Avro equivalent: the schemas declare DECIMAL(38,10), the type bronze stores. Each layer maps these types to its engine's types (bronze: `tables.py`).
-- **Nullability** follows Avro too: a column that is NOT NULL in the source has the plain type; a nullable one is the union `["null", <type>]` with `"default": null`.
-- **Custom properties** carry what Avro has no attribute for (Avro allows extra attributes and ignores them): `key` on a source record names its primary key, `renamed_to` on a field gives its name in the lake when the source name is misspelled, `include` and `metadata` compose shared fields as below.
-- **Shared fields are defined once**, in the shared records `audit.avsc` and `metadata.avsc`. Avro has no include mechanism, so the loader composes them: `"include": ["audit"]` on a source record appends the fields of `audit.avsc` after the table's own fields, and a layer table (`tables/<table>.avsc`) lists the `metadata.avsc` columns it holds by name in `"metadata"`, with an empty `fields`. A layer table's `doc` is its description template: `{entity}` is replaced with the source table's name and `{entity_description}` with its description. The bronze table is the entity's columns (under their lake names) plus its metadata columns; the quarantine table is its metadata columns only.
+- **Nullability** follows Avro too: a column that is NOT NULL in the source, or always set by the pipeline, has the plain type; a nullable one is the union `["null", <type>]` with `"default": null`.
+- **Custom properties** carry what Avro has no attribute for (Avro allows extra attributes and ignores them): `key` on a source record names its primary key, `renamed_to` on a field gives its name in the lake when the source name is misspelled, and `include` composes column groups as above.
+- **A column used by several templates** (such as the Kafka coordinates, in bronze and its quarantine) is defined in each, and a unit test checks that every definition of the same column name has the same type, nullability and description.
 
-`pipelines.schemas.definitions` reads the files with the standard `json` module, so the Spark image needs no Avro library, into frozen dataclasses: `load_entities()` and `load_entity(name)` (`EntityDefinition`: `name`, `key`, `description`, `columns`, `included_columns`, `all_columns`), `load_shared_columns(name)`, `load_metadata_columns()` (by name) and `load_table_templates()` (`TableTemplate`: `name`, `description`, `metadata_columns`, `describe(entity)`). A column is a `ColumnDefinition` (`name`, `type`, `description`, `not_null`, `renamed_to`, `lake_name`). The loader refuses, naming the file, a type it does not support, an unknown property, a missing or blank `doc`, a nullable field without `"default": null`, a key that is not a field, an unknown include or metadata column, a record whose `name` differs from its file name, or two columns with the same lake name. A unit test also checks every file, and every source table with its included fields, with `fastavro.parse_schema` (a development dependency only).
+`pipelines.schemas.definitions` reads the files with the standard `json` module, so the Spark image needs no Avro library, into frozen dataclasses: `load_entities()` and `load_entity(name)` (`EntityDefinition`: `name`, `key`, `description`, `columns`, `included_columns`, `all_columns`), `load_shared_columns(name)` and `load_table_templates()` (`TableTemplate`, by name without `_template`: `name`, `description`, `include` (`ColumnGroup`s), `fields`, `layer`, `describe(entity)`, `table_name(entity)`, `columns_for(entity)`). A column is a `ColumnDefinition` (`name`, `type`, `description`, `not_null`, `renamed_to`, `lake_name`). The loader refuses, naming the file, a type it does not support, an unknown property, a missing or blank `doc`, a nullable field without `"default": null`, a key that is not a field, an unknown include, a template without columns or whose name does not end in `_template`, a record whose `name` differs from its file name, or two columns with the same lake name. A unit test also checks every file, and every source table with its included fields, with `fastavro.parse_schema` (a development dependency only).
 
-To add or change a column or a description, edit the schema file (a new field goes where the column is in the source; a new metadata column goes in `metadata.avsc` and in the `metadata` list of each table that holds it), then restart the job: the descriptions of existing tables are updated on start, while new columns also need `ALTER TABLE ... ADD COLUMN` (see schema evolution in the bronze layer). Column names used in code stay typed (bronze's `MetadataColumn` and `RawColumn` enums), and a test checks each of them is defined in `metadata.avsc` and that each bronze table schema lists exactly the metadata columns the job writes to it.
+To add or change a column or a description, edit the schema file (a new field goes where the column is in the source; a new pipeline column goes in the `fields` of each template that holds it, defined the same way in each), run `make schemas`, then restart the job: the descriptions of existing tables are updated on start, while new columns also need `ALTER TABLE ... ADD COLUMN` (see schema evolution in the bronze layer). Column names used in code stay typed (bronze's `MetadataColumn` and `RawColumn` enums), and a test checks each of them is defined in a template and that each bronze template's fields are exactly the columns the job writes to that table.
 
 #### Configuration
 
@@ -542,7 +571,7 @@ make spark-submit SPARK_APP=analytics/pipelines/src/pipelines/bronze/job.py SPAR
 - **Two streaming queries per topic** in `KAFKA_TOPICS`, for the entity the topic names: bronze rows are appended to `<ICEBERG_CATALOG>.bronze.<entity>` (checkpoint `<CHECKPOINT_ROOT>/bronze/<entity>/`), quarantine rows, plus `_quarantined_at` (the micro-batch's processing time), to `<ICEBERG_CATALOG>.bronze.<entity>_quarantine` (checkpoint `<CHECKPOINT_ROOT>/bronze/<entity>_quarantine/`). Locally that is `lake.bronze.customers`, `lake.bronze.customers_quarantine` and so on.
 - **Quarantine rows record their landing file:** the reader adds `_landing_file` from the file source's `_metadata.file_path` column, so each quarantined record points at the Avro file it was read from. Bronze rows do not carry it.
 - **Tables are created at start** when missing (`spark.catalog.tableExists`): `CREATE NAMESPACE IF NOT EXISTS`, then `writeTo(...).create()` from an empty DataFrame with the schema of the `parse_changes` output, partitioned by `days(_published_at)`. `write.distribution-mode` is `none`, because streaming runs without adaptive execution and a hash distribution would shuffle every micro-batch into `spark.sql.shuffle.partitions` tasks. Every column is nullable. The schema of an existing table is never altered (see schema evolution below).
-- **Every table and column is described from the Avro schemas:** each field of the created schema carries its definition's description as its `comment`, which Iceberg stores as the field's `doc`, and the `comment` table property is the table description from `tables/bronze.avsc` or `tables/bronze_quarantine.avsc`. Business columns take the `doc` in their source schema (under their lake name, so `quantity`), the metadata and quarantine columns the one in `metadata.avsc`; each table holds only the metadata columns its table schema lists. The job refuses to start when a column has no definition or its Spark type differs from its definition's type (checked for every table before any is created), and a unit test checks every entity's tables. `DESCRIBE TABLE EXTENDED lake.bronze.customers` shows them.
+- **Every table and column is described from the Avro schemas:** each field of the created schema carries its definition's description as its `comment`, which Iceberg stores as the field's `doc`, and the `comment` table property is the table description from `tables/bronze_template.avsc` or `tables/bronze_quarantine_template.avsc`. Business columns take the `doc` in their source schema (under their lake name, so `quantity`), the metadata and quarantine columns the one in their template's `fields`. The flat result is in [`docs/schemas/bronze/`](docs/schemas/bronze/). The job refuses to start when a column has no definition or its Spark type differs from its definition's type (checked for every table before any is created), and a unit test checks every entity's tables. `DESCRIBE TABLE EXTENDED lake.bronze.customers` shows them.
 - **Descriptions are kept in sync:** on every start the job compares the stored table comment and column docs of each existing table with the definitions and runs `ALTER TABLE ... SET TBLPROPERTIES ('comment' = ...)` and `ALTER TABLE ... ALTER COLUMN ... COMMENT ...` only for those that differ, so an unchanged table gets no new metadata version. To change a description, edit the schema file and restart the job.
 - **Only committed landing files are read:** the file stream source follows the landing sink's `_spark_metadata` log, so files left by a failed landing micro-batch are ignored. The landing topic folders must exist when the job starts, so start it after the landing job has written to them.
 - **Restart-safe, exactly once:** each query's checkpoint records the landing files it has processed, and Iceberg's streaming sink stores the query id and batch id in every snapshot and skips a batch it has already committed. Stopping and restarting the job neither skips nor duplicates rows: each `_source_partition` and `_source_offset` of a topic appears once.
@@ -604,13 +633,14 @@ Kafka coordinates are lineage; the change identity is the entity key, `_commit_s
 
 #### Tests, lint and format
 
-The checks run in a throwaway container from the `app` image, with `analytics/` and `tests/` mounted, so they use the cluster's exact Spark and Python versions and pick up edits without a rebuild. They use their own Compose project, named after the checkout folder (`deel-checks-<folder>`, lowercased, with every character other than letters, digits, `_` and `-` replaced by `-`), with one app image (`<project>-spark-app`), so checks in different checkouts or worktrees never share an image and can run in parallel:
+The checks run in a throwaway container from the `app` image, with `analytics/`, `tests/` and `docs/schemas/` mounted, so they use the cluster's exact Spark and Python versions and pick up edits without a rebuild. They use their own Compose project, named after the checkout folder (`deel-checks-<folder>`, lowercased, with every character other than letters, digits, `_` and `-` replaced by `-`), with one app image (`<project>-spark-app`), so checks in different checkouts or worktrees never share an image and can run in parallel:
 
 ```sh
 make test       # unit tests with branch coverage; fails below 90%
 make lint       # ruff lint and format check
 make format     # format the code and apply safe lint fixes (files keep your ownership)
 make typecheck  # check types with ty; any diagnostic fails
+make schemas    # write the flat Avro schema of every lake table to docs/schemas/ (on the host, with uv)
 ```
 
 - **Unit tests** live next to each project and mirror its source tree (`analytics/<project>/tests/test_<module>.py`).
@@ -651,7 +681,7 @@ Every `git commit` then runs, in order, stopping at the first failure:
 | `uv.lock` matches `pyproject.toml` | any `pyproject.toml`, `uv.lock` | host |
 | ruff check, ruff format check | Python files, `pyproject.toml` | host, with the ruff version from `uv.lock` |
 | ty | `analytics/`, `tests/`, `pyproject.toml`, `uv.lock` | app container (`make typecheck`) |
-| unit tests with the 90% coverage floor | `analytics/`, `tests/`, `pyproject.toml`, `uv.lock` | app container (`make test`) |
+| unit tests with the 90% coverage floor | `analytics/`, `tests/`, `docs/schemas/`, `pyproject.toml`, `uv.lock` | app container (`make test`) |
 
 A commit that only changes documentation or configuration skips all of them. Commits that touch code take about 20–30 seconds longer, mostly for the container checks. Run `make format` to fix formatting before committing again. `git commit --no-verify` skips the hooks, which is why CI runs the same checks.
 

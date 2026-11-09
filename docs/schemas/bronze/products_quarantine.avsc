@@ -1,0 +1,54 @@
+{
+  "type": "record",
+  "name": "products_quarantine",
+  "namespace": "lake.bronze",
+  "doc": "Change events of source table products that failed bronze validation, kept raw with the reason",
+  "fields": [
+    {
+      "name": "_record_source",
+      "type": "string",
+      "doc": "Kafka topic the change event was read from"
+    },
+    {
+      "name": "_source_partition",
+      "type": "int",
+      "doc": "Kafka partition of the record"
+    },
+    {
+      "name": "_source_offset",
+      "type": "long",
+      "doc": "Offset of the record in its Kafka partition"
+    },
+    {
+      "name": "_published_at",
+      "type": {"type": "long", "logicalType": "timestamp-millis"},
+      "doc": "Kafka record timestamp (UTC); the table is partitioned by its day"
+    },
+    {
+      "name": "_landing_file",
+      "type": "string",
+      "doc": "Path of the landing Avro file the record was read from"
+    },
+    {
+      "name": "key",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Raw Kafka record key, as text"
+    },
+    {
+      "name": "value",
+      "type": "string",
+      "doc": "Raw Kafka record value, as text"
+    },
+    {
+      "name": "_failure_reason",
+      "type": "string",
+      "doc": "First validation check the record failed"
+    },
+    {
+      "name": "_quarantined_at",
+      "type": {"type": "long", "logicalType": "timestamp-millis"},
+      "doc": "Processing time of the micro-batch that quarantined the record"
+    }
+  ]
+}
