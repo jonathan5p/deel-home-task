@@ -26,13 +26,18 @@ def optional(env: Mapping[str, str], name: str, default: str) -> str:
     return env.get(name) or default
 
 
-def positive_int(env: Mapping[str, str], name: str, default: int) -> int:
+def optional_positive_int(env: Mapping[str, str], name: str) -> int | None:
     value = env.get(name)
     if not value:
-        return default
+        return None
     if not value.isdigit() or int(value) == 0:
         raise InvalidSettingError(name, value, "a positive integer")
     return int(value)
+
+
+def positive_int(env: Mapping[str, str], name: str, default: int) -> int:
+    value = optional_positive_int(env, name)
+    return default if value is None else value
 
 
 def split_list(name: str, value: str) -> tuple[str, ...]:

@@ -339,6 +339,7 @@ analytics/
     src/pipelines/
       settings.py           pipeline settings (Kafka, lake, analytics database)
       jobs/                 Spark jobs
+      quality/              data quality checks on the lake (run by make data-quality)
     tests/
 tests/infra/                infra tests that drive an isolated copy of the stack
   apps/                     Spark applications they submit (UI check, Iceberg smoke check, version and hold apps)
@@ -369,7 +370,7 @@ from pipelines.settings import PipelineSettings
 settings = PipelineSettings.from_env(os.environ)  # only a job's entry point reads os.environ
 ```
 
-The code holds no deployment details: anything that depends on where it runs (brokers, topics, the lake, the catalog, the database) is a required variable with no default. The local values live in `.env`, and Docker Compose passes them to the `spark-app` driver containers; another environment sets its own values. Only tuning settings have defaults.
+The code holds no deployment details: anything that depends on where it runs (brokers, topics, the lake, the catalog, the database) is a required variable with no default. The local values live in `.env`, and Docker Compose passes them to the `spark-app` driver containers; another environment sets its own values. Only tuning settings have defaults; set them in the shell for one run, for example `LANDING_TRIGGER_SECONDS=30 make spark-submit ...`.
 
 | Variable | Settings | Default | Local value in `.env` | Purpose |
 | --- | --- | --- | --- | --- |
@@ -379,6 +380,7 @@ The code holds no deployment details: anything that depends on where it runs (br
 | `ICEBERG_CATALOG` | `pipelines.settings.LakeSettings` | required | `lake` | Spark catalog name for Iceberg tables |
 | `CHECKPOINT_ROOT` | `pipelines.settings.LakeSettings` | `<LAKE_ROOT>/checkpoints` | not set | Root for Structured Streaming checkpoints |
 | `LANDING_TRIGGER_SECONDS` | `pipelines.settings.LandingSettings` | `10` | not set | Micro-batch interval of the landing job (a positive integer) |
+| `LANDING_CHECK_LAST_OFFSETS` | `pipelines.settings.LandingQualitySettings` | all landed offsets | not set | Limit the landing data quality checks to the latest offsets of each partition (a positive integer) |
 | `ANALYTICS_DB_URL` | `common.settings.AnalyticsDbSettings` | required | `jdbc:postgresql://analytics-db:5432/analytics` | JDBC URL of the analytics database (gold layer) |
 | `ANALYTICS_DB_USER` | `common.settings.AnalyticsDbSettings` | required | `analytics` | Analytics database user |
 | `ANALYTICS_DB_PASSWORD` | `common.settings.AnalyticsDbSettings` | required | `analytics` | Analytics database password |
@@ -397,6 +399,28 @@ make spark-submit SPARK_APP=analytics/pipelines/src/pipelines/jobs/landing.py SP
 - **Each record is stored unchanged:** `key` and `value` as raw bytes, plus `topic`, `partition`, `offset`, `timestamp` and `timestampType`. Tombstones keep their `null` value.
 - **Restart-safe:** each query keeps its checkpoint in `<CHECKPOINT_ROOT>/landing/<topic>/`, and Spark's file sink records the committed files in `_spark_metadata`. Stopping and restarting the job neither skips nor duplicates records; Spark readers of the folder see only committed files.
 - **Micro-batches** run every `LANDING_TRIGGER_SECONDS`. `spark.cores.max` keeps cores free for the other jobs; the job runs until it is stopped (Ctrl+C).
+
+#### Data quality checks
+
+Data quality checks verify the data itself, on the running stack. They are separate from unit tests (the code, on synthetic data) and from infra tests (the platform, on a throwaway stack), and run on demand. They live in `analytics/pipelines/src/pipelines/quality/` and run as a Spark job:
+
+```sh
+make data-quality
+```
+
+The landing checks reconcile the landing zone with Kafka for every topic partition. Landed records are read through Spark, so only files committed by the file sink count:
+
+| Check | Fails when |
+| --- | --- |
+| `landed` | a Kafka partition has no landed records |
+| `unique` | an offset landed more than once |
+| `contiguous` | an offset between the first and last landed offset is missing |
+| `complete_from_start` | landing starts after Kafka's earliest offset |
+| `identical` | a landed key or value differs from Kafka, or a landed offset that Kafka still retains is missing there |
+
+Each result is printed as one JSON line prefixed with `LANDING QUALITY`, followed by a summary line, and the job exits with code 1 if any check fails. The `landed` result also reports the row count, the offset range, the number of tombstones and the lag behind Kafka; lag is expected while landing runs and is not a failure.
+
+By default every landed offset is checked. For large topics, `LANDING_CHECK_LAST_OFFSETS=<n> make data-quality` limits the comparison to the latest `n` landed offsets of each partition (and skips `complete_from_start`). The job runs with `spark.cores.max=2` and a random UI port, so it can run while the landing job is running.
 
 #### Tests, lint and format
 

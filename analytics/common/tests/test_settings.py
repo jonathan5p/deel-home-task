@@ -4,6 +4,7 @@ from common.settings import (
     AnalyticsDbSettings,
     InvalidSettingError,
     MissingSettingsError,
+    optional_positive_int,
     positive_int,
     split_list,
 )
@@ -61,3 +62,16 @@ def test_split_list_splits_and_trims_values() -> None:
 def test_split_list_rejects_a_list_without_items() -> None:
     with pytest.raises(InvalidSettingError, match="TOPICS"):
         split_list("TOPICS", " , ,")
+
+
+def test_optional_positive_int_is_none_when_unset() -> None:
+    assert optional_positive_int({}, "WINDOW") is None
+
+
+def test_optional_positive_int_parses_the_variable() -> None:
+    assert optional_positive_int({"WINDOW": "500"}, "WINDOW") == 500
+
+
+def test_optional_positive_int_rejects_zero() -> None:
+    with pytest.raises(InvalidSettingError, match="WINDOW"):
+        optional_positive_int({"WINDOW": "0"}, "WINDOW")

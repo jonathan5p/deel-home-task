@@ -1,7 +1,13 @@
 import pytest
 
 from common.settings import AnalyticsDbSettings, InvalidSettingError, MissingSettingsError
-from pipelines.settings import KafkaSettings, LakeSettings, LandingSettings, PipelineSettings
+from pipelines.settings import (
+    KafkaSettings,
+    LakeSettings,
+    LandingQualitySettings,
+    LandingSettings,
+    PipelineSettings,
+)
 
 KAFKA = {"KAFKA_BOOTSTRAP_SERVERS": "broker:9092", "KAFKA_TOPICS": "topic-a, topic-b"}
 LAKE = {"LAKE_ROOT": "s3a://bucket/", "ICEBERG_CATALOG": "catalog"}
@@ -94,3 +100,18 @@ def test_pipeline_settings_report_every_missing_variable_at_once() -> None:
         PipelineSettings.from_env(KAFKA)
 
     assert error.value.names == LakeSettings.REQUIRED + AnalyticsDbSettings.REQUIRED
+
+
+def test_landing_quality_checks_everything_landed_by_default() -> None:
+    settings = LandingQualitySettings.from_env(KAFKA | LAKE)
+
+    assert settings.landing == LandingSettings.from_env(KAFKA | LAKE)
+    assert settings.last_offsets is None
+
+
+def test_landing_quality_window_can_be_limited_to_the_latest_offsets() -> None:
+    settings = LandingQualitySettings.from_env(
+        KAFKA | LAKE | {"LANDING_CHECK_LAST_OFFSETS": "1000"}
+    )
+
+    assert settings.last_offsets == 1000
