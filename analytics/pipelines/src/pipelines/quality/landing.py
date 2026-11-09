@@ -66,7 +66,7 @@ def reconcile(
     compared_kafka = kafka
     if last_offsets is not None:
         bounds = landed.groupBy(*PARTITION).agg(F.max("offset").alias("window_end"))
-        in_window = F.col("offset") > F.col("window_end") - last_offsets
+        in_window = F.col("offset") > (F.col("window_end") - last_offsets)
         landed = landed.join(bounds, PARTITION).where(in_window).drop("window_end")
         compared_kafka = (
             kafka.join(bounds, PARTITION)
