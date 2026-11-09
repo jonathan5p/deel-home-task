@@ -1,7 +1,9 @@
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import TypedDict
 
+from pipelines.bronze.columns import SOURCE_OFFSET
 from tests.infra.landing_avro import landing_avro
 from tests.infra.stack import Stack
 
@@ -11,6 +13,8 @@ LAND_APP = "tests/infra/apps/land_staged.py"
 BRONZE_APP = "analytics/pipelines/src/pipelines/bronze/job.py"
 ROWS_APP = "tests/infra/apps/table_rows.py"
 ROWS_PREFIX = "TABLE ROWS "
+DESCRIPTIONS_APP = "tests/infra/apps/table_descriptions.py"
+DESCRIPTIONS_PREFIX = "TABLE DESCRIPTION "
 
 ENTITIES = ("customers", "products", "orders", "order_items")
 TOPICS = {entity: f"test.operations.{entity}" for entity in ENTITIES}
@@ -170,7 +174,7 @@ class BronzeRuns:
 
 
 def offset(row: dict[str, str | None]) -> int:
-    return int(str(row["source_offset"]))
+    return int(str(row[SOURCE_OFFSET]))
 
 
 def submit(stack: Stack, app: str, *args: str) -> str:
@@ -201,6 +205,22 @@ def run_bronze_and_read_tables(stack: Stack) -> Tables:
 
 def offsets(rows: Rows) -> list[int]:
     return [offset(row) for row in rows]
+
+
+class StoredDescription(TypedDict):
+    table: str
+    comment: str | None
+    columns: dict[str, str | None]
+
+
+def table_descriptions(stack: Stack) -> list[StoredDescription]:
+    """The comment and column docs of every bronze table, as the catalog stores them."""
+    output = submit(stack, DESCRIPTIONS_APP, *TABLES)
+    return [
+        json.loads(line.removeprefix(DESCRIPTIONS_PREFIX))
+        for line in output.splitlines()
+        if line.startswith(DESCRIPTIONS_PREFIX)
+    ]
 
 
 def run_bronze_scenario(stack: Stack) -> BronzeRuns:

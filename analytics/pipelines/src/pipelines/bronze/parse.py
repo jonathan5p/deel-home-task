@@ -6,6 +6,21 @@ from pyspark.sql import Column, DataFrame
 from pyspark.sql import functions as F
 from pyspark.sql.types import LongType, StringType, StructField, StructType
 
+from pipelines.bronze.columns import (
+    CAPTURED_AT,
+    CHANGE_OP,
+    CHANGED_AT,
+    COMMIT_SEQUENCE,
+    CONTENT_HASH,
+    FAILURE_REASON,
+    LANDING_FILE,
+    PUBLISHED_AT,
+    RAW_KEY,
+    RAW_VALUE,
+    RECORD_SOURCE,
+    SOURCE_OFFSET,
+    SOURCE_PARTITION,
+)
 from pipelines.bronze.content_hash import content_hash
 from pipelines.bronze.decimals import decode_decimal, is_valid_decimal
 from pipelines.bronze.entities import Entity, SourceColumn, SourceType
@@ -17,31 +32,8 @@ CHANGE_OPS: Mapping[str, str] = {
     "r": "snapshot",
 }
 
-BRONZE_METADATA_COLUMNS = (
-    "record_source",
-    "source_partition",
-    "source_offset",
-    "published_at",
-    "change_op",
-    "change_position",
-    "changed_at",
-    "captured_at",
-    "content_hash",
-)
-QUARANTINE_COLUMNS = (
-    "record_source",
-    "source_partition",
-    "source_offset",
-    "published_at",
-    "landing_file",
-    "key",
-    "value",
-    "failure_reason",
-)
-
 _ENVELOPE = "_envelope"
 _ROW = "_row"
-_FAILURE = "failure_reason"
 
 
 class FailureReason(StrEnum):
@@ -138,7 +130,7 @@ def _checked(records: DataFrame, entity: Entity) -> DataFrame:
         records.where(F.col("value").isNotNull())
         .withColumn(_ENVELOPE, envelope)
         .withColumn(_ROW, row)
-        .withColumn(_FAILURE, failure_reason(entity))
+        .withColumn(FAILURE_REASON, failure_reason(entity))
     )
 
 
@@ -157,33 +149,33 @@ def _business_column(column: SourceColumn) -> Column:
 
 def _source_coordinates() -> list[Column]:
     return [
-        F.col("topic").alias("record_source"),
-        F.col("partition").alias("source_partition"),
-        F.col("offset").alias("source_offset"),
-        F.col("timestamp").alias("published_at"),
+        F.col("topic").alias(RECORD_SOURCE),
+        F.col("partition").alias(SOURCE_PARTITION),
+        F.col("offset").alias(SOURCE_OFFSET),
+        F.col("timestamp").alias(PUBLISHED_AT),
     ]
 
 
 def _bronze(checked: DataFrame, entity: Entity) -> DataFrame:
     envelope = F.col(_ENVELOPE)
-    typed = checked.where(F.col(_FAILURE).isNull()).select(
+    typed = checked.where(F.col(FAILURE_REASON).isNull()).select(
         *(_business_column(column) for column in entity.columns),
         *_source_coordinates(),
-        _change_op(envelope["op"]).alias("change_op"),
-        envelope["source"]["lsn"].alias("change_position"),
-        F.timestamp_millis(envelope["source"]["ts_ms"]).alias("changed_at"),
-        F.timestamp_millis(envelope["ts_ms"]).alias("captured_at"),
+        _change_op(envelope["op"]).alias(CHANGE_OP),
+        envelope["source"]["lsn"].alias(COMMIT_SEQUENCE),
+        F.timestamp_millis(envelope["source"]["ts_ms"]).alias(CHANGED_AT),
+        F.timestamp_millis(envelope["ts_ms"]).alias(CAPTURED_AT),
     )
-    return typed.withColumn("content_hash", content_hash(typed.schema, entity.content_columns))
+    return typed.withColumn(CONTENT_HASH, content_hash(typed.schema, entity.content_columns))
 
 
 def _quarantine(checked: DataFrame) -> DataFrame:
-    return checked.where(F.col(_FAILURE).isNotNull()).select(
+    return checked.where(F.col(FAILURE_REASON).isNotNull()).select(
         *_source_coordinates(),
-        F.col("landing_file"),
-        F.col("key").cast(StringType()).alias("key"),
-        F.col("value").cast(StringType()).alias("value"),
-        F.col(_FAILURE),
+        F.col(LANDING_FILE),
+        F.col("key").cast(StringType()).alias(RAW_KEY),
+        F.col("value").cast(StringType()).alias(RAW_VALUE),
+        F.col(FAILURE_REASON),
     )
 
 

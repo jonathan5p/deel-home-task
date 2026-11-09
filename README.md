@@ -476,8 +476,10 @@ By default every landed offset is compared, from the first to the last landed of
 
 Bronze is a typed, faithful log of every change event: one row per event, no deduplication. The package `analytics/pipelines/src/pipelines/bronze/` holds:
 
-- `entities.py`: one `Entity` per source table, with its key, content and audit columns, its NOT NULL columns and the JSON row schema Debezium emits. `entity_for_topic` resolves the entity from the last segment of a `<prefix>.<schema>.<table>` topic and rejects unknown tables.
+- `entities.py`: one `Entity` per source table, with its key, content and audit columns, a description of each column, its NOT NULL columns and the JSON row schema Debezium emits. `entity_for_topic` resolves the entity from the last segment of a `<prefix>.<schema>.<table>` topic and rejects unknown tables.
 - `parse.py`: `parse_changes(records, entity)` turns landing records (the Kafka columns as landed, plus `landing_file`, the path of the landing file each record was read from) into typed bronze rows and quarantine rows. It is a pure DataFrame transform, so it works on batch and streaming DataFrames.
+- `columns.py`: the names of the metadata and quarantine columns, each defined once and used everywhere through its constant.
+- `descriptions.py`: the descriptions of the metadata and quarantine columns, and the table comments.
 - `decimals.py` and `content_hash.py`: the decimal decoding and the content hash below, in plain Spark SQL functions (no Python UDFs).
 - `job.py`: the bronze streaming job, which runs `parse_changes` on every landing topic folder and appends the results to Iceberg tables.
 
@@ -490,6 +492,7 @@ make spark-submit SPARK_APP=analytics/pipelines/src/pipelines/bronze/job.py SPAR
 - **Two streaming queries per topic** in `KAFKA_TOPICS`, for the entity the topic names: bronze rows are appended to `<ICEBERG_CATALOG>.bronze.<entity>` (checkpoint `<CHECKPOINT_ROOT>/bronze/<entity>/`), quarantine rows, plus `quarantined_at` (the micro-batch's processing time), to `<ICEBERG_CATALOG>.bronze.<entity>_quarantine` (checkpoint `<CHECKPOINT_ROOT>/bronze/<entity>_quarantine/`). Locally that is `lake.bronze.customers`, `lake.bronze.customers_quarantine` and so on.
 - **Quarantine rows record their landing file:** the reader adds `landing_file` from the file source's `_metadata.file_path` column, so each quarantined record points at the Avro file it was read from. Bronze rows do not carry it.
 - **Tables are created at start** when missing (`CREATE NAMESPACE` and `CREATE TABLE IF NOT EXISTS`), with the columns of the `parse_changes` output, partitioned by `days(published_at)`. `write.distribution-mode` is `none`, because streaming runs without adaptive execution and a hash distribution would shuffle every micro-batch into `spark.sql.shuffle.partitions` tasks. An existing table is never altered.
+- **Every table and column is described:** the `CREATE TABLE` statement is generated with a table `COMMENT` and a `COMMENT` on every column, which Iceberg stores as the field's `doc`. Business columns take the `description` of their `SourceColumn` in `entities.py`; the metadata and quarantine columns and the table comments come from `descriptions.py`. The job refuses to create a table with a column that has no description, and a unit test checks every entity's tables, so a new column cannot be added undocumented. `DESCRIBE TABLE EXTENDED lake.bronze.customers` shows them.
 - **Only committed landing files are read:** the file stream source follows the landing sink's `_spark_metadata` log, so files left by a failed landing micro-batch are ignored. The landing topic folders must exist when the job starts, so start it after the landing job has written to them.
 - **Restart-safe, exactly once:** each query's checkpoint records the landing files it has processed, and Iceberg's streaming sink stores the query id and batch id in every snapshot and skips a batch it has already committed. Stopping and restarting the job neither skips nor duplicates rows: each `source_partition` and `source_offset` of a topic appears once.
 - **Micro-batches** run every `BRONZE_TRIGGER_SECONDS` until the job is stopped (Ctrl+C); `SPARK_APP_ARGS=--available-now` processes what has landed so far and then stops.
@@ -511,12 +514,12 @@ Bronze columns and where they come from:
 | `source_partition`, `source_offset` | Kafka partition and offset | int, long |
 | `published_at` | Kafka record timestamp | timestamp |
 | `change_op` | `op`: `c` → `create`, `u` → `update`, `d` → `delete`, `r` → `snapshot` | string |
-| `change_position` | `source.lsn` | long |
+| `commit_sequence` | `source.lsn` | long |
 | `changed_at` | `source.ts_ms` (commit time in the source) | timestamp |
 | `captured_at` | envelope `ts_ms` (when Debezium processed the change) | timestamp |
 | `content_hash` | the content columns, see below | string (hex SHA-256) |
 
-Kafka coordinates are lineage; the change identity is the entity key, `change_position` and `change_op`. `unity_price` is decoded from its base64 two's-complement bytes with `try_to_binary`, `hex` and `conv`, then scaled by its `scale`; values up to eight bytes (a signed long) that fit `decimal(38,10)` exactly are decoded without loss.
+Kafka coordinates are lineage; the change identity is the entity key, `commit_sequence` and `change_op`. `unity_price` is decoded from its base64 two's-complement bytes with `try_to_binary`, `hex` and `conv`, then scaled by its `scale`; values up to eight bytes (a signed long) that fit `decimal(38,10)` exactly are decoded without loss.
 
 **Tombstones** (records with a `null` value) are dropped: they only mark a key for log compaction, and landing keeps them. **Invalid records** do not fail the job; they become quarantine rows with `record_source`, `source_partition`, `source_offset`, `published_at`, `landing_file` (the landing file the record was read from), the raw `key` and `value` as strings, and `failure_reason`, the first failed check:
 
@@ -543,6 +546,8 @@ Kafka coordinates are lineage; the change identity is the entity key, `change_po
 | Column removed | The field is absent from new events, so the column becomes null and drops out of the hash: silver records one new version per key. A removed NOT NULL column quarantines its events until it is no longer declared NOT NULL. | Automatic for nullable columns; manual for NOT NULL ones. |
 | Column renamed | The old column becomes null and the new one is ignored until the `Entity` maps it (`renamed_to` keeps the bronze name stable). | Manual change to the `Entity`; the next event per key gets a new hash, so silver records one new version per key. |
 | Type changed | Values that no longer parse are quarantined (NOT NULL columns, decimals) or read as null. | Manual change to the `Entity` and its conversion; one new version per key, as for a rename. |
+
+**Tables created by an earlier version of the job.** `CREATE TABLE IF NOT EXISTS` leaves an existing table as it is, so column and table descriptions apply only to newly created tables. A local lake whose bronze tables predate them has no comments, and still has `change_position` where the job now writes `commit_sequence`, so appends to it fail. Drop those tables (`DROP TABLE lake.bronze.<entity> PURGE` in `make spark-sql`) together with their checkpoints under `<CHECKPOINT_ROOT>/bronze/`, so the job recreates them and reprocesses the landing zone; `make clean CONFIRM=1` does the same by discarding all local data. A table that is kept can get its descriptions by hand with `ALTER TABLE ... ALTER COLUMN ... COMMENT '...'`.
 
 #### Tests, lint and format
 

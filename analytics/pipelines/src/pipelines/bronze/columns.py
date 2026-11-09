@@ -1,0 +1,26 @@
+RECORD_SOURCE = "record_source"
+SOURCE_PARTITION = "source_partition"
+SOURCE_OFFSET = "source_offset"
+PUBLISHED_AT = "published_at"
+CHANGE_OP = "change_op"
+COMMIT_SEQUENCE = "commit_sequence"
+CHANGED_AT = "changed_at"
+CAPTURED_AT = "captured_at"
+CONTENT_HASH = "content_hash"
+
+LANDING_FILE = "landing_file"
+RAW_KEY = "key"
+RAW_VALUE = "value"
+FAILURE_REASON = "failure_reason"
+QUARANTINED_AT = "quarantined_at"
+
+SOURCE_COORDINATES = (RECORD_SOURCE, SOURCE_PARTITION, SOURCE_OFFSET, PUBLISHED_AT)
+BRONZE_METADATA_COLUMNS = (
+    *SOURCE_COORDINATES,
+    CHANGE_OP,
+    COMMIT_SEQUENCE,
+    CHANGED_AT,
+    CAPTURED_AT,
+    CONTENT_HASH,
+)
+QUARANTINE_COLUMNS = (*SOURCE_COORDINATES, LANDING_FILE, RAW_KEY, RAW_VALUE, FAILURE_REASON)

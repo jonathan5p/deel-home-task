@@ -95,7 +95,11 @@ def test_a_renamed_column_keeps_its_source_name_in_the_row_schema() -> None:
 
 def test_an_entity_needs_its_key_among_its_columns() -> None:
     with pytest.raises(ValueError, match="'id' is not a column of entity 'things'"):
-        Entity(name="things", key="id", columns=(SourceColumn("name", SourceType.VARCHAR),))
+        Entity(
+            name="things",
+            key="id",
+            columns=(SourceColumn("name", SourceType.VARCHAR, "Name of the thing"),),
+        )
 
 
 @pytest.mark.parametrize("entity", ENTITIES, ids=lambda entity: entity.name)

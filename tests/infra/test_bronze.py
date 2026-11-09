@@ -1,5 +1,20 @@
 import pytest
 
+from pipelines.bronze.columns import (
+    CAPTURED_AT,
+    CHANGE_OP,
+    CHANGED_AT,
+    COMMIT_SEQUENCE,
+    CONTENT_HASH,
+    FAILURE_REASON,
+    LANDING_FILE,
+    PUBLISHED_AT,
+    QUARANTINED_AT,
+    RAW_VALUE,
+    RECORD_SOURCE,
+    SOURCE_OFFSET,
+    SOURCE_PARTITION,
+)
 from tests.infra.bronze_setup import (
     AUDIT_BRONZE,
     BRONZE_ROWS,
@@ -13,6 +28,7 @@ from tests.infra.bronze_setup import (
     TOPICS,
     BronzeRuns,
     offsets,
+    table_descriptions,
 )
 from tests.infra.stack import Stack
 
@@ -23,18 +39,18 @@ def test_each_entity_table_holds_typed_rows_with_their_change_metadata(
 ) -> None:
     rows = bronze_runs.first[f"lake.bronze.{entity}"]
 
-    assert [row["change_op"] for row in rows] == ["snapshot", "update"]
+    assert [row[CHANGE_OP] for row in rows] == ["snapshot", "update"]
     for offset, row in enumerate(rows):
         assert {name: row[name] for name in BRONZE_ROWS[entity] | AUDIT_BRONZE} == (
             BRONZE_ROWS[entity] | AUDIT_BRONZE
         )
-        assert row["record_source"] == TOPICS[entity]
-        assert (row["source_partition"], row["source_offset"]) == ("0", str(offset))
-        assert row["published_at"] == "2026-11-08 14:21:01"
-        assert row["change_position"] == str(FIRST_LSN + offset)
-        assert row["changed_at"] == "2026-11-08 14:21:00.025"
-        assert row["captured_at"] == "2026-11-08 14:21:00.561"
-    hashes = {row["content_hash"] for row in rows}
+        assert row[RECORD_SOURCE] == TOPICS[entity]
+        assert (row[SOURCE_PARTITION], row[SOURCE_OFFSET]) == ("0", str(offset))
+        assert row[PUBLISHED_AT] == "2026-11-08 14:21:01"
+        assert row[COMMIT_SEQUENCE] == str(FIRST_LSN + offset)
+        assert row[CHANGED_AT] == "2026-11-08 14:21:00.025"
+        assert row[CAPTURED_AT] == "2026-11-08 14:21:00.561"
+    hashes = {row[CONTENT_HASH] for row in rows}
     assert len(hashes) == 1
     assert len(hashes.pop() or "") == 64
 
@@ -44,9 +60,9 @@ def test_invalid_records_are_quarantined_while_valid_ones_flow(bronze_runs: Bron
         quarantine = bronze_runs.first[f"lake.bronze.{entity}_quarantine"]
         if entity in FAILURE_REASONS:
             (row,) = quarantine
-            assert (row["source_offset"], row["failure_reason"]) == ("2", FAILURE_REASONS[entity])
-            assert row["value"] == INVALID_RECORDS[entity]
-            assert row["quarantined_at"] is not None
+            assert (row[SOURCE_OFFSET], row[FAILURE_REASON]) == ("2", FAILURE_REASONS[entity])
+            assert row[RAW_VALUE] == INVALID_RECORDS[entity]
+            assert row[QUARANTINED_AT] is not None
         else:
             assert quarantine == []
         assert offsets(bronze_runs.first[f"lake.bronze.{entity}"]) == [0, 1]
@@ -58,13 +74,13 @@ def test_quarantine_rows_record_the_landing_file_they_were_read_from(
     for entity in FAILURE_REASONS:
         folder = f"{LAKE_KEY}/landing/{TOPICS[entity]}/"
         (row,) = bronze_runs.first[f"lake.bronze.{entity}_quarantine"]
-        landing_file = str(row["landing_file"])
+        landing_file = str(row[LANDING_FILE])
 
         assert landing_file.startswith(f"s3a://lake/{folder}part-")
         assert landing_file.endswith(".avro")
         assert landing_file.removeprefix(f"s3a://lake/{folder}") in stack.lake_entries(folder)
     for entity in ENTITIES:
-        assert all("landing_file" not in row for row in bronze_runs.first[f"lake.bronze.{entity}"])
+        assert all(LANDING_FILE not in row for row in bronze_runs.first[f"lake.bronze.{entity}"])
 
 
 def test_tombstones_reach_neither_table(bronze_runs: BronzeRuns) -> None:
@@ -77,7 +93,7 @@ def test_bronze_data_files_are_partitioned_by_publish_day(
 ) -> None:
     for table in ("customers", "customers_quarantine"):
         partitions = stack.lake_entries(f"warehouse/bronze/{table}/data/")
-        assert partitions == {"published_at_day=2026-11-08"}
+        assert partitions == {f"{PUBLISHED_AT}_day=2026-11-08"}
 
 
 @pytest.mark.parametrize("entity", ENTITIES)
@@ -88,7 +104,7 @@ def test_a_restart_appends_only_the_records_landed_since(
 
     assert offsets(rows) == [0, 1, 3]
     assert rows[:2] == bronze_runs.first[f"lake.bronze.{entity}"]
-    assert rows[2]["change_op"] == "delete"
+    assert rows[2][CHANGE_OP] == "delete"
     assert (
         bronze_runs.restarted[f"lake.bronze.{entity}_quarantine"]
         == bronze_runs.first[f"lake.bronze.{entity}_quarantine"]
@@ -102,7 +118,7 @@ def test_a_run_with_nothing_new_appends_nothing(bronze_runs: BronzeRuns) -> None
 def test_each_record_is_written_exactly_once_across_runs(bronze_runs: BronzeRuns) -> None:
     for table in TABLES:
         coordinates = [
-            (row["record_source"], row["source_partition"], row["source_offset"])
+            (row[RECORD_SOURCE], row[SOURCE_PARTITION], row[SOURCE_OFFSET])
             for row in bronze_runs.idle[table]
         ]
         assert len(coordinates) == len(set(coordinates)), table
@@ -111,3 +127,14 @@ def test_each_record_is_written_exactly_once_across_runs(bronze_runs: BronzeRuns
 def test_files_outside_the_landing_commit_log_are_ignored(bronze_runs: BronzeRuns) -> None:
     assert STRAY_OFFSET not in offsets(bronze_runs.idle["lake.bronze.customers"])
     assert STRAY_OFFSET not in offsets(bronze_runs.idle["lake.bronze.customers_quarantine"])
+
+
+def test_every_bronze_table_and_column_is_described(stack: Stack, bronze_runs: BronzeRuns) -> None:
+    descriptions = table_descriptions(stack)
+
+    assert sorted(description["table"] for description in descriptions) == sorted(TABLES)
+    for description in descriptions:
+        assert description["comment"], description["table"]
+        undescribed = [name for name, doc in description["columns"].items() if not doc]
+        assert undescribed == [], description["table"]
+        assert description["columns"], description["table"]

@@ -34,10 +34,25 @@ from analytics.pipelines.tests.bronze.parse_samples import (
     source_row,
     without,
 )
+from pipelines.bronze.columns import (
+    BRONZE_METADATA_COLUMNS,
+    CAPTURED_AT,
+    CHANGE_OP,
+    CHANGED_AT,
+    COMMIT_SEQUENCE,
+    CONTENT_HASH,
+    FAILURE_REASON,
+    LANDING_FILE,
+    PUBLISHED_AT,
+    QUARANTINE_COLUMNS,
+    RAW_KEY,
+    RAW_VALUE,
+    RECORD_SOURCE,
+    SOURCE_OFFSET,
+    SOURCE_PARTITION,
+)
 from pipelines.bronze.entities import CUSTOMERS, ENTITIES, ORDER_ITEMS, ORDERS, PRODUCTS, Entity
 from pipelines.bronze.parse import (
-    BRONZE_METADATA_COLUMNS,
-    QUARANTINE_COLUMNS,
     FailureReason,
     parse_changes,
 )
@@ -54,7 +69,7 @@ def test_every_op_becomes_one_typed_bronze_row(
 
     row = only_row(parsed.bronze)
     assert business(row, entity) == expected_bronze(entity)
-    assert row.change_op == change_op
+    assert row[CHANGE_OP] == change_op
     assert parsed.quarantine.count() == 0
 
 
@@ -86,7 +101,7 @@ def test_an_update_takes_its_values_from_after(spark: SparkSession, entity: Enti
 def test_tombstones_are_dropped_not_quarantined(spark: SparkSession, entity: Entity) -> None:
     parsed = parse(spark, entity, change(entity, "d"), None)
 
-    assert [row.source_offset for row in parsed.bronze.collect()] == [0]
+    assert [row[SOURCE_OFFSET] for row in parsed.bronze.collect()] == [0]
     assert parsed.quarantine.count() == 0
 
 
@@ -97,13 +112,13 @@ def test_bronze_rows_carry_the_source_coordinates_and_change_metadata(
 
     row = only_row(parse_changes(records, CUSTOMERS).bronze)
 
-    assert row.record_source == "test.operations.customers"
-    assert row.source_partition == 0
-    assert row.source_offset == 41
-    assert row.published_at == PUBLISHED
-    assert row.change_position == LSN
-    assert row.changed_at == datetime(2026, 11, 8, 14, 21, 0, 25000)
-    assert row.captured_at == datetime(2026, 11, 8, 14, 21, 0, 561000)
+    assert row[RECORD_SOURCE] == "test.operations.customers"
+    assert row[SOURCE_PARTITION] == 0
+    assert row[SOURCE_OFFSET] == 41
+    assert row[PUBLISHED_AT] == PUBLISHED
+    assert row[COMMIT_SEQUENCE] == LSN
+    assert row[CHANGED_AT] == datetime(2026, 11, 8, 14, 21, 0, 25000)
+    assert row[CAPTURED_AT] == datetime(2026, 11, 8, 14, 21, 0, 561000)
 
 
 @pytest.mark.parametrize("entity", ENTITIES, ids=ENTITY_IDS)
@@ -128,9 +143,9 @@ def test_source_encodings_become_typed_columns(spark: SparkSession) -> None:
     assert types["products"]["unity_price"] == DecimalType(38, 10)
     assert types["orders"]["order_date"] == DateType()
     assert types["order_items"]["quantity"] == IntegerType()
-    assert types["customers"]["change_position"] == LongType()
-    assert types["customers"]["changed_at"] == TimestampType()
-    assert types["customers"]["content_hash"] == StringType()
+    assert types["customers"][COMMIT_SEQUENCE] == LongType()
+    assert types["customers"][CHANGED_AT] == TimestampType()
+    assert types["customers"][CONTENT_HASH] == StringType()
 
 
 @pytest.mark.parametrize("entity", ENTITIES, ids=ENTITY_IDS)
@@ -146,7 +161,7 @@ def test_the_content_hash_ignores_audit_columns_and_the_op(
         change(entity, "d"),
     )
 
-    assert len({row.content_hash for row in parsed.bronze.collect()}) == 1
+    assert len({row[CONTENT_HASH] for row in parsed.bronze.collect()}) == 1
 
 
 @pytest.mark.parametrize("entity", ENTITIES, ids=ENTITY_IDS)
@@ -155,7 +170,7 @@ def test_a_content_change_changes_the_hash(spark: SparkSession, entity: Entity) 
 
     parsed = parse(spark, entity, change(entity, "c"), change(entity, "u", changed))
 
-    first, second = (row.content_hash for row in parsed.bronze.collect())
+    first, second = (row[CONTENT_HASH] for row in parsed.bronze.collect())
     assert first != second
 
 
@@ -226,8 +241,8 @@ def test_invalid_records_are_quarantined_with_their_reason(
     parsed = parse(spark, entity, value)
 
     row = only_row(parsed.quarantine)
-    assert row.failure_reason == reason
-    assert row.landing_file == landing_file(entity)
+    assert row[FAILURE_REASON] == reason
+    assert row[LANDING_FILE] == landing_file(entity)
     assert parsed.bronze.count() == 0
 
 
@@ -236,16 +251,16 @@ def test_quarantine_rows_keep_the_raw_record_and_its_coordinates(spark: SparkSes
 
     row = only_row(parsed.quarantine)
     assert row.asDict() == {
-        "record_source": "test.operations.orders",
-        "source_partition": 0,
-        "source_offset": 1,
-        "published_at": PUBLISHED,
-        "landing_file": "s3a://lake/landing/test.operations.orders/part-00000.avro",
-        "key": '{"order_id": 1}',
-        "value": "not json",
-        "failure_reason": str(FailureReason.NOT_AN_ENVELOPE),
+        RECORD_SOURCE: "test.operations.orders",
+        SOURCE_PARTITION: 0,
+        SOURCE_OFFSET: 1,
+        PUBLISHED_AT: PUBLISHED,
+        LANDING_FILE: "s3a://lake/landing/test.operations.orders/part-00000.avro",
+        RAW_KEY: '{"order_id": 1}',
+        RAW_VALUE: "not json",
+        FAILURE_REASON: str(FailureReason.NOT_AN_ENVELOPE),
     }
-    assert [row.source_offset for row in parsed.bronze.collect()] == [0]
+    assert [row[SOURCE_OFFSET] for row in parsed.bronze.collect()] == [0]
 
 
 def test_the_first_failed_check_is_the_reason(spark: SparkSession) -> None:
@@ -253,4 +268,6 @@ def test_the_first_failed_check_is_the_reason(spark: SparkSession) -> None:
 
     parsed = parse(spark, CUSTOMERS, envelope("c", after=row_without_key_or_name))
 
-    assert only_row(parsed.quarantine).failure_reason == f"{FailureReason.MISSING_KEY}: customer_id"
+    assert (
+        only_row(parsed.quarantine)[FAILURE_REASON] == f"{FailureReason.MISSING_KEY}: customer_id"
+    )

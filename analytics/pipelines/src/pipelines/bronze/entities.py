@@ -44,6 +44,7 @@ JSON_TYPES: Mapping[SourceType, DataType] = {
 class SourceColumn:
     name: str
     type: SourceType
+    description: str
     not_null: bool = False
     renamed_to: str | None = None
 
@@ -95,20 +96,39 @@ class UnknownEntityError(LookupError):
 
 
 AUDIT = (
-    SourceColumn("updated_at", SourceType.TIMESTAMP),
-    SourceColumn("updated_by", SourceType.BIGINT),
-    SourceColumn("created_at", SourceType.TIMESTAMP),
-    SourceColumn("created_by", SourceType.BIGINT),
+    SourceColumn(
+        "updated_at",
+        SourceType.TIMESTAMP,
+        "Time the source row was last updated (source wall clock read as UTC)",
+    ),
+    SourceColumn(
+        "updated_by", SourceType.BIGINT, "Identifier of the user who last updated the source row"
+    ),
+    SourceColumn(
+        "created_at",
+        SourceType.TIMESTAMP,
+        "Time the source row was created (source wall clock read as UTC)",
+    ),
+    SourceColumn(
+        "created_by", SourceType.BIGINT, "Identifier of the user who created the source row"
+    ),
 )
 
 CUSTOMERS = Entity(
     name="customers",
     key="customer_id",
     columns=(
-        SourceColumn("customer_id", SourceType.BIGINT, not_null=True),
-        SourceColumn("customer_name", SourceType.VARCHAR, not_null=True),
-        SourceColumn("is_active", SourceType.BOOLEAN, not_null=True),
-        SourceColumn("customer_address", SourceType.VARCHAR),
+        SourceColumn(
+            "customer_id",
+            SourceType.BIGINT,
+            "Customer identifier, the source table's primary key",
+            not_null=True,
+        ),
+        SourceColumn("customer_name", SourceType.VARCHAR, "Name of the customer", not_null=True),
+        SourceColumn(
+            "is_active", SourceType.BOOLEAN, "Whether the customer is active", not_null=True
+        ),
+        SourceColumn("customer_address", SourceType.VARCHAR, "Address of the customer"),
         *AUDIT,
     ),
 )
@@ -117,11 +137,21 @@ PRODUCTS = Entity(
     name="products",
     key="product_id",
     columns=(
-        SourceColumn("product_id", SourceType.BIGINT, not_null=True),
-        SourceColumn("product_name", SourceType.VARCHAR, not_null=True),
-        SourceColumn("barcode", SourceType.VARCHAR, not_null=True),
-        SourceColumn("unity_price", SourceType.DECIMAL, not_null=True),
-        SourceColumn("is_active", SourceType.BOOLEAN),
+        SourceColumn(
+            "product_id",
+            SourceType.BIGINT,
+            "Product identifier, the source table's primary key",
+            not_null=True,
+        ),
+        SourceColumn("product_name", SourceType.VARCHAR, "Name of the product", not_null=True),
+        SourceColumn("barcode", SourceType.VARCHAR, "Barcode of the product", not_null=True),
+        SourceColumn(
+            "unity_price",
+            SourceType.DECIMAL,
+            "Unit price of the product, decoded from Debezium's variable-scale decimal",
+            not_null=True,
+        ),
+        SourceColumn("is_active", SourceType.BOOLEAN, "Whether the product is active"),
         *AUDIT,
     ),
 )
@@ -130,11 +160,24 @@ ORDERS = Entity(
     name="orders",
     key="order_id",
     columns=(
-        SourceColumn("order_id", SourceType.BIGINT, not_null=True),
-        SourceColumn("order_date", SourceType.DATE),
-        SourceColumn("delivery_date", SourceType.DATE),
-        SourceColumn("customer_id", SourceType.BIGINT),
-        SourceColumn("status", SourceType.VARCHAR),
+        SourceColumn(
+            "order_id",
+            SourceType.BIGINT,
+            "Order identifier, the source table's primary key",
+            not_null=True,
+        ),
+        SourceColumn("order_date", SourceType.DATE, "Date the order was placed"),
+        SourceColumn("delivery_date", SourceType.DATE, "Date the order is or was delivered"),
+        SourceColumn(
+            "customer_id",
+            SourceType.BIGINT,
+            "Customer who placed the order (customers.customer_id)",
+        ),
+        SourceColumn(
+            "status",
+            SourceType.VARCHAR,
+            "Order status as recorded in the source, for example PENDING or COMPLETED",
+        ),
         *AUDIT,
     ),
 )
@@ -143,10 +186,20 @@ ORDER_ITEMS = Entity(
     name="order_items",
     key="order_item_id",
     columns=(
-        SourceColumn("order_item_id", SourceType.BIGINT, not_null=True),
-        SourceColumn("order_id", SourceType.BIGINT),
-        SourceColumn("product_id", SourceType.BIGINT),
-        SourceColumn("quanity", SourceType.INTEGER, renamed_to="quantity"),
+        SourceColumn(
+            "order_item_id",
+            SourceType.BIGINT,
+            "Order item identifier, the source table's primary key",
+            not_null=True,
+        ),
+        SourceColumn("order_id", SourceType.BIGINT, "Order the item belongs to (orders.order_id)"),
+        SourceColumn("product_id", SourceType.BIGINT, "Product ordered (products.product_id)"),
+        SourceColumn(
+            "quanity",
+            SourceType.INTEGER,
+            "Number of units ordered (source column quanity)",
+            renamed_to="quantity",
+        ),
         *AUDIT,
     ),
 )
