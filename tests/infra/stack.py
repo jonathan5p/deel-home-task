@@ -161,6 +161,22 @@ class Stack:
             "exec", "-T", "analytics-db", "psql", "-U", "analytics", "-d", database, "-Atc", query
         ).stdout.strip()
 
+    def put_object(self, key: str, data: bytes) -> None:
+        """Upload bytes to the lake bucket from inside the SeaweedFS container (no host port)."""
+        upload = (
+            'curl -fsS -X PUT --aws-sigv4 "aws:amz:us-east-1:s3" '
+            '--user "$AWS_ACCESS_KEY_ID:$AWS_SECRET_ACCESS_KEY" '
+            f'--data-binary @- "http://localhost:8333/lake/{key}"'
+        )
+        subprocess.run(
+            ["docker", "compose", "exec", "-T", "seaweedfs", "sh", "-c", upload],
+            cwd=REPO_ROOT,
+            env=self.env,
+            input=data,
+            capture_output=True,
+            check=True,
+        )
+
     def lake_entries(self, path: str) -> set[str]:
         listing = self.compose(
             "exec",
