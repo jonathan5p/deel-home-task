@@ -21,7 +21,7 @@ from pipelines.settings import BronzeSettings
 
 
 def record(entity: Entity, offset: int, value: Json | str | None) -> Row:
-    """A Kafka record as the landing job writes it, without the reader's `landing_file`."""
+    """A Kafka record as the landing job writes it, without the reader's `_landing_file`."""
     landed = landing(entity, value, offset=offset)
     return Row(**{name: landed[name] for name in KAFKA_RECORD_SCHEMA.fieldNames()})
 

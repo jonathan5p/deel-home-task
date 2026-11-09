@@ -182,7 +182,7 @@ def _quarantine(checked: DataFrame) -> DataFrame:
 def parse_changes(records: DataFrame, entity: Entity) -> ParsedChanges:
     """Split landing records of one entity into typed bronze rows and quarantine rows.
 
-    `records` holds the Kafka columns as landed plus `landing_file`, the path of the landing
+    `records` holds the Kafka columns as landed plus `_landing_file`, the path of the landing
     file each record was read from; quarantine rows keep it so a failure can be traced back
     to its file. Tombstones (null values) are dropped from both.
     """
