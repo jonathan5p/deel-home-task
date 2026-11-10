@@ -39,7 +39,7 @@ PIPELINE_JOBS = $(addsuffix -job,$(if $(filter all,$(PIPELINE)),$(PIPELINES),$(f
 PIPELINE_SERVICES = $(PIPELINE_JOBS) $(if $(filter silver all,$(PIPELINE)),lake-views)
 CHECK_PIPELINE = $(if $(and $(PIPELINE_JOBS),$(filter 1,$(words $(PIPELINE)))),,$(error Set PIPELINE to one of: $(PIPELINES) all (got "$(PIPELINE)"), e.g. make $@ PIPELINE=landing))
 
-.PHONY: help up down clean gold-reset spark-submit bronze-replay spark-sql spark-history data-quality lake-maintenance pipeline pipeline-logs pipeline-stop lake-views test lint format typecheck schemas test-infra hooks
+.PHONY: help up down clean gold-reset gold-retention spark-submit bronze-replay spark-sql spark-history data-quality lake-maintenance pipeline pipeline-logs pipeline-stop lake-views test lint format typecheck schemas test-infra hooks
 
 help:
 	@printf '%s\n' \
@@ -47,6 +47,7 @@ help:
 		'down           Stop all project services, including optional profiles; keep volumes.' \
 		'clean          Delete project containers and volumes (DATA LOSS); requires CONFIRM=1.' \
 		'gold-reset     Stop the gold job, recreate the gold schemas from the rendered DDL and delete the gold checkpoints (gold DATA LOSS; the lake is kept); requires CONFIRM=1.' \
+		'gold-retention Drop the gold history months outside GOLD_RETENTION_MONTHS (default 36) and create the months ahead; the maintenance profile runs it every GOLD_RETENTION_INTERVAL_HOURS (default 24).' \
 		'spark-submit   Run SPARK_APP (repo path; default: UI check job) in its own driver container; options SPARK_APP_ARGS, SPARK_CONF, SPARK_UI_PORT.' \
 		'bronze-replay  Append the changes of a landing range that bronze lacks: TOPIC plus FROM_OFFSET and TO_OFFSET (optional PARTITION) or FROM_TIME and TO_TIME.' \
 		'spark-sql      Open the Spark SQL shell in its own driver container; SPARK_SQL_FILE runs a file instead; SPARK_SQL_VARS (key=value ...) and LANDING_ROOT set its variables.' \
@@ -66,11 +67,13 @@ help:
 		'               Build output: git-ignored, regenerated each run; edit analytics/pipelines/src/pipelines/schemas/ instead.' \
 		'test-infra     Run the infra tests against an isolated copy of the stack (local only, a few minutes).' \
 		'hooks          Install the pre-commit hooks in this clone (once).' \
-		'Optional profiles: monitoring (Conduktor), history (Spark History Server), maintenance (lake maintenance every 24 hours). See README.md.'
+		'Optional profiles: monitoring (Conduktor), history (Spark History Server), maintenance (lake maintenance and gold retention every 24 hours). See README.md.'
 
 up:
 	@$(RENDER_GOLD_DDL)
 	@$(COMPOSE) $(addprefix --profile ,$(PROFILES)) up -d --build
+	@$(COMPOSE) up -d --wait analytics-db
+	@$(MAKE) --no-print-directory gold-retention
 
 down:
 	@$(COMPOSE) --profile '*' down
@@ -117,6 +120,8 @@ pipeline:
 	$(CHECK_PIPELINE)@$(RENDER_GOLD_DDL)
 	@$(COMPOSE) --profile history up -d --build
 	@$(COMPOSE) --profile app build spark-app
+	@$(COMPOSE) up -d --wait analytics-db
+	@$(MAKE) --no-print-directory gold-retention
 	@$(COMPOSE) --profile pipeline up -d $(PIPELINE_SERVICES)
 
 pipeline-logs:
@@ -163,6 +168,9 @@ else
 	@printf '%s\n' "Refusing gold reset: this deletes all gold data and the gold checkpoints. Run make gold-reset CONFIRM=1 to confirm." >&2
 	@exit 1
 endif
+
+gold-retention:
+	@$(COMPOSE) run --rm --build --no-deps spark-app python -m pipelines.gold.retention
 
 clean:
 ifeq ($(CONFIRM),1)

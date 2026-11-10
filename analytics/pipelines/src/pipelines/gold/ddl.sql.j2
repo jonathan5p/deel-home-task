@@ -148,6 +148,94 @@ CREATE UNLOGGED TABLE IF NOT EXISTS gold_internal.stage_fact_order_item_history 
 
 {{ describe_table(facts.fact_order_item_history.staging_table) }}
 
+CREATE OR REPLACE FUNCTION gold_internal.ensure_history_partitions(
+    months_ahead int DEFAULT 2,
+    as_of date DEFAULT current_date
+)
+RETURNS void
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    fact text;
+    month_start date;
+    month_end date;
+    partition_name text;
+BEGIN
+    FOREACH fact IN ARRAY ARRAY['fact_order_history', 'fact_order_item_history'] LOOP
+        FOR month_start IN EXECUTE format(
+            'SELECT (date_trunc(''month'', $1::timestamp) + make_interval(months => n))::date'
+            ' FROM generate_series(0, $2) AS n'
+            ' UNION'
+            ' SELECT date_trunc(''month'', _changed_at)::date FROM gold_internal.%I'
+            ' ORDER BY 1',
+            fact || '_default'
+        ) USING as_of, months_ahead LOOP
+            month_end := month_start + interval '1 month';
+            partition_name := format('%s_%s', fact, to_char(month_start, 'YYYY_MM'));
+            CONTINUE WHEN to_regclass(format('gold_internal.%I', partition_name)) IS NOT NULL;
+
+            EXECUTE format(
+                'CREATE TABLE gold_internal.%I (LIKE gold_internal.%I INCLUDING DEFAULTS INCLUDING CONSTRAINTS)',
+                partition_name, fact
+            );
+            EXECUTE format(
+                'WITH moved AS (DELETE FROM gold_internal.%I WHERE _changed_at >= $1 AND _changed_at < $2'
+                ' RETURNING *) INSERT INTO gold_internal.%I SELECT * FROM moved',
+                fact || '_default', partition_name
+            ) USING month_start, month_end;
+            EXECUTE format(
+                'ALTER TABLE gold_internal.%I ATTACH PARTITION gold_internal.%I FOR VALUES FROM (%L) TO (%L)',
+                fact, partition_name, month_start, month_end
+            );
+            EXECUTE format(
+                'COMMENT ON TABLE gold_internal.%I IS %L',
+                partition_name,
+                format('Partition of %s for %s.', fact, to_char(month_start, 'YYYY-MM'))
+            );
+        END LOOP;
+    END LOOP;
+END;
+$$;
+
+COMMENT ON FUNCTION gold_internal.ensure_history_partitions(int, date) IS
+    'Creates the monthly history partitions from the month of as_of to months_ahead months ahead, and one for every month the default partition holds rows of.';
+
+CREATE OR REPLACE FUNCTION gold_internal.apply_history_retention(
+    keep_months int DEFAULT 36,
+    months_ahead int DEFAULT 2,
+    as_of date DEFAULT current_date
+)
+RETURNS SETOF text
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    window_start timestamp := date_trunc('month', as_of::timestamp) - make_interval(months => keep_months);
+    expired record;
+BEGIN
+    PERFORM gold_internal.ensure_history_partitions(months_ahead, as_of);
+    FOR expired IN
+        SELECT child.relname AS partition_name
+        FROM pg_inherits AS i
+        JOIN pg_class AS parent ON parent.oid = i.inhparent
+        JOIN pg_class AS child ON child.oid = i.inhrelid
+        JOIN pg_namespace AS n ON n.oid = parent.relnamespace
+        CROSS JOIN LATERAL regexp_match(
+            pg_get_expr(child.relpartbound, child.oid), 'TO \(''([^'']+)''\)'
+        ) AS bound (upper_bound)
+        WHERE n.nspname = 'gold_internal'
+          AND parent.relname IN ('fact_order_history', 'fact_order_item_history')
+          AND bound.upper_bound[1]::timestamp <= window_start
+        ORDER BY parent.relname, child.relname
+    LOOP
+        EXECUTE format('DROP TABLE gold_internal.%I', expired.partition_name);
+        RETURN NEXT format('gold_internal.%I', expired.partition_name);
+    END LOOP;
+END;
+$$;
+
+COMMENT ON FUNCTION gold_internal.apply_history_retention(int, int, date) IS
+    'Ensures the history partitions, then drops the monthly ones that end before keep_months months before the month of as_of; returns the dropped partitions. Current state and dimensions are never trimmed.';
+
 CREATE TABLE IF NOT EXISTS gold_internal.current_orders (
 {{ column_lines(tables.current_orders, {
     "status_key": "REFERENCES gold_internal.dim_order_status (status_key)",

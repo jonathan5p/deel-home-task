@@ -7,11 +7,10 @@ from pyspark.sql import functions as F
 
 from common.settings import AnalyticsDbSettings
 from pipelines.gold.facts import ChangeFact
-from pipelines.gold.postgres import ConnectionFactory, run_in_transaction
+from pipelines.gold.postgres import WRITER_LOCK, ConnectionFactory, run_in_transaction
 from pipelines.schemas.definitions import EntityDefinition
 
 POSTGRES_DRIVER = "org.postgresql.Driver"
-WRITER_LOCK = "SELECT pg_advisory_xact_lock(hashtextextended('gold_internal', 0))"
 
 type StageWriter = Callable[[DataFrame, str], None]
 type BatchWriter = Callable[[DataFrame, int], None]

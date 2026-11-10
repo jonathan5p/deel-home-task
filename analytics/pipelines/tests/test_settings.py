@@ -3,6 +3,7 @@ import pytest
 from common.settings import AnalyticsDbSettings, InvalidSettingError, MissingSettingsError
 from pipelines.settings import (
     BronzeSettings,
+    GoldRetentionSettings,
     GoldSettings,
     KafkaSettings,
     LakeSettings,
@@ -320,3 +321,33 @@ def test_maintenance_namespaces_must_not_be_empty() -> None:
 def test_downstream_checkpoints_must_name_a_table_and_a_path(value: str) -> None:
     with pytest.raises(InvalidSettingError, match="MAINTENANCE_DOWNSTREAM_CHECKPOINTS"):
         MaintenanceSettings.from_env(MAINTENANCE | {"MAINTENANCE_DOWNSTREAM_CHECKPOINTS": value})
+
+
+def test_gold_retention_keeps_three_years_and_two_months_ahead_by_default() -> None:
+    settings = GoldRetentionSettings.from_env(DATABASE)
+
+    assert settings.analytics_db == AnalyticsDbSettings.from_env(DATABASE)
+    assert settings.keep_months == 36
+    assert settings.months_ahead == 2
+
+
+def test_gold_retention_window_and_months_ahead_can_be_overridden() -> None:
+    settings = GoldRetentionSettings.from_env(
+        DATABASE | {"GOLD_RETENTION_MONTHS": "24", "GOLD_PARTITION_MONTHS_AHEAD": "6"}
+    )
+
+    assert settings.keep_months == 24
+    assert settings.months_ahead == 6
+
+
+@pytest.mark.parametrize("name", ["GOLD_RETENTION_MONTHS", "GOLD_PARTITION_MONTHS_AHEAD"])
+def test_gold_retention_months_must_be_positive_integers(name: str) -> None:
+    with pytest.raises(InvalidSettingError, match=name):
+        GoldRetentionSettings.from_env(DATABASE | {name: "0"})
+
+
+def test_gold_retention_needs_only_the_database() -> None:
+    with pytest.raises(MissingSettingsError) as error:
+        GoldRetentionSettings.from_env({})
+
+    assert error.value.names == AnalyticsDbSettings.REQUIRED

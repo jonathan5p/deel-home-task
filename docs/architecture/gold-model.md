@@ -238,6 +238,26 @@ The alternatives were rejected:
 
 **Retention:** the history facts keep 3 years by default in PostgreSQL. They are range-partitioned by month on `_changed_at`, so retention drops whole partitions instead of deleting rows. The retention job creates the monthly partitions ahead and drops the expired ones; the DDL creates only each history table's default partition, which catches every row outside the monthly partitions. Current-state tables and the dimensions are never trimmed, so an order that is still open keeps its current row however old it is. The lake gold tables keep the full history.
 
+The retention job (`pipelines/gold/retention.py`, run once by `make up` and `make pipeline` and then daily by the `gold-retention-job` service) calls `gold_internal.apply_history_retention(keep_months, months_ahead, as_of)` in one transaction that first takes the [gold writer lock](#dimension-keys-of-the-facts):
+
+1. `ensure_history_partitions(months_ahead, as_of)` creates a partition for every month from the month of `as_of` to `months_ahead` months ahead, and for every month the default partition holds rows of, moving those rows into it. The default partition fills up whenever history arrives for a month without a partition: everything the gold job writes before the first retention run, a late change, or every month before the current one when gold is reloaded from silver. A partition cannot be created while the default partition holds rows of its month, so the rows are moved in the same transaction. Without this step those rows would never be dropped.
+2. Every monthly partition whose upper bound is on or before the first day of the month `keep_months` months before `as_of` is dropped; the bound is read from the partition, not from its name. A month partly inside the window is kept, so the window holds at least `keep_months` full months.
+
+```mermaid
+sequenceDiagram
+    participant R as retention job
+    participant P as PostgreSQL
+    R->>P: BEGIN
+    R->>P: pg_advisory_xact_lock (gold writer lock)
+    R->>P: apply_history_retention(36, 2, today)
+    P->>P: partition the months held by the default partition and the months ahead
+    P->>P: DROP the partitions that end before the window
+    P-->>R: dropped partitions
+    R->>P: COMMIT
+```
+
+Taking the writer lock first means retention waits for a running merge and a merge waits for retention, always in the same order (the advisory lock, then the table locks), so the two never deadlock. Dropping a partition takes a short exclusive lock on its history table; `DETACH PARTITION ... CONCURRENTLY` would avoid it, but PostgreSQL does not allow it on a table with a default partition.
+
 ## Writing gold
 
 The gold job (`pipelines/gold/job.py`) runs four streaming queries, one per silver table: `customers` into `dim_customer`, `products` into `dim_product`, `orders` into `fact_order_history` and `current_orders`, and `order_items` into `fact_order_item_history` and `current_order_items`. Each has its checkpoint in `<CHECKPOINT_ROOT>/gold/<table>/`, named after its dimension or history fact, and writes every micro-batch in two steps:

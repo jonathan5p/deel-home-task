@@ -23,6 +23,8 @@ DEFAULT_SNAPSHOT_RETENTION_HOURS = 168
 DEFAULT_RETAIN_LAST = 10
 DEFAULT_ORPHAN_AGE_HOURS = 72
 MIN_ORPHAN_AGE_HOURS = 24
+DEFAULT_GOLD_RETENTION_MONTHS = 36
+DEFAULT_GOLD_PARTITION_MONTHS_AHEAD = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -256,6 +258,23 @@ class MaintenanceSettings:
     def checkpoints(self, table: str) -> tuple[str, ...]:
         """The checkpoints of the streams that read `table` (`<namespace>.<table>`)."""
         return self.downstream.get(table, ())
+
+
+@dataclass(frozen=True, slots=True)
+class GoldRetentionSettings:
+    analytics_db: AnalyticsDbSettings
+    keep_months: int
+    months_ahead: int
+
+    @classmethod
+    def from_env(cls, env: Mapping[str, str]) -> Self:
+        return cls(
+            analytics_db=AnalyticsDbSettings.from_env(env),
+            keep_months=positive_int(env, "GOLD_RETENTION_MONTHS", DEFAULT_GOLD_RETENTION_MONTHS),
+            months_ahead=positive_int(
+                env, "GOLD_PARTITION_MONTHS_AHEAD", DEFAULT_GOLD_PARTITION_MONTHS_AHEAD
+            ),
+        )
 
 
 @dataclass(frozen=True, slots=True)
