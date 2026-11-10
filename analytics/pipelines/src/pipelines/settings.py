@@ -14,6 +14,7 @@ from common.settings import (
 DEFAULT_LANDING_TRIGGER_SECONDS = 10
 DEFAULT_BRONZE_TRIGGER_SECONDS = 10
 DEFAULT_SILVER_TRIGGER_SECONDS = 10
+DEFAULT_GOLD_TRIGGER_SECONDS = 10
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,6 +135,30 @@ class SilverSettings:
 
     def checkpoint_path(self, name: str) -> str:
         return self.lake.checkpoint_path(self.LAYER, name)
+
+
+@dataclass(frozen=True, slots=True)
+class GoldSettings:
+    LAYER: ClassVar[str] = "gold"
+
+    lake: LakeSettings
+    analytics_db: AnalyticsDbSettings
+    trigger_seconds: int
+
+    @classmethod
+    def from_env(cls, env: Mapping[str, str]) -> Self:
+        require(env, *LakeSettings.REQUIRED, *AnalyticsDbSettings.REQUIRED)
+        return cls(
+            lake=LakeSettings.from_env(env),
+            analytics_db=AnalyticsDbSettings.from_env(env),
+            trigger_seconds=positive_int(env, "GOLD_TRIGGER_SECONDS", DEFAULT_GOLD_TRIGGER_SECONDS),
+        )
+
+    def silver_table(self, entity: str) -> str:
+        return self.lake.table(SilverSettings.LAYER, entity)
+
+    def checkpoint_path(self, table: str) -> str:
+        return self.lake.checkpoint_path(self.LAYER, table)
 
 
 @dataclass(frozen=True, slots=True)

@@ -2,7 +2,8 @@
   "type": "record",
   "name": "dim_customer",
   "namespace": "gold",
-  "doc": "Customers, SCD2: one row per customer version",
+  "doc": "Customers, SCD2: one row per customer version from silver, folded repeats and deletes included; a customer deleted in the source has no current version",
+  "public_doc": "Customers, SCD2: one row per customer version, without folded repeats and deletes; a customer deleted in the source has no current version",
   "fields": [
     {
       "name": "customer_key",
@@ -36,6 +37,21 @@
       "name": "_commit_sequence",
       "type": "long",
       "doc": "Position of the change in the source's commit log (Debezium source.lsn); increases in commit order"
+    },
+    {
+      "name": "_content_hash",
+      "type": "string",
+      "doc": "Hex SHA-256 of the content columns (key and audit columns excluded); unchanged content keeps its hash"
+    },
+    {
+      "name": "_is_deleted",
+      "type": "boolean",
+      "doc": "Whether the row was deleted in the source; the version keeps its last known values"
+    },
+    {
+      "name": "_is_folded",
+      "type": "boolean",
+      "doc": "Whether this version repeats the content and deletion state of the previous one by _commit_sequence, so it is not a version of its own and ends with the version it repeats"
     },
     {
       "name": "_valid_from",

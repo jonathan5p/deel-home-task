@@ -100,7 +100,19 @@ def test_gold_schemas_can_be_loaded_from_another_folder(schemas: SchemasTree) ->
             ColumnDefinition("_commit_sequence", ColumnType.LONG, "Commit position", True),
             ColumnDefinition("same_key", ColumnType.LONG, "Surrogate key of the thing", True),
         ),
+        references=(
+            ("thing_id", "things.thing_id"),
+            ("thing_name", "things.thing_name"),
+            ("same_key", "gold.fact_things.thing_key"),
+        ),
     )
+
+
+def test_a_gold_table_keeps_where_each_referencing_column_comes_from() -> None:
+    dim_product = load_gold_tables()["dim_product"]
+
+    assert dim_product.reference("product_name") == "products.product_name"
+    assert dim_product.reference("unit_price") is None
 
 
 @pytest.mark.parametrize(

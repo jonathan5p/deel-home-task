@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from tests.infra.bronze_setup import BronzeRuns, run_bronze_scenario
+from tests.infra.gold_dimensions_setup import GoldRuns, remove_fixture_rows, run_gold_scenario
 from tests.infra.landing_avro import landing_avro
 from tests.infra.silver_setup import SilverRuns, run_silver_scenario
 from tests.infra.stack import Stack
@@ -77,3 +78,13 @@ def bronze_runs(stack: Stack) -> BronzeRuns:
 def silver_runs(stack: Stack, bronze_runs: BronzeRuns) -> SilverRuns:
     """Silver runs on the bronze tables the bronze scenario leaves, which it then extends."""
     return run_silver_scenario(stack, bronze_runs.idle)
+
+
+@pytest.fixture(scope="module")
+def gold_runs(stack: Stack) -> Iterator[GoldRuns]:
+    """Run the gold job over the fixture silver batches, then remove the rows it wrote, which
+    the gold model tests must not see."""
+    try:
+        yield run_gold_scenario(stack)
+    finally:
+        remove_fixture_rows(stack)

@@ -12,6 +12,7 @@ from tests.infra.gold_fixtures import (
     INTERNAL_TABLES,
     PUBLIC_PIPELINE_ONLY_COLUMNS,
     PUBLIC_VIEWS,
+    STAGING_TABLES,
     TIES_AT_THE_TOP,
     UNDESCRIBED_COLUMNS,
     UNDESCRIBED_RELATIONS,
@@ -56,8 +57,19 @@ def test_ddl_applies_again_to_an_existing_database(
 def test_internal_schema_holds_the_model_tables(gold: Stack) -> None:
     relations = rows(gold, top_level_relations("gold_internal"))
 
-    assert {name for name, _ in relations} == INTERNAL_TABLES
+    assert {name for name, _ in relations} == INTERNAL_TABLES | STAGING_TABLES
     assert {kind for _, kind in relations} <= {"r", "p"}
+
+
+def test_staging_tables_are_unlogged(gold: Stack) -> None:
+    persistence = rows(
+        gold,
+        "SELECT relname, relpersistence FROM pg_class"
+        " WHERE relnamespace = 'gold_internal'::regnamespace AND relname LIKE 'stage_%'"
+        " ORDER BY 1;",
+    )
+
+    assert persistence == [[name, "u"] for name in sorted(STAGING_TABLES)]
 
 
 def test_public_schema_holds_only_views(gold: Stack) -> None:

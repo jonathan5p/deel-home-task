@@ -12,11 +12,14 @@ COMMENT ON SCHEMA gold_internal IS
 COMMENT ON SCHEMA gold IS
     'Gold star schema for consumers: views over gold_internal without the pipeline-only metadata.';
 
+-- The writer inserts new versions as not current and recomputes the flags of every key it
+-- touched in the same transaction, so the check only requires a current version to be open,
+-- not deleted and not folded; the unique index keeps one current version per key.
 CREATE TABLE IF NOT EXISTS gold_internal.dim_customer (
 {{ column_lines(tables.dim_customer, {"customer_key": "GENERATED ALWAYS AS IDENTITY"}) }}
     PRIMARY KEY (customer_key),
     UNIQUE (customer_id, _commit_sequence),
-    CHECK (_is_current = (_valid_to IS NULL))
+    CHECK (NOT _is_current OR (_valid_to IS NULL AND NOT _is_deleted AND NOT _is_folded))
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS dim_customer_current_idx
@@ -24,17 +27,29 @@ CREATE UNIQUE INDEX IF NOT EXISTS dim_customer_current_idx
 
 {{ describe_table(tables.dim_customer) }}
 
+CREATE UNLOGGED TABLE IF NOT EXISTS gold_internal.stage_dim_customer (
+{{ column_list(dimensions.dim_customer.staging_table) }}
+);
+
+{{ describe_table(dimensions.dim_customer.staging_table) }}
+
 CREATE TABLE IF NOT EXISTS gold_internal.dim_product (
 {{ column_lines(tables.dim_product, {"product_key": "GENERATED ALWAYS AS IDENTITY"}) }}
     PRIMARY KEY (product_key),
     UNIQUE (product_id, _commit_sequence),
-    CHECK (_is_current = (_valid_to IS NULL))
+    CHECK (NOT _is_current OR (_valid_to IS NULL AND NOT _is_deleted AND NOT _is_folded))
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS dim_product_current_idx
     ON gold_internal.dim_product (product_id) WHERE _is_current;
 
 {{ describe_table(tables.dim_product) }}
+
+CREATE UNLOGGED TABLE IF NOT EXISTS gold_internal.stage_dim_product (
+{{ column_list(dimensions.dim_product.staging_table) }}
+);
+
+{{ describe_table(dimensions.dim_product.staging_table) }}
 
 CREATE TABLE IF NOT EXISTS gold_internal.dim_date (
 {{ column_lines(tables.dim_date, {"calendar_date": "UNIQUE"}) }}
@@ -198,7 +213,8 @@ SELECT
     _valid_from,
     _valid_to,
     _is_current
-FROM gold_internal.dim_customer;
+FROM gold_internal.dim_customer
+WHERE NOT _is_folded AND NOT _is_deleted;
 
 {{ describe_view(tables.dim_customer) }}
 
@@ -213,7 +229,8 @@ SELECT
     _valid_from,
     _valid_to,
     _is_current
-FROM gold_internal.dim_product;
+FROM gold_internal.dim_product
+WHERE NOT _is_folded AND NOT _is_deleted;
 
 {{ describe_view(tables.dim_product) }}
 

@@ -39,6 +39,7 @@ x-spark-app: &spark-app
     LANDING_TRIGGER_SECONDS: ${LANDING_TRIGGER_SECONDS:-}
     BRONZE_TRIGGER_SECONDS: ${BRONZE_TRIGGER_SECONDS:-}
     SILVER_TRIGGER_SECONDS: ${SILVER_TRIGGER_SECONDS:-}
+    GOLD_TRIGGER_SECONDS: ${GOLD_TRIGGER_SECONDS:-}
     LANDING_CHECK_LAST_OFFSETS: ${LANDING_CHECK_LAST_OFFSETS:-}
   volumes:
     - spark-events:/opt/spark/spark-events
@@ -246,6 +247,13 @@ services:
     hostname: lake-views
     restart: on-failure
     command: [sh, -c, *pipeline-submit, spark-submit, /opt/app/analytics/pipelines/src/pipelines/silver/views_job.py]
+
+  gold-job:
+    <<: *pipeline-job
+    hostname: gold-job
+    command: [sh, -c, *pipeline-submit, spark-submit, /opt/app/analytics/pipelines/src/pipelines/gold/job.py]
+    ports:
+      - "4045:4040"
 
   # Optional: Spark history server
   spark-history:
