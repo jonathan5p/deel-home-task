@@ -73,9 +73,15 @@ def describe_table(table: GoldTable, kind: str = "TABLE") -> str:
     return comments(kind, f"{INTERNAL_SCHEMA}.{table.name}", table.description, table.columns)
 
 
-def describe_view(table: GoldTable, *added: ColumnDefinition) -> str:
-    """The comments of the public view of `table`: its columns without the pipeline-only ones."""
-    public = [column for column in table.columns if column.name not in PIPELINE_ONLY_COLUMNS]
+def describe_view(table: GoldTable, *added: ColumnDefinition, hidden: Iterable[str] = ()) -> str:
+    """The comments of the public view of `table`: its columns without the pipeline-only ones
+    and the `hidden` ones it keeps internal, plus the `added` ones."""
+    internal = set(hidden)
+    unknown = sorted(internal - {column.name for column in table.columns})
+    if unknown:
+        raise UnknownColumnError(table.name, unknown)
+    left_out = PIPELINE_ONLY_COLUMNS | internal
+    public = [column for column in table.columns if column.name not in left_out]
     relation = f"{PUBLIC_SCHEMA}.{table.name}"
     return comments("VIEW", relation, table.view_description, [*public, *added])
 

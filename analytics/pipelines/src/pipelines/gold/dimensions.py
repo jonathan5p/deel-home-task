@@ -40,14 +40,17 @@ def change_facts(
     def day(column: str, source: str) -> KeyLookup:
         return KeyLookup(column, source, tables["dim_date"], code="calendar_date", key="date_key")
 
-    status = KeyLookup(
-        "status_key",
-        "status",
-        tables["dim_order_status"],
-        code="status_code",
-        key="status_key",
-        fallback=UNKNOWN_STATUS,
-    )
+    def status(column: str) -> KeyLookup:
+        """The dim_order_status column of the same name for the order's status."""
+        return KeyLookup(
+            column,
+            "status",
+            tables["dim_order_status"],
+            code="status_code",
+            key=column,
+            fallback=UNKNOWN_STATUS,
+        )
+
     customer = AsOfLookup(
         dimensions["dim_customer"],
         business_key="customer_id",
@@ -65,7 +68,10 @@ def change_facts(
             tables["current_orders"],
             by_name["orders"],
             lookups=(
-                status,
+                status("status_key"),
+                # Stored with the current state so the partial indexes of the business views can
+                # filter on it; the planner cannot see through a join how few orders are open.
+                status("is_open"),
                 day("order_date_key", "order_date"),
                 day("delivery_date_key", "delivery_date"),
             ),

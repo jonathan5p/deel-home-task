@@ -40,8 +40,9 @@ def _names(table: GoldTable) -> set[str]:
 
 @dataclass(frozen=True, slots=True)
 class KeyLookup:
-    """A gold column holding the key of the row of a seeded dimension whose `code` equals a
-    staged column; the key of the `fallback` code when no row matches, or null without one."""
+    """A gold column holding the `key` column (its key, or another attribute) of the row of a
+    seeded dimension whose `code` equals a staged column; the value of the `fallback` code's
+    row when no row matches, or null without one."""
 
     column: str
     source: str

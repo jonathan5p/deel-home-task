@@ -29,7 +29,8 @@ BUSINESS_VIEWS = (
     "pending_items_by_product",
     "top_customers_by_pending_orders",
 )
-PUBLIC_VIEWS = INTERNAL_TABLES | {"data_freshness", *BUSINESS_VIEWS}
+VIEWS_WITHOUT_TABLE = ("open_orders", *BUSINESS_VIEWS)
+PUBLIC_VIEWS = INTERNAL_TABLES | {"data_freshness", *VIEWS_WITHOUT_TABLE}
 
 UNDESCRIBED_RELATIONS = """
 SELECT n.nspname || '.' || c.relname
@@ -141,11 +142,11 @@ VALUES
     (3, 'Alan Turing', 'Side Street 4', true, 120, 't1', false, '2026-11-01 08:00');
 
 INSERT INTO gold_internal.current_orders (
-    order_id, status_key, customer_id, order_date, delivery_date,
+    order_id, status_key, is_open, customer_id, order_date, delivery_date,
     order_date_key, delivery_date_key, _commit_sequence, _changed_at, _is_deleted
 )
 SELECT
-    o.order_id, s.status_key, o.customer_id, date '2026-11-09', o.delivery_date,
+    o.order_id, s.status_key, s.is_open, o.customer_id, date '2026-11-09', o.delivery_date,
     20261109, to_char(o.delivery_date, 'YYYYMMDD')::int, 400 + o.order_id,
     timestamp '2026-11-09 09:00', o.is_deleted
 FROM (
@@ -188,11 +189,11 @@ FROM (
 # is the one with 2, and the one with 1 (fourth) is left out.
 TIES_AT_THE_TOP = """
 INSERT INTO gold_internal.current_orders (
-    order_id, status_key, customer_id, order_date, delivery_date,
+    order_id, status_key, is_open, customer_id, order_date, delivery_date,
     order_date_key, delivery_date_key, _commit_sequence, _changed_at, _is_deleted
 )
 SELECT
-    o.order_id, s.status_key, o.customer_id, date '2026-11-09', o.delivery_date,
+    o.order_id, s.status_key, s.is_open, o.customer_id, date '2026-11-09', o.delivery_date,
     20261109, to_char(o.delivery_date, 'YYYYMMDD')::int, 800 + o.order_id,
     timestamp '2026-11-09 09:00', false
 FROM (
@@ -293,8 +294,12 @@ INSERT INTO gold_internal.dim_customer (
 VALUES
     (1, 10, 'a1', false, timestamp '2026-11-08 10:00'),
     (1, 20, 'a2', false, timestamp '2026-11-09 08:00');
-INSERT INTO gold_internal.current_orders (order_id, status_key, _commit_sequence, _changed_at)
-VALUES (1, 1, 30, timestamp '2026-11-09 09:00'), (2, 1, 40, timestamp '2026-11-09 09:30');
+INSERT INTO gold_internal.current_orders (
+    order_id, status_key, is_open, _commit_sequence, _changed_at
+)
+VALUES
+    (1, 1, true, 30, timestamp '2026-11-09 09:00'),
+    (2, 1, true, 40, timestamp '2026-11-09 09:30');
 """
 
 FRESHNESS = (

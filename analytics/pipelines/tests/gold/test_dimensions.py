@@ -41,6 +41,7 @@ def test_order_columns_are_looked_up_in_the_status_date_and_customer_dimensions(
 
     assert lookups == [
         ("status_key", "status", "dim_order_status", "UNKNOWN"),
+        ("is_open", "status", "dim_order_status", "UNKNOWN"),
         ("order_date_key", "order_date", "dim_date", None),
         ("delivery_date_key", "delivery_date", "dim_date", None),
     ]

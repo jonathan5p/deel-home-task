@@ -22,6 +22,7 @@ RESNAPSHOT = 9504
 ITEMS_FIRST = 9505
 CUSTOMER_LATER = 9506
 UNFOLDED_ORDER = 9507
+REOPENED = 9508
 ORDERS = (
     CHANGE_SEQUENCE,
     OUT_OF_ORDER,
@@ -30,6 +31,7 @@ ORDERS = (
     ITEMS_FIRST,
     CUSTOMER_LATER,
     UNFOLDED_ORDER,
+    REOPENED,
 )
 
 BEFORE_PRICE_CHANGE = 9601
@@ -125,6 +127,7 @@ BATCHES: Batches = {
             order(RESNAPSHOT, 140, "ON HOLD", "snapshot", delivery_date=None),
             order(CUSTOMER_LATER, 300, "PENDING", "create", customer_id=LATE_CUSTOMER),
             order(UNFOLDED_ORDER, 550, "PENDING", "create", customer_id=UNFOLDED_CUSTOMER),
+            order(REOPENED, 700, "PENDING", "create"),
         ],
         "order_items": [
             item(BEFORE_PRICE_CHANGE, 21, CHANGE_SEQUENCE, PRICE_CHANGE, 3),
@@ -145,9 +148,16 @@ BATCHES: Batches = {
             order(CHANGE_SEQUENCE, 60, "COMPLETED"),
             order(OUT_OF_ORDER, 90, "PENDING", "create"),
             order(ITEMS_FIRST, 395, "PENDING", "create"),
+            order(REOPENED, 720, "COMPLETED"),
         ],
     },
-    "batch-late": {"orders": [order(DELETED, 115, "PROCESSING")]},
+    "batch-late": {
+        "orders": [
+            order(DELETED, 115, "PROCESSING"),
+            order(CHANGE_SEQUENCE, 50, "PENDING"),
+            order(REOPENED, 740, "REPROCESSING"),
+        ]
+    },
 }
 SILVER = SilverFixture("test-fixtures/gold-facts", "gold_facts_fixture", BATCHES)
 
@@ -175,6 +185,12 @@ FROM gold_internal.current_orders
 WHERE order_id IN ({orders})
 ORDER BY 1;
 """
+OPEN_FLAGS = """
+SELECT order_id, is_open FROM gold_internal.current_orders WHERE order_id IN ({orders}) ORDER BY 1;
+"""
+OPEN_ORDERS = """
+SELECT order_id FROM gold.open_orders WHERE order_id IN ({orders}) ORDER BY 1;
+"""
 PUBLIC_CURRENT_ORDERS = """
 SELECT order_id FROM gold.current_orders WHERE order_id IN ({orders}) ORDER BY 1;
 """
@@ -200,6 +216,8 @@ class FactState:
     order_history: Table
     public_order_history: Table
     current_orders: Table
+    open_flags: Table
+    open_orders: Table
     public_current_orders: Table
     item_history: Table
     current_items: Table
@@ -221,6 +239,8 @@ def fact_state(stack: Stack) -> FactState:
         order_history=rows(stack, ORDER_HISTORY.format(**fixture)),
         public_order_history=rows(stack, PUBLIC_ORDER_HISTORY.format(**fixture)),
         current_orders=rows(stack, CURRENT_ORDERS.format(**fixture)),
+        open_flags=rows(stack, OPEN_FLAGS.format(**fixture)),
+        open_orders=rows(stack, OPEN_ORDERS.format(**fixture)),
         public_current_orders=rows(stack, PUBLIC_CURRENT_ORDERS.format(**fixture)),
         item_history=rows(stack, ITEM_HISTORY.format(**fixture)),
         current_items=rows(stack, CURRENT_ITEMS.format(**fixture)),

@@ -35,7 +35,7 @@ Gold applies the rule without dropping rows: bronze replays can append a missing
 Gold has two schemas:
 
 - **`gold_internal`** holds the tables. Only the gold streaming queries write them, and they keep the metadata they need: `_commit_sequence` to skip replayed batches and to order versions, `_is_deleted` for soft deletes and the fold rule, and `_content_hash` for the fold rule. It also holds the staging tables the gold job loads every micro-batch into (see [Writing gold](#writing-gold)), and the dimension versions views, the one place that derives the dimensions' `_is_folded`, `_valid_to` and `_is_current`: the public dimension views and the facts' as-of lookups both read them.
-- **`gold`** holds one view per table, with the same name, for consumers: the business question views, the API and anyone browsing the model. The views leave out `_commit_sequence`, `_content_hash`, `_is_deleted` and `_is_folded`; the current-state views leave out deleted rows, the dimension views leave out folded and deleted versions, and the history views leave out unchanged changes and add each change's validity range.
+- **`gold`** holds one view per table, with the same name, for consumers: the business question views, the API and anyone browsing the model, plus `open_orders`, the current orders that are open. The views leave out `_commit_sequence`, `_content_hash`, `_is_deleted` and `_is_folded`, and `gold.current_orders` also leaves out `is_open`; the current-state views leave out deleted rows, the dimension views leave out folded and deleted versions, and the history views leave out unchanged changes and add each change's validity range.
 
 Consumers never need to know how the pipeline orders or deduplicates changes, and the tables can change for the pipeline without breaking them.
 
@@ -47,6 +47,7 @@ Consumers never need to know how the pipeline orders or deduplicates changes, an
 | `_is_folded` | not stored; computed by `dim_customer_versions`, `dim_product_versions` | left out; folded versions are filtered |
 | `_valid_to`, `_is_current` of the dimensions | not stored; computed by `dim_customer_versions`, `dim_product_versions` | taken from the versions views |
 | `_valid_to`, `_is_current` of history facts | not stored | computed from the next change that is not folded, by `_commit_sequence` |
+| `is_open` of an order | `current_orders`, copied from `dim_order_status` by the writer | left out of `gold.current_orders`; `gold.open_orders` filters on it |
 
 ## Where the definitions live
 
@@ -166,8 +167,8 @@ erDiagram
 | `dim_order_status` | seeded dimension | one row per status: `PENDING`, `PROCESSING`, `REPROCESSING`, `COMPLETED`, `UNKNOWN` | `status_key` |
 | `fact_order_history` | history fact | one row per change to an order from silver, unchanged changes and the delete included; the view leaves unchanged changes out | (`order_id`, `_commit_sequence`, `_changed_at`); indexed on `customer_id` |
 | `fact_order_item_history` | history fact | as `fact_order_history`, per order item | (`order_item_id`, `_commit_sequence`, `_changed_at`); indexed on `product_id` |
-| `current_orders` | current state | one row per order; the view leaves deleted orders out | `order_id`; the orders not deleted indexed on (`status_key`, `delivery_date`) and (`status_key`, `customer_id`) for the business views |
-| `current_order_items` | current state | one row per order item; the view leaves deleted items out | `order_item_id` |
+| `current_orders` | current state | one row per order, with its status's `is_open`; the view leaves deleted orders out | `order_id`; the open orders indexed on (`delivery_date`, `status_key`) and `customer_id` for the business views |
+| `current_order_items` | current state | one row per order item; the view leaves deleted items out | `order_item_id`; the items not deleted indexed on `order_id` |
 
 Notes:
 
@@ -208,7 +209,7 @@ Example: product 3 costs 3.00 from a change committed at 10:00, with an unchange
 
 ### Open orders and pending items
 
-- **Open order:** an order in `current_orders` that is not deleted and whose status has `is_open`. Every status except `COMPLETED` is open. A null or unexpected status maps to `UNKNOWN`, which is open, so it shows up in the metrics instead of disappearing.
+- **Open order:** an order in `current_orders` that is not deleted and whose status has `is_open`, the rows of `gold.open_orders`. Every status except `COMPLETED` is open. A null or unexpected status maps to `UNKNOWN`, which is open, so it shows up in the metrics instead of disappearing.
 
   | Status | Open |
   | --- | --- |
@@ -218,6 +219,7 @@ Example: product 3 costs 3.00 from a change committed at 10:00, with an unchange
   | `UNKNOWN` (null or unexpected) | yes |
   | `COMPLETED` | no |
 
+- **Stored with the order:** the writer copies `is_open` from `dim_order_status` into `current_orders` with the same lookup and `UNKNOWN` fallback as `status_key`, and every current-state merge that takes a newer change sets both, so the flag always belongs to the stored status. The open rule itself stays in the `dim_order_status` seed; a change to it would need the stored flags recomputed. History keeps only `status_key`.
 - **Pending order** (question 4): an open order. `PENDING` alone would leave out orders being processed, and would not match questions 1 to 3.
 - **Pending item** (question 3): an item, not deleted, of an open order. Question 3 reports both the number of pending items and their total quantity per product.
 - **Top 3:** questions 2 and 4 rank by count with `RANK()` and keep places 1 to 3, so every row tied for third place is kept and more than three rows can come back. `RANK()` leaves gaps after a tie (two dates tied for first are both 1, the next is 3), so ties never add places: `DENSE_RANK()` would count a tie as one place and could return many more rows. Window functions work in any SQL engine, unlike `FETCH FIRST ... WITH TIES`.
@@ -273,13 +275,13 @@ sequenceDiagram
 
 **Idempotency.** Both steps can run again with the same input and leave the same result: staging is replaced, the inserts skip stored versions and changes, the current state only takes a higher `_commit_sequence`, and the versions views and the re-resolution derive their values from what is stored, not from the batch. A batch replayed after a failure, a whole silver table reprocessed from a fresh checkpoint, a duplicate change and a late older change all end in the same rows. No transaction spans Spark's checkpoint and PostgreSQL, so a batch that fails between them is simply replayed.
 
-**Generic writer.** The staging tables' columns, the INSERT and MERGE column lists, the dimension versions views and the re-resolution SQL are built from the gold schemas, never written by hand: `pipelines/gold/scd2.py` for the dimensions (with the SQL in the templates `scd2_insert.sql.j2` and `scd2_versions.sql.j2` next to it) and `pipelines/gold/facts.py` for the history facts and their current-state tables (with the SQL in the templates `fact_history.sql.j2`, `fact_current.sql.j2`, `fact_dimension_version_lookup.sql.j2` and `fact_resolve.sql.j2`). A column is loaded from the silver column its `from` names (`<entity>.<lake name>`), a metadata column from the silver column of the same name, `_valid_from` from `_changed_at`, and any other column from a rename the dimension declares (`unit_price` from `unity_price`) or a lookup the fact declares (`status_key`, the date keys and the as-of dimension columns, in `pipelines/gold/dimensions.py`). The surrogate keys are left to PostgreSQL, the dimensions' derived columns to their versions views, and the looked-up columns to the merge. The Iceberg gold tables in the lake are written the same way in a later step.
+**Generic writer.** The staging tables' columns, the INSERT and MERGE column lists, the dimension versions views and the re-resolution SQL are built from the gold schemas, never written by hand: `pipelines/gold/scd2.py` for the dimensions (with the SQL in the templates `scd2_insert.sql.j2` and `scd2_versions.sql.j2` next to it) and `pipelines/gold/facts.py` for the history facts and their current-state tables (with the SQL in the templates `fact_history.sql.j2`, `fact_current.sql.j2`, `fact_dimension_version_lookup.sql.j2` and `fact_resolve.sql.j2`). A column is loaded from the silver column its `from` names (`<entity>.<lake name>`), a metadata column from the silver column of the same name, `_valid_from` from `_changed_at`, and any other column from a rename the dimension declares (`unit_price` from `unity_price`) or a lookup the fact declares (`status_key` and `is_open`, the date keys and the as-of dimension columns, in `pipelines/gold/dimensions.py`). The surrogate keys are left to PostgreSQL, the dimensions' derived columns to their versions views, and the looked-up columns to the merge. The Iceberg gold tables in the lake are written the same way in a later step.
 
 **Freshness.** `gold.data_freshness` reports, per entity, how up to date gold is. For now it is computed from the data, as the source commit time of the newest change gold holds, so it ages when the source stops changing even though the pipeline is healthy. Later it will be filled from the pipeline statistics, with the same shape. Those statistics (per micro-batch rows, durations, last `_commit_sequence`, last event time) are planned in a separate `observability` catalog in the lake, apart from the business data (#127).
 
 ## The four business questions
 
-Each question is a view in `gold`, built on the `gold` views of the current state and the dimensions, and described like every other view (from its schema in `schemas/gold/<view>.avsc`):
+Each question is a view in `gold`, built on `gold.open_orders` and the `gold` views of the current items and the dimensions, and described like every other view (from its schema in `schemas/gold/<view>.avsc`):
 
 | Question | View | Columns |
 | --- | --- | --- |
@@ -288,7 +290,7 @@ Each question is a view in `gold`, built on the `gold` views of the current stat
 | Number of open pending items by product | `gold.pending_items_by_product` | `product_id`, `pending_items`, `pending_quantity` |
 | Top 3 customers with more pending orders | `gold.top_customers_by_pending_orders` | `customer_id`, `customer_name`, `pending_orders` |
 
-- Open orders are `current_orders` joined to `dim_order_status` where `is_open`; pending items are `current_order_items` joined to those orders, counted and summed by `product_id`; see [Open orders and pending items](#open-orders-and-pending-items).
+- Open orders are the rows of `gold.open_orders`, the one place the open rule is applied (`is_open AND NOT _is_deleted` on `gold_internal.current_orders`); pending items are `current_order_items` joined to those orders, counted and summed by `product_id`; see [Open orders and pending items](#open-orders-and-pending-items).
 - The two top-3 views keep ties for the third place: `rank() OVER (ORDER BY count(*) DESC)` gives tied rows the same place and skips the places after them, and the view keeps the rows ranked 3 or better, so every row tied for third is kept and no more than three places are reported. The top customers view takes the name from the current `dim_customer` version with a left join, so a customer not in `dim_customer` yet is kept with a null `customer_name`.
 - **A view has no row order.** Consumers add their own `ORDER BY`. The queries in [`analytics/sql/gold/`](../../analytics/sql/gold/), one per question, read the views with the order the questions are reported in:
 
@@ -307,16 +309,17 @@ ORDER BY open_orders DESC, delivery_date;
 
 ### Indexes behind the views
 
-Which statuses are open is only known by joining `dim_order_status`, so the planner cannot estimate how few orders are open: a join to the four open statuses out of five looks like most of the orders, whatever the data holds, and a partial index on open orders is not possible because its predicate cannot read another table. The indexes on `gold_internal.current_orders` therefore lead with `status_key`, include only the rows not deleted (`WHERE NOT _is_deleted`, the filter of the `gold.current_orders` view) and cover every column the views read from the table, so the planner can replace the scan of the table with an index-only scan, which reads far fewer pages:
+The planner estimates how many rows a filter keeps from the statistics of the table it filters. If open orders were only known by joining `dim_order_status`, it would assume four statuses out of five, so most of the orders, and read whole tables. With `is_open` stored in `current_orders`, its statistics show how few orders are open, and partial indexes `WHERE is_open AND NOT _is_deleted`, the predicate of `gold.open_orders`, hold only the open orders: they stay small however many completed orders accumulate, and the planner can prove the views' filter implies them.
 
-| Index | Used by | How (`EXPLAIN` on a current state with mostly completed orders) |
+| Index | Used by | How |
 | --- | --- | --- |
-| `current_orders_live_status_delivery_idx` (`status_key`, `delivery_date`) | `open_orders_by_delivery_date_and_status`, `top_delivery_dates_by_open_orders` | parallel index-only scan instead of a sequential scan of the table |
-| `current_orders_live_status_customer_idx` (`status_key`, `customer_id`) | `top_customers_by_pending_orders` | nested loop over the open statuses, with an index-only scan per status; the customer names then come from `dim_customer_current_idx` |
+| `current_orders_open_delivery_idx` (`delivery_date`, `status_key`), open orders | `open_orders_by_delivery_date_and_status`, `top_delivery_dates_by_open_orders` | index-only scan of the open orders, already in delivery date order |
+| `current_orders_open_customer_idx` (`customer_id`), open orders | `top_customers_by_pending_orders` | index-only scan of the open orders; the names then come from `dim_customer_current_idx` |
+| `current_order_items_live_order_idx` (`order_id`) including `product_id` and `quantity`, items not deleted | `pending_items_by_product` | nested loop from the open orders (found through `current_orders_open_delivery_idx`) into an index-only lookup of each order's items, instead of reading every item |
 
-- Index-only scans need the table's visibility map to be current, which autovacuum keeps up; on pages changed since the last vacuum the planner falls back to reading the table.
-- `pending_items_by_product` reads `current_order_items` in full: with the open fraction unknown, a hash join over all items beats one index lookup per open order, and indexes on `order_id` or `product_id` of the items were not used by any plan, so there are none.
-- Storing an order's `is_open` in `current_orders` would let the planner see how few orders are open and use partial indexes on open orders for all four views, at the cost of copying the open rule from `dim_order_status` into every current order.
+- The `INCLUDE` columns let the item lookups skip the table; without them the planner prefers a hash join over all items.
+- One wider index for all four views was slower for the top customers and pending items views than the two narrow ones.
+- The plans keep these indexes when the visibility map lags behind recent updates: the indexes hold only open orders, so the extra table reads stay few.
 
 ## Known source issues
 

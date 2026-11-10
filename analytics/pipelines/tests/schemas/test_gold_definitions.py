@@ -23,6 +23,7 @@ GOLD_TABLES = {
     "dim_product_versions",
     "fact_order_history",
     "fact_order_item_history",
+    "open_orders",
     "open_orders_by_delivery_date_and_status",
     "pending_items_by_product",
     "top_customers_by_pending_orders",
@@ -46,6 +47,7 @@ def test_a_gold_table_keeps_the_field_order_of_its_schema() -> None:
     assert [column.name for column in current_orders.columns] == [
         "order_id",
         "status_key",
+        "is_open",
         "customer_id",
         "order_date",
         "delivery_date",

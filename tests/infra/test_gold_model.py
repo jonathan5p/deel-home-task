@@ -5,7 +5,6 @@ import pytest
 from pipelines.schemas.definitions import POSTGRES_TYPES
 from pipelines.schemas.gold_definitions import load_gold_tables
 from tests.infra.gold_fixtures import (
-    BUSINESS_VIEWS,
     CURRENT_STATE,
     CURRENT_STATE_INDEXES,
     DELETED_ROWS,
@@ -22,6 +21,7 @@ from tests.infra.gold_fixtures import (
     UNDESCRIBED_RELATIONS,
     UNDESCRIBED_SCHEMAS,
     VERSIONS_VIEWS,
+    VIEWS_WITHOUT_TABLE,
     answer,
     column_types,
     item_change,
@@ -107,7 +107,7 @@ def test_every_index_outside_a_constraint_has_a_description(gold: Stack) -> None
     assert rows(gold, UNDESCRIBED_INDEXES) == []
 
 
-@pytest.mark.parametrize("view", BUSINESS_VIEWS)
+@pytest.mark.parametrize("view", VIEWS_WITHOUT_TABLE)
 def test_business_views_have_the_columns_and_types_of_their_schema(gold: Stack, view: str) -> None:
     columns = load_gold_tables()[view].columns
     types = rows(gold, type_names(POSTGRES_TYPES[column.type] for column in columns))[0]
@@ -118,27 +118,32 @@ def test_business_views_have_the_columns_and_types_of_their_schema(gold: Stack, 
 
 
 def test_current_state_tables_have_the_indexes_of_the_business_views(gold: Stack) -> None:
-    live = "ON gold_internal.current_orders USING btree"
+    orders = "ON gold_internal.current_orders USING btree"
+    items = "ON gold_internal.current_order_items USING btree"
+    open_orders = "WHERE (is_open AND (NOT _is_deleted))"
 
     assert rows(gold, CURRENT_STATE_INDEXES) == [
         [
+            "current_order_items_live_order_idx",
+            "CREATE INDEX current_order_items_live_order_idx"
+            f" {items} (order_id) INCLUDE (product_id, quantity) WHERE (NOT _is_deleted)",
+        ],
+        [
             "current_order_items_pkey",
-            "CREATE UNIQUE INDEX current_order_items_pkey"
-            " ON gold_internal.current_order_items USING btree (order_item_id)",
+            f"CREATE UNIQUE INDEX current_order_items_pkey {items} (order_item_id)",
         ],
         [
-            "current_orders_live_status_customer_idx",
-            "CREATE INDEX current_orders_live_status_customer_idx"
-            f" {live} (status_key, customer_id) WHERE (NOT _is_deleted)",
+            "current_orders_open_customer_idx",
+            f"CREATE INDEX current_orders_open_customer_idx {orders} (customer_id) {open_orders}",
         ],
         [
-            "current_orders_live_status_delivery_idx",
-            "CREATE INDEX current_orders_live_status_delivery_idx"
-            f" {live} (status_key, delivery_date) WHERE (NOT _is_deleted)",
+            "current_orders_open_delivery_idx",
+            "CREATE INDEX current_orders_open_delivery_idx"
+            f" {orders} (delivery_date, status_key) {open_orders}",
         ],
         [
             "current_orders_pkey",
-            f"CREATE UNIQUE INDEX current_orders_pkey {live} (order_id)",
+            f"CREATE UNIQUE INDEX current_orders_pkey {orders} (order_id)",
         ],
     ]
 

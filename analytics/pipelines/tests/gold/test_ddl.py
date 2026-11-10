@@ -20,12 +20,13 @@ from pipelines.gold.ddl import (
 from pipelines.gold.dimensions import DIMENSIONS
 from pipelines.schemas.gold_definitions import load_gold_tables
 
-BUSINESS_VIEWS = (
+QUESTION_VIEWS = (
     "open_orders_by_delivery_date_and_status",
     "top_delivery_dates_by_open_orders",
     "pending_items_by_product",
     "top_customers_by_pending_orders",
 )
+VIEWS_WITHOUT_TABLE = ("open_orders", *QUESTION_VIEWS)
 
 
 def test_a_text_becomes_a_postgres_string_with_its_quotes_doubled() -> None:
@@ -209,16 +210,21 @@ def test_history_facts_are_indexed_by_the_dimension_key_they_are_re_resolved_by(
     ("index", "definition"),
     [
         (
-            "current_orders_live_status_delivery_idx",
-            "current_orders (status_key, delivery_date) WHERE NOT _is_deleted",
+            "current_orders_open_delivery_idx",
+            "current_orders (delivery_date, status_key) WHERE is_open AND NOT _is_deleted",
         ),
         (
-            "current_orders_live_status_customer_idx",
-            "current_orders (status_key, customer_id) WHERE NOT _is_deleted",
+            "current_orders_open_customer_idx",
+            "current_orders (customer_id) WHERE is_open AND NOT _is_deleted",
+        ),
+        (
+            "current_order_items_live_order_idx",
+            "current_order_items (order_id) INCLUDE (product_id, quantity)\n"
+            "    WHERE NOT _is_deleted",
         ),
     ],
 )
-def test_current_orders_are_indexed_for_the_business_views(index: str, definition: str) -> None:
+def test_the_current_state_is_indexed_for_the_business_views(index: str, definition: str) -> None:
     ddl = render()
 
     assert f"CREATE INDEX IF NOT EXISTS {index}\n    ON gold_internal.{definition};" in ddl
@@ -244,9 +250,43 @@ def test_every_gold_relation_but_the_versions_views_is_described_as_a_public_vie
         assert f"COMMENT ON VIEW gold.{name} IS" not in ddl
 
 
-@pytest.mark.parametrize("view", BUSINESS_VIEWS)
+@pytest.mark.parametrize("view", VIEWS_WITHOUT_TABLE)
 def test_a_business_view_has_no_internal_table(view: str) -> None:
     ddl = render()
 
     assert f"CREATE OR REPLACE VIEW gold.{view} AS" in ddl
     assert f"gold_internal.{view}" not in ddl
+
+
+def test_the_public_current_orders_keep_the_open_flag_internal() -> None:
+    ddl = render()
+
+    assert "COMMENT ON COLUMN gold_internal.current_orders.is_open IS" in ddl
+    assert "COMMENT ON COLUMN gold.current_orders.is_open IS" not in ddl
+    assert "COMMENT ON COLUMN gold.dim_order_status.is_open IS" in ddl
+
+
+def test_open_orders_are_the_current_orders_open_and_not_deleted() -> None:
+    view = render().split("CREATE OR REPLACE VIEW gold.open_orders AS", 1)[1].split(";", 1)[0]
+
+    assert view.endswith("FROM gold_internal.current_orders\nWHERE is_open AND NOT _is_deleted")
+
+
+@pytest.mark.parametrize("view", QUESTION_VIEWS)
+def test_the_business_views_count_the_open_orders(view: str) -> None:
+    body = render().split(f"CREATE OR REPLACE VIEW gold.{view} AS", 1)[1].split(";", 1)[0]
+
+    assert "FROM gold.open_orders AS o" in body or "JOIN gold.open_orders AS o" in body
+    assert "gold.current_orders" not in body
+
+
+def test_a_view_cannot_hide_a_column_its_table_lacks() -> None:
+    with pytest.raises(UnknownColumnError, match="things has no columns named nope"):
+        describe_view(THINGS, hidden=["nope"])
+
+
+def test_a_view_leaves_out_the_columns_it_hides() -> None:
+    lines = describe_view(THINGS, hidden=["label"]).splitlines()
+
+    assert "COMMENT ON COLUMN gold.things.label IS" not in lines
+    assert "COMMENT ON COLUMN gold.things.thing_id IS" in lines

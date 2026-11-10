@@ -72,13 +72,13 @@ make up
 Gold is a star schema built from the silver history tables: SCD2 customer and product dimensions, seeded date and order-status dimensions, append-only history facts for orders and order items (partitioned by month, 3 years kept), and current-state tables for orders and items that the four business questions read. It uses two schemas:
 
 - `gold_internal` holds the tables the pipeline writes, with the metadata it needs to skip replayed batches and order versions (`_commit_sequence`, soft deletes in `_is_deleted`, `_content_hash` to fold unchanged versions), plus the unlogged staging tables `stage_dim_customer`, `stage_dim_product`, `stage_fact_order_history` and `stage_fact_order_item_history` that the gold job loads every micro-batch into, and the views `dim_customer_versions` and `dim_product_versions`, which derive each dimension version's fold flag, validity range and current flag.
-- `gold` holds the views consumers read, with the same names, without that metadata: the history views leave out unchanged changes and add each change's validity range, the current-state views leave deleted rows out, and the dimension views leave out folded and deleted versions. It also holds one view per business question and `data_freshness`.
+- `gold` holds the views consumers read, with the same names, without that metadata: the history views leave out unchanged changes and add each change's validity range, the current-state views leave deleted rows out, and the dimension views leave out folded and deleted versions. It also holds `open_orders` (the current orders that are open), one view per business question, and `data_freshness`.
 
 The design, with the ERD, the grain of every table, the open and pending rules, versioning by `_commit_sequence`, and retention, is in [docs/architecture/gold-model.md](docs/architecture/gold-model.md).
 
 In short:
 
-- **Open order:** current status other than `COMPLETED`, not deleted. **Pending orders** are open orders, and **pending items** are the items of open orders.
+- **Open order:** current status other than `COMPLETED`, not deleted; `gold.open_orders` lists them. **Pending orders** are open orders, and **pending items** are the items of open orders.
 - **Current state only moves forward:** a version replaces the current row only if its `_commit_sequence` is higher, so late or replayed events never overwrite newer state; they are still kept as history.
 - **Top 3 questions include ties**, so more than three rows can come back.
 

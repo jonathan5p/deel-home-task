@@ -158,20 +158,18 @@ CREATE TABLE IF NOT EXISTS gold_internal.current_orders (
     PRIMARY KEY (order_id)
 );
 
--- The planner only learns which statuses are open by joining dim_order_status, so it cannot
--- tell how few orders are open. These indexes lead with status_key, skip deleted rows and
--- cover the columns the business views read, so the views can use index-only scans instead
--- of reading the table.
-CREATE INDEX IF NOT EXISTS current_orders_live_status_delivery_idx
-    ON gold_internal.current_orders (status_key, delivery_date) WHERE NOT _is_deleted;
-CREATE INDEX IF NOT EXISTS current_orders_live_status_customer_idx
-    ON gold_internal.current_orders (status_key, customer_id) WHERE NOT _is_deleted;
+-- is_open is stored with the order so the planner can see how few orders are open; partial
+-- indexes on open orders keep only those, with the columns the business views read.
+CREATE INDEX IF NOT EXISTS current_orders_open_delivery_idx
+    ON gold_internal.current_orders (delivery_date, status_key) WHERE is_open AND NOT _is_deleted;
+CREATE INDEX IF NOT EXISTS current_orders_open_customer_idx
+    ON gold_internal.current_orders (customer_id) WHERE is_open AND NOT _is_deleted;
 
 {{ describe_table(tables.current_orders) }}
-COMMENT ON INDEX gold_internal.current_orders_live_status_delivery_idx IS
-    'Orders not deleted by status and delivery date, for gold.open_orders_by_delivery_date_and_status and gold.top_delivery_dates_by_open_orders.';
-COMMENT ON INDEX gold_internal.current_orders_live_status_customer_idx IS
-    'Orders not deleted by status and customer, for gold.top_customers_by_pending_orders.';
+COMMENT ON INDEX gold_internal.current_orders_open_delivery_idx IS
+    'Open orders by delivery date and status, for gold.open_orders_by_delivery_date_and_status and gold.top_delivery_dates_by_open_orders.';
+COMMENT ON INDEX gold_internal.current_orders_open_customer_idx IS
+    'Open orders by customer, for gold.top_customers_by_pending_orders.';
 
 -- No foreign key to current_orders: an item can arrive before its order.
 CREATE TABLE IF NOT EXISTS gold_internal.current_order_items (
@@ -179,7 +177,13 @@ CREATE TABLE IF NOT EXISTS gold_internal.current_order_items (
     PRIMARY KEY (order_item_id)
 );
 
+CREATE INDEX IF NOT EXISTS current_order_items_live_order_idx
+    ON gold_internal.current_order_items (order_id) INCLUDE (product_id, quantity)
+    WHERE NOT _is_deleted;
+
 {{ describe_table(tables.current_order_items) }}
+COMMENT ON INDEX gold_internal.current_order_items_live_order_idx IS
+    'Items not deleted by order, for gold.pending_items_by_product, which looks up the items of each open order.';
 
 CREATE OR REPLACE VIEW gold.dim_customer AS
 SELECT
@@ -317,7 +321,24 @@ SELECT
 FROM gold_internal.current_orders
 WHERE NOT _is_deleted;
 
-{{ describe_view(tables.current_orders) }}
+{{ describe_view(tables.current_orders, hidden=["is_open"]) }}
+
+-- The one definition of an open order; the partial indexes on current_orders use the same
+-- predicate, so the business views that read this view can use them.
+CREATE OR REPLACE VIEW gold.open_orders AS
+SELECT
+    order_id,
+    status_key,
+    customer_id,
+    order_date,
+    delivery_date,
+    order_date_key,
+    delivery_date_key,
+    _changed_at
+FROM gold_internal.current_orders
+WHERE is_open AND NOT _is_deleted;
+
+{{ describe_view(tables.open_orders) }}
 
 CREATE OR REPLACE VIEW gold.current_order_items AS
 SELECT
@@ -350,9 +371,8 @@ SELECT
     o.delivery_date,
     s.status_code,
     count(*) AS open_orders
-FROM gold.current_orders AS o
+FROM gold.open_orders AS o
 JOIN gold.dim_order_status AS s ON s.status_key = o.status_key
-WHERE s.is_open
 GROUP BY o.delivery_date, s.status_code;
 
 {{ describe_view(tables.open_orders_by_delivery_date_and_status) }}
@@ -367,9 +387,7 @@ FROM (
         o.delivery_date,
         count(*) AS open_orders,
         rank() OVER (ORDER BY count(*) DESC) AS place
-    FROM gold.current_orders AS o
-    JOIN gold.dim_order_status AS s ON s.status_key = o.status_key
-    WHERE s.is_open
+    FROM gold.open_orders AS o
     GROUP BY o.delivery_date
 ) AS ranked_dates
 WHERE place <= 3;
@@ -382,9 +400,7 @@ SELECT
     count(*) AS pending_items,
     sum(i.quantity) AS pending_quantity
 FROM gold.current_order_items AS i
-JOIN gold.current_orders AS o ON o.order_id = i.order_id
-JOIN gold.dim_order_status AS s ON s.status_key = o.status_key
-WHERE s.is_open
+JOIN gold.open_orders AS o ON o.order_id = i.order_id
 GROUP BY i.product_id;
 
 {{ describe_view(tables.pending_items_by_product) }}
@@ -400,9 +416,7 @@ FROM (
         o.customer_id,
         count(*) AS pending_orders,
         rank() OVER (ORDER BY count(*) DESC) AS place
-    FROM gold.current_orders AS o
-    JOIN gold.dim_order_status AS s ON s.status_key = o.status_key
-    WHERE s.is_open
+    FROM gold.open_orders AS o
     GROUP BY o.customer_id
 ) AS top_customers
 LEFT JOIN gold.dim_customer AS c
