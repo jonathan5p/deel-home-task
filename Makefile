@@ -33,9 +33,10 @@ CODE_MOUNTS = -v "$(CURDIR)/analytics:/opt/app/analytics" -v "$(CURDIR)/tests:/o
 APP_RUN = COMPOSE_PROJECT_NAME=$(CHECKS_PROJECT) $(COMPOSE) run --rm $(APP_BUILD) --no-deps $(CODE_MOUNTS)
 
 PIPELINE_JOBS = $(addsuffix -job,$(if $(filter all,$(PIPELINE)),$(PIPELINES),$(filter $(PIPELINES),$(PIPELINE))))
+PIPELINE_SERVICES = $(PIPELINE_JOBS) $(if $(filter silver all,$(PIPELINE)),lake-views)
 CHECK_PIPELINE = $(if $(and $(PIPELINE_JOBS),$(filter 1,$(words $(PIPELINE)))),,$(error Set PIPELINE to one of: $(PIPELINES) all (got "$(PIPELINE)"), e.g. make $@ PIPELINE=landing))
 
-.PHONY: help up down clean spark-submit spark-sql spark-history data-quality pipeline pipeline-logs pipeline-stop test lint format typecheck schemas test-infra hooks
+.PHONY: help up down clean spark-submit spark-sql spark-history data-quality pipeline pipeline-logs pipeline-stop lake-views test lint format typecheck schemas test-infra hooks
 
 help:
 	@printf '%s\n' \
@@ -47,8 +48,10 @@ help:
 		'spark-history  Toggle the optional Spark History Server (localhost:18080): start it if stopped, stop it if running.' \
 		'data-quality   Run the data quality checks against the running stack (landing versus Kafka); fails if any check fails.' \
 		'pipeline       Start the stack, the History Server and the PIPELINE job (landing, bronze, silver or all) as a long-running service.' \
+		'               silver and all also run lake-views once the silver tables exist.' \
 		'pipeline-logs  Follow the logs of the PIPELINE job (landing, bronze, silver or all).' \
 		'pipeline-stop  Stop and remove the PIPELINE job (landing, bronze, silver or all); the rest of the stack keeps running.' \
+		'lake-views     Create the silver views, or replace those whose query or descriptions changed; fails while a silver table is missing.' \
 		'test           Run the unit tests with coverage (fails below 90%) in the app container.' \
 		'lint           Check linting and formatting with ruff in the app container.' \
 		'format         Format the code and apply safe lint fixes with ruff.' \
@@ -93,13 +96,17 @@ data-quality:
 pipeline:
 	$(CHECK_PIPELINE)@$(COMPOSE) --profile history up -d --build
 	@$(COMPOSE) --profile app build spark-app
-	@$(COMPOSE) --profile pipeline up -d $(PIPELINE_JOBS)
+	@$(COMPOSE) --profile pipeline up -d $(PIPELINE_SERVICES)
 
 pipeline-logs:
-	$(CHECK_PIPELINE)@$(COMPOSE) --profile pipeline logs -f $(PIPELINE_JOBS)
+	$(CHECK_PIPELINE)@$(COMPOSE) --profile pipeline logs -f $(PIPELINE_SERVICES)
 
 pipeline-stop:
-	$(CHECK_PIPELINE)@$(COMPOSE) --profile pipeline rm -sf $(PIPELINE_JOBS)
+	$(CHECK_PIPELINE)@$(COMPOSE) --profile pipeline rm -sf $(PIPELINE_SERVICES)
+
+lake-views:
+	@$(COMPOSE) --profile app build spark-app
+	@$(COMPOSE) --profile pipeline run --rm --no-deps lake-views
 
 test:
 	@$(APP_RUN) spark-app pytest -p no:cacheprovider

@@ -3,7 +3,10 @@ name = "pipelines"
 version = "0.1.0"
 description = "Spark pipelines: Debezium CDC from Kafka into the Iceberg lake and the PostgreSQL gold layer."
 requires-python = ">=3.14,<3.15"
-dependencies = ["common"]
+dependencies = [
+    "common",
+    "jinja2>=3.1",
+]
 
 [tool.uv.sources]
 common = { workspace = true }

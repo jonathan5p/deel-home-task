@@ -22,6 +22,7 @@ VIEWS = ("history", "current")
 type SqlResults = dict[str, list[list[str]]]
 
 SILVER_APP = "analytics/pipelines/src/pipelines/silver/job.py"
+VIEWS_APP = "analytics/pipelines/src/pipelines/silver/views_job.py"
 SILVER_TABLES = [f"lake.silver.{entity}" for entity in ENTITIES]
 SILVER_VIEWS = [f"lake.silver.{entity}_{view}" for entity in ENTITIES for view in VIEWS]
 VIEWS_SQL = "tests/infra/sql/silver_views.sql"
@@ -66,8 +67,9 @@ def state_store_files(stack: Stack, entity: str) -> set[str]:
 
 
 def run_silver_and_read_tables(stack: Stack) -> Tables:
-    """Run the job, then read its tables and views."""
+    """Run the job, then the views job, then read the tables and views."""
     submit(stack, SILVER_APP, "--available-now")
+    submit(stack, VIEWS_APP)
     return read_tables(stack, [*SILVER_TABLES, *SILVER_VIEWS], commit_sequence)
 
 
@@ -118,9 +120,7 @@ def run_silver_scenario(stack: Stack, bronze: Tables) -> SilverRuns:
     )
 
 
-def run_silver_without_bronze_tables(stack: Stack) -> tuple[int, str]:
-    # Once the bronze scenario has run, every bronze table exists in the lake catalog, so this
-    # run reads from Spark's built-in catalog, which has none.
-    return stack.run_app(
-        SILVER_APP, "--available-now", env=ENV | {"ICEBERG_CATALOG": "spark_catalog"}
-    )
+def run_without_upstream_tables(stack: Stack, app: str, *args: str) -> tuple[int, str]:
+    # Once the scenarios have run, every bronze and silver table exists in the lake catalog, so
+    # this run reads from Spark's built-in catalog, which has none.
+    return stack.run_app(app, *args, env=ENV | {"ICEBERG_CATALOG": "spark_catalog"})

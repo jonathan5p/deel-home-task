@@ -7,11 +7,9 @@ from analytics.pipelines.tests.silver.deduplication_setup import ENTITY, KEY, ch
 from analytics.pipelines.tests.silver.versions_samples import CHANGED_AT, BronzeChange, bronze_frame
 from pipelines.lake.columns import ChangeOp, MetadataColumn
 from pipelines.lake.tables import TABLE_TEMPLATES, described_schema, ensure_table, table_definition
-from pipelines.lake.views import ensure_view
 from pipelines.settings import SilverSettings
 from pipelines.silver.job import SILVER
 from pipelines.silver.versions import versions
-from pipelines.silver.views import silver_views
 
 HISTORY_COLUMNS = [
     column.lake_name for column in TABLE_TEMPLATES["silver_history"].columns_for(ENTITY.definition)
@@ -19,6 +17,42 @@ HISTORY_COLUMNS = [
 CURRENT_COLUMNS = [
     column.lake_name for column in TABLE_TEMPLATES["silver_current"].columns_for(ENTITY.definition)
 ]
+CUSTOMER_COLUMNS = """customer_id,
+    customer_name,
+    is_active,
+    customer_address,
+    updated_at,
+    updated_by,
+    created_at,
+    created_by,
+    _commit_sequence,
+    _change_op,
+    _changed_at,
+    _content_hash"""
+BY_KEY = "PARTITION BY customer_id ORDER BY _commit_sequence"
+CUSTOMERS_HISTORY_SQL = f"""WITH versions AS (
+    SELECT
+        *,
+        coalesce(
+            _content_hash = lag(_content_hash) OVER ({BY_KEY})
+            AND _is_deleted = lag(_is_deleted) OVER ({BY_KEY}),
+            false
+        ) AS _folded
+    FROM lake.silver.customers
+)
+SELECT
+    {CUSTOMER_COLUMNS},
+    _is_deleted,
+    _changed_at AS _valid_from,
+    lead(_changed_at) OVER ({BY_KEY}) AS _valid_to,
+    lead(_commit_sequence) OVER ({BY_KEY}) IS NULL AS _is_current
+FROM versions
+WHERE NOT _folded"""
+CUSTOMERS_CURRENT_SQL = f"""SELECT
+    {CUSTOMER_COLUMNS},
+    _valid_from
+FROM lake.silver.customers_history
+WHERE _is_current AND NOT _is_deleted"""
 
 
 def at(sequence: int) -> datetime:
@@ -43,11 +77,6 @@ def append_versions(
     rows = versions(bronze_frame(spark, ENTITY, changes), ENTITY)
     ensure_table(spark, table, described_schema(table, rows.schema, definition), definition)
     rows.writeTo(table).append()
-
-
-def create_views(spark: SparkSession, settings: SilverSettings) -> None:
-    for view, definition in silver_views(ENTITY, settings).items():
-        ensure_view(spark, view, definition)
 
 
 class Validity(NamedTuple):

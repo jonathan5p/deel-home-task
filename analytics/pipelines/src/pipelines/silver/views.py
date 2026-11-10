@@ -1,72 +1,47 @@
 from collections.abc import Iterable, Mapping
+from importlib.resources import files
 
-from pipelines.bronze.entities import Entity
-from pipelines.lake.columns import MetadataColumn
+from jinja2 import Environment, StrictUndefined
+from pyspark.sql import SparkSession
+
+from pipelines.bronze.entities import Entity, entity_for_topic
 from pipelines.lake.tables import TABLE_TEMPLATES
-from pipelines.lake.tables import sql_identifier as q
-from pipelines.lake.views import ViewDefinition, view_definition
+from pipelines.lake.views import ViewDefinition, ensure_view, view_definition
 from pipelines.settings import SilverSettings
+from pipelines.silver.job import SILVER
 
 HISTORY = "silver_history"
 CURRENT = "silver_current"
-FOLDED = "_folded"
+SQL = Environment(undefined=StrictUndefined, autoescape=False)
+
+
+class MissingSilverTablesError(LookupError):
+    def __init__(self, tables: Iterable[str]) -> None:
+        super().__init__(
+            f"The silver views read tables that do not exist yet: {', '.join(tables)}."
+            " Start the silver job first."
+        )
+
+
+def _render(template: str, **values: object) -> str:
+    text = (files("pipelines.silver") / f"{template}.sql.j2").read_text(encoding="utf-8")
+    return SQL.from_string(text).render(**values)
 
 
 def _columns(template: str, entity: Entity) -> list[str]:
     return [column.lake_name for column in TABLE_TEMPLATES[template].columns_for(entity.definition)]
 
 
-def _select(expressions: Iterable[str], indent: str = "    ") -> str:
-    return ",\n".join(f"{indent}{expression}" for expression in expressions)
-
-
 def history_query(entity: Entity, table: str) -> str:
-    content_hash = q(MetadataColumn.CONTENT_HASH)
-    is_deleted = q(MetadataColumn.IS_DELETED)
-    changed_at = q(MetadataColumn.CHANGED_AT)
-    commit_sequence = q(MetadataColumn.COMMIT_SEQUENCE)
-    by_key = f"PARTITION BY {q(entity.lake_key)} ORDER BY {commit_sequence}"
-    # The first version of a key has no previous one: lag() is null and coalesce keeps it.
-    folded = (
-        f"coalesce({content_hash} = lag({content_hash}) OVER ({by_key})"
-        f" AND {is_deleted} = lag({is_deleted}) OVER ({by_key}), false) AS {q(FOLDED)}"
-    )
-    derived: dict[str, str] = {
-        MetadataColumn.VALID_FROM: changed_at,
-        MetadataColumn.VALID_TO: f"lead({changed_at}) OVER ({by_key})",
-        MetadataColumn.IS_CURRENT: f"lead({commit_sequence}) OVER ({by_key}) IS NULL",
-    }
-    versions = [*(q(name) for name in _columns("silver", entity)), folded]
-    history = [
-        f"{derived[name]} AS {q(name)}" if name in derived else q(name)
-        for name in _columns(HISTORY, entity)
-    ]
-    # WHERE runs before the outer window functions, so a version stays valid until the next
-    # version that is not folded.
-    return (
-        "WITH versions AS (\n"
-        "    SELECT\n"
-        f"{_select(versions, indent='        ')}\n"
-        f"    FROM {table}\n"
-        ")\n"
-        "SELECT\n"
-        f"{_select(history)}\n"
-        "FROM versions\n"
-        f"WHERE NOT {q(FOLDED)}"
-    )
+    return _render("history", table=table, key=entity.lake_key, columns=_columns(SILVER, entity))
 
 
 def current_query(entity: Entity, history: str) -> str:
-    return (
-        "SELECT\n"
-        f"{_select(q(name) for name in _columns(CURRENT, entity))}\n"
-        f"FROM {history}\n"
-        f"WHERE {q(MetadataColumn.IS_CURRENT)} AND NOT {q(MetadataColumn.IS_DELETED)}"
-    )
+    return _render("current", history=history, columns=_columns(CURRENT, entity))
 
 
 def silver_views(entity: Entity, settings: SilverSettings) -> Mapping[str, ViewDefinition]:
-    # The history view comes first: the current view reads it.
+    """The entity's history view, then its current view, which reads the history view."""
     history = settings.table(TABLE_TEMPLATES[HISTORY].table_name(entity.definition))
     current = settings.table(TABLE_TEMPLATES[CURRENT].table_name(entity.definition))
     table = settings.table(entity.name)
@@ -74,3 +49,26 @@ def silver_views(entity: Entity, settings: SilverSettings) -> Mapping[str, ViewD
         history: view_definition(HISTORY, entity.definition, history_query(entity, table)),
         current: view_definition(CURRENT, entity.definition, current_query(entity, history)),
     }
+
+
+def refresh_views(spark: SparkSession, settings: SilverSettings) -> list[str]:
+    """Create the silver views of every entity, or replace those whose query or descriptions
+    changed; returns the statements that ran, so an empty list means all were up to date.
+
+    Fails before touching any view while a silver table is missing.
+    """
+    entities = [entity_for_topic(topic) for topic in settings.topics]
+    missing = [
+        table
+        for table in (settings.table(entity.name) for entity in entities)
+        if not spark.catalog.tableExists(table)
+    ]
+    if missing:
+        raise MissingSilverTablesError(missing)
+    statements = []
+    for entity in entities:
+        for view, definition in silver_views(entity, settings).items():
+            statement = ensure_view(spark, view, definition)
+            if statement is not None:
+                statements.append(statement)
+    return statements

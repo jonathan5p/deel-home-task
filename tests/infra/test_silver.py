@@ -10,13 +10,15 @@ from tests.infra.bronze_setup import (
     table_descriptions,
 )
 from tests.infra.silver_setup import (
+    SILVER_APP,
     SILVER_TABLES,
     SILVER_VIEWS,
+    VIEWS_APP,
     VIEWS_SQL_ENTITY,
     SilverRuns,
     commit_sequence,
     commit_sequences,
-    run_silver_without_bronze_tables,
+    run_without_upstream_tables,
     state_store_files,
 )
 from tests.infra.stack import Stack
@@ -122,7 +124,7 @@ def test_every_silver_table_and_view_and_their_columns_are_described(
 
 
 def test_the_job_fails_while_a_bronze_table_is_missing(stack: Stack) -> None:
-    returncode, output = run_silver_without_bronze_tables(stack)
+    returncode, output = run_without_upstream_tables(stack, SILVER_APP, "--available-now")
 
     assert returncode != 0
     assert "TABLE_OR_VIEW_NOT_FOUND" in output
@@ -158,7 +160,16 @@ def test_the_current_view_holds_the_live_row_with_the_source_values(
     assert {name: row[name] for name in expected} == expected
 
 
-def test_restarts_leave_the_views_unchanged(silver_runs: SilverRuns) -> None:
+def test_the_views_job_fails_while_a_silver_table_is_missing(stack: Stack) -> None:
+    returncode, output = run_without_upstream_tables(stack, VIEWS_APP)
+
+    assert returncode != 0
+    assert "MissingSilverTablesError" in output
+
+
+def test_running_the_views_job_again_leaves_unchanged_views_as_they_are(
+    silver_runs: SilverRuns,
+) -> None:
     assert sorted(silver_runs.first_view_files) == sorted(SILVER_VIEWS)
     assert silver_runs.idle_view_files == silver_runs.first_view_files
 

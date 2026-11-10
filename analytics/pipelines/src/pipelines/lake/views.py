@@ -60,10 +60,8 @@ def stored_view(spark: SparkSession, view: str) -> StoredView | None:
     if not any(row.viewName == name and not row.isTemporary for row in views):
         return None
     details = spark.sql(f"DESCRIBE TABLE EXTENDED {view}").collect()
-    # The column rows come first and end at a blank row; the view's details follow it.
     columns = {row.col_name: row.comment for row in takewhile(lambda row: row.col_name, details)}
     comment = next((row.data_type for row in details if row.col_name == "Comment"), None)
-    # Spark SQL has no command that returns only the stored query; SHOW CREATE TABLE ends with it.
     (ddl,) = spark.sql(f"SHOW CREATE TABLE {view}").collect()
     query = str(ddl[0]).partition(QUERY_START)[2].removesuffix("\n")
     return StoredView(query=query, comment=comment, columns=columns)

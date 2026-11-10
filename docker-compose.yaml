@@ -241,6 +241,12 @@ services:
     ports:
       - "4042:4040"
 
+  lake-views:
+    <<: *pipeline-job
+    hostname: lake-views
+    restart: on-failure
+    command: [sh, -c, *pipeline-submit, spark-submit, /opt/app/analytics/pipelines/src/pipelines/silver/views_job.py]
+
   # Optional: Spark history server
   spark-history:
     <<: *spark-image

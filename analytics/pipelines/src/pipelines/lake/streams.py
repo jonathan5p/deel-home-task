@@ -70,15 +70,6 @@ def start_stream(
     return sink(writer, stream.table)
 
 
-def create_tables(
-    spark: SparkSession, streams: Sequence[TableStream], create: TableCreator
-) -> None:
-    """Create the table of every stream, once every stream's schema is known to be described."""
-    schemas = [stream.table_schema() for stream in streams]
-    for stream, schema in zip(streams, schemas, strict=True):
-        create(spark, stream.table, schema, stream.definition)
-
-
 def start_streams(
     spark: SparkSession,
     streams: Sequence[TableStream],
@@ -88,7 +79,9 @@ def start_streams(
     sink: TableSink,
     available_now: bool,
 ) -> list[StreamingQuery]:
-    create_tables(spark, streams, create)
+    schemas = [stream.table_schema() for stream in streams]
+    for stream, schema in zip(streams, schemas, strict=True):
+        create(spark, stream.table, schema, stream.definition)
     return [start_stream(stream, settings, sink, available_now=available_now) for stream in streams]
 
 

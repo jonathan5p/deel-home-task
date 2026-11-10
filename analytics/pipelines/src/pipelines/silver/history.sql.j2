@@ -1,0 +1,18 @@
+{% set by_key = "PARTITION BY " ~ key ~ " ORDER BY _commit_sequence" -%}
+WITH versions AS (
+    SELECT
+        *,
+        coalesce(
+            _content_hash = lag(_content_hash) OVER ({{ by_key }})
+            AND _is_deleted = lag(_is_deleted) OVER ({{ by_key }}),
+            false
+        ) AS _folded
+    FROM {{ table }}
+)
+SELECT
+    {{ columns | join(",\n    ") }},
+    _changed_at AS _valid_from,
+    lead(_changed_at) OVER ({{ by_key }}) AS _valid_to,
+    lead(_commit_sequence) OVER ({{ by_key }}) IS NULL AS _is_current
+FROM versions
+WHERE NOT _folded

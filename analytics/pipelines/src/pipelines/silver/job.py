@@ -12,16 +12,13 @@ from pipelines.lake.streams import (
     TableStream,
     append_to_iceberg,
     await_queries,
-    create_tables,
-    start_stream,
+    start_streams,
     wants_available_now,
 )
 from pipelines.lake.tables import ensure_table, table_definition
-from pipelines.lake.views import ensure_view
 from pipelines.settings import SilverSettings
 from pipelines.silver.deduplication import drop_duplicate_changes
 from pipelines.silver.versions import versions
-from pipelines.silver.views import silver_views
 
 STATE_STORE_PROVIDER = "spark.sql.streaming.stateStore.providerClass"
 ROCKSDB_STATE_STORE = "org.apache.spark.sql.execution.streaming.state.RocksDBStateStoreProvider"
@@ -60,11 +57,9 @@ def run(
     spark.conf.set(STATE_STORE_PROVIDER, ROCKSDB_STATE_STORE)
     spark.conf.set(SHUFFLE_PARTITIONS, STATE_PARTITIONS)
     streams = [entity_stream(spark, settings, topic, read) for topic in settings.topics]
-    create_tables(spark, streams, create)
-    for topic in settings.topics:
-        for view, definition in silver_views(entity_for_topic(topic), settings).items():
-            ensure_view(spark, view, definition)
-    return [start_stream(stream, settings, sink, available_now=available_now) for stream in streams]
+    return start_streams(
+        spark, streams, settings, create=create, sink=sink, available_now=available_now
+    )
 
 
 def main(argv: Sequence[str]) -> None:
