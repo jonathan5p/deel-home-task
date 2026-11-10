@@ -31,7 +31,6 @@ AVRO_TYPES: Mapping[ColumnType, object] = {
     ColumnType.BOOLEAN: "boolean",
     ColumnType.TIMESTAMP_MILLIS: {"type": "long", "logicalType": "timestamp-millis"},
     ColumnType.DATE: {"type": "int", "logicalType": "date"},
-    # The source DECIMAL declares no precision; the lake stores every decimal as DECIMAL(38,10).
     ColumnType.DECIMAL: {"type": "bytes", "logicalType": "decimal", "precision": 38, "scale": 10},
 }
 
