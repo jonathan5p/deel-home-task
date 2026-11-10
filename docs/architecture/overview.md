@@ -10,22 +10,10 @@ The pipeline turns the change stream of the supplied `finance_db` PostgreSQL dat
 
 Everything runs locally with Docker Compose.
 
-> **Status.** This page describes the system once the open pull requests below have merged. In the diagrams, a dashed outline marks a part that is in an open pull request, and a dotted, grey outline marks a part that is planned but not started.
->
-> | Part | Pull request or issue |
-> | --- | --- |
-> | Gold job: SCD2 dimensions, facts and current state | #139, #141 |
-> | Gold business-question views | #142 |
-> | Gold retention | #149 |
-> | Gold rebuild from silver | #150 |
-> | Gold in the lake as Iceberg views | #152 |
-> | Spark workers with 5 cores and 5 GiB each | #159 |
-> | Lake maintenance with the expiry guard | #135 |
-> | Bronze replay from landing | #133 |
-> | Data quality: shared runner and `CHECK=bronze` | #151 |
-> | Data quality: `CHECK=gold-lake` | #154 |
-> | Data quality: `CHECK=silver`, `CHECK=gold`, schedule | #147, #46, #148 (planned) |
-> | Serving: Grafana dashboard and FastAPI | #50, #53 (planned) |
+> **In progress.** Shown dotted and grey in the diagrams:
+> - serving: the metrics API (#162, #164) and Grafana (#165, #166);
+> - the data quality checks `silver` (#147), `gold` (#46) and `gold-lake` (#154), and their schedule (#148);
+> - lake maintenance refreshing the views.
 
 ## Components
 
@@ -99,10 +87,8 @@ flowchart LR
     conduktor --- cdb
     serving --> adb
 
-    classDef pending stroke-dasharray: 6 4
-    classDef planned stroke-dasharray: 2 3,color:#888,stroke:#888
-    class gold,maint,retention pending
-    class grafana,api planned
+    classDef progress stroke-dasharray: 2 3,color:#888,stroke:#888
+    class grafana,api progress
 ```
 
 | Service | Profile | Role | Host port |
@@ -113,7 +99,7 @@ flowchart LR
 | `kafka-connect` | default | Debezium PostgreSQL connector, as supplied | 8083 |
 | `debezium-init` | default | One-shot: registers the supplied connector | none |
 | `seaweedfs` | default | S3-compatible object store. Bucket `lake` holds landing files, Iceberg data and metadata, checkpoints and quality reports | 8333 (S3), 8888 (filer) |
-| `analytics-db` | default | Analytics PostgreSQL. Database `analytics` holds gold (`gold_internal`, `gold`), and database `iceberg_catalog` holds the Iceberg JDBC catalog | 5433 |
+| `analytics-db` | default | Analytics PostgreSQL. Database `analytics` holds gold (`gold_internal`, `gold`), and database `iceberg_catalog` holds the Iceberg JDBC catalog. Consumers log in with read-only service logins in the `gold_reader` role (`make db-logins`) | 5433 |
 | `spark-master` | default | Standalone master | 8080 |
 | `spark-worker-1`, `spark-worker-2` | default | Executors, 5 cores and 5 GiB each | 8081, 8082 |
 | `landing-job` | `pipeline` | Kafka to raw Avro landing files | 4040 |
@@ -159,8 +145,6 @@ flowchart LR
     gpub --> consumers
     lgold --> consumers
 
-    classDef pending stroke-dasharray: 6 4
-    class stage,gint,gpub,lgold pending
 ```
 
 | Layer | Where | Written by | What it guarantees |
@@ -171,7 +155,7 @@ flowchart LR
 | Gold (PostgreSQL) | Database `analytics`: tables in `gold_internal`, views in `gold` | `gold-job`, one query per silver table | SCD2 dimensions, append-only history facts partitioned by month, and current-state tables that only apply newer versions. Writes are idempotent per micro-batch and serialised by an advisory writer lock. Consumers read the `gold` views, which hide pipeline metadata and soft deletes (decisions D32, D35) |
 | Gold (lake) | Iceberg views `lake.gold.<relation>` | `lake-views` | The same public relations computed at read time from silver, over the full history, with natural keys instead of surrogate keys (decision D39) |
 
-The gold model, its rules and the business-question views are described in [the gold model](gold-model.md).
+The gold model, its rules and the business-question views are described in [the gold model](gold-model.md), and every table and column in the [table reference](../reference/tables/).
 
 ## One micro-batch, end to end
 
@@ -233,8 +217,6 @@ flowchart TB
     rebuild -- "gold-reset, batch load up to TO_TIME<br/>through the gold sinks; gold job left stopped" --> gold
     retention -- "back-partition the default partition,<br/>drop months older than 36" --> gold
 
-    classDef pending stroke-dasharray: 6 4
-    class replay,maint,guard,rebuild,retention pending
 ```
 
 - **Bronze replay** (decision D31, #85): re-reads a landing range in batch and appends only the change identities bronze does not hold yet. Records that fail validation go to quarantine once. It writes only `append` snapshots, so silver keeps streaming.
@@ -261,15 +243,14 @@ flowchart LR
     silver -- "CHECK=gold" --> gold
     gold -- "CHECK=gold-lake" --> lgold
 
-    linkStyle 1,4 stroke-dasharray: 6 4
-    linkStyle 2,3 stroke-dasharray: 2 3,stroke:#888
+    linkStyle 2,3,4 stroke-dasharray: 2 3,stroke:#888
 ```
 
 | Check | Compares | Status |
 | --- | --- | --- |
 | `landing` | Kafka to landing: every offset landed once, payloads unchanged | merged (#23) |
-| `bronze` | Landing to bronze and quarantine: every landed record held exactly once | open, #151 |
-| `silver` | Bronze to silver: every change identity held exactly once | planned, #147 |
-| `gold` | Silver to PostgreSQL gold | planned, #46 |
-| `gold-lake` | PostgreSQL gold views to the lake gold views, at the silver snapshots gold committed | open, #154 |
-| Schedule | Runs the checks periodically | planned, #148 |
+| `bronze` | Landing to bronze and quarantine: every landed record held exactly once | merged (#151) |
+| `silver` | Bronze to silver: every change identity held exactly once | in progress, #147 |
+| `gold` | Silver to PostgreSQL gold | in progress, #46 |
+| `gold-lake` | PostgreSQL gold views to the lake gold views, at the silver snapshots gold committed | in progress, #154 |
+| Schedule | Runs the checks periodically | in progress, #148 |
