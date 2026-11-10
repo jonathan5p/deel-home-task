@@ -7,9 +7,9 @@ from typing import NamedTuple
 from pyspark.sql import DataFrame, Row, SparkSession
 from pyspark.sql.types import StringType, StructField, StructType
 
-from pipelines.bronze.columns import MetadataColumn
 from pipelines.bronze.entities import ENTITIES, Entity
 from pipelines.bronze.parse import ParsedChanges, parse_changes
+from pipelines.lake.columns import MetadataColumn
 from pipelines.schemas import KAFKA_RECORD_SCHEMA
 
 PUBLISHED = datetime(2026, 11, 8, 14, 21, 1)  # Spark returns naive timestamps in UTC

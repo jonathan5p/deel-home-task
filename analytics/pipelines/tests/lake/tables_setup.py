@@ -4,8 +4,8 @@ from typing import NamedTuple
 from pyspark.sql import SparkSession
 from pyspark.sql.types import DecimalType, LongType, StructField, StructType, TimestampType
 
-from pipelines.bronze.columns import MetadataColumn
-from pipelines.bronze.tables import TableDefinition, table_comment
+from pipelines.lake.columns import MetadataColumn
+from pipelines.lake.tables import TableDefinition, table_comment
 from pipelines.schemas.definitions import ColumnDefinition, ColumnType
 
 TABLE = "catalog.bronze.customers"
@@ -25,6 +25,7 @@ DEFINITION = TableDefinition(
             MetadataColumn.PUBLISHED_AT, ColumnType.TIMESTAMP_MILLIS, "Published"
         ),
     },
+    partitioned_by=MetadataColumn.PUBLISHED_AT,
 )
 
 
@@ -51,3 +52,11 @@ def stored_description(spark: SparkSession, table: str) -> StoredDescription:
 def metadata_versions(spark: SparkSession, table: str) -> int:
     """How many metadata files the table has written; every commit or ALTER adds one."""
     return spark.table(f"{table}.metadata_log_entries").count()
+
+
+def table_ddl(spark: SparkSession, table: str) -> str:
+    """The `CREATE TABLE` statement Spark shows for the table, with its partitioning and
+    properties."""
+    ddl = spark.sql(f"SHOW CREATE TABLE {table}").first()
+    assert ddl is not None
+    return str(ddl[0])

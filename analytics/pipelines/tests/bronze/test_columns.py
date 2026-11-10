@@ -4,16 +4,16 @@ from pipelines.bronze.columns import (
     BRONZE_METADATA_COLUMNS,
     QUARANTINE_COLUMNS,
     SOURCE_COORDINATES,
-    MetadataColumn,
     RawColumn,
 )
+from pipelines.lake.columns import MetadataColumn
 from pipelines.schemas.definitions import load_table_templates
 
 TEMPLATES = load_table_templates()
 
 
-@pytest.mark.parametrize("column", [*MetadataColumn, *RawColumn], ids=str)
-def test_every_column_the_job_writes_is_defined_in_a_table_template(column: str) -> None:
+@pytest.mark.parametrize("column", RawColumn, ids=str)
+def test_every_raw_kafka_column_is_defined_in_a_table_template(column: str) -> None:
     assert any(column in [field.name for field in t.fields] for t in TEMPLATES.values())
 
 
@@ -25,8 +25,7 @@ def test_each_table_template_defines_exactly_the_columns_the_job_writes_to_it() 
     ]
 
 
-def test_metadata_columns_start_with_an_underscore_and_raw_kafka_ones_do_not() -> None:
-    assert all(column.startswith("_") for column in MetadataColumn)
+def test_raw_kafka_columns_do_not_start_with_an_underscore() -> None:
     assert not any(column.startswith("_") for column in RawColumn)
 
 

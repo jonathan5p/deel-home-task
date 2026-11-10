@@ -1,50 +1,32 @@
-from pathlib import Path
-
 import pytest
 
 pytest.importorskip("pyspark")
 
-from pyspark.errors import StreamingQueryException
 from pyspark.sql import SparkSession
-from pyspark.sql.streaming import StreamingQueryManager
 from pyspark.sql.types import TimestampType
 
 from analytics.pipelines.tests.bronze.job_setup import (
     BronzeSettingsFactory,
-    FakeCatalog,
     drop_stray_file,
-    failing,
     land,
     local,
     no_landed_records,
-    numbers,
     offsets,
     record,
     run_until_caught_up,
-    start,
     valid,
 )
 from analytics.pipelines.tests.bronze.parse_samples import ENTITY_IDS, landing_records, topic
-from analytics.pipelines.tests.bronze.tables_setup import stored_description
-from pipelines.bronze.columns import QUARANTINE_COLUMNS, MetadataColumn, RawColumn
+from analytics.pipelines.tests.lake.streams_setup import FakeCatalog
+from analytics.pipelines.tests.lake.tables_setup import stored_description, table_ddl
+from pipelines.bronze.columns import QUARANTINE_COLUMNS, RawColumn
 from pipelines.bronze.entities import CUSTOMERS, ENTITIES, PRODUCTS, Entity, UnknownEntityError
-from pipelines.bronze.job import (
-    BronzeStream,
-    StreamsFailedError,
-    await_queries,
-    entity_streams,
-    read_landing,
-    run,
-    wants_available_now,
-)
+from pipelines.bronze.job import BRONZE, QUARANTINE, entity_streams, read_landing, run
 from pipelines.bronze.parse import FailureReason, parse_changes
-from pipelines.bronze.tables import (
-    SPARK_TYPES,
-    TABLE_TEMPLATES,
-    bronze_table,
-    described_schema,
-    quarantine_table,
-)
+from pipelines.lake.columns import MetadataColumn
+from pipelines.lake.streams import await_queries
+from pipelines.lake.tables import TABLE_TEMPLATES, described_schema, table_definition
+from pipelines.lake.types import SPARK_TYPES
 from pipelines.schemas.render import avro_field, render_table_schema
 
 
@@ -84,25 +66,6 @@ def test_the_published_table_schemas_have_the_columns_and_types_the_job_writes(
         assert stream.table.endswith(f".{published['name']}")
 
 
-def test_a_stream_is_named_after_its_table_and_has_its_own_checkpoint(
-    spark: SparkSession, bronze_settings: BronzeSettingsFactory
-) -> None:
-    settings = bronze_settings(topic(CUSTOMERS))
-    rows = landing_records(spark)
-
-    definition = quarantine_table(CUSTOMERS)
-
-    stream = BronzeStream.for_table(settings, "customers_quarantine", rows, definition)
-
-    assert (stream.name, stream.table, stream.checkpoint) == (
-        "bronze customers_quarantine",
-        "catalog.bronze.customers_quarantine",
-        f"{settings.lake.checkpoint_root}/bronze/customers_quarantine",
-    )
-    assert stream.rows is rows
-    assert stream.definition is definition
-
-
 def test_each_entity_gets_a_bronze_and_a_quarantine_table(
     spark: SparkSession, bronze_settings: BronzeSettingsFactory, fake_catalog: FakeCatalog
 ) -> None:
@@ -122,12 +85,14 @@ def test_each_entity_gets_a_bronze_and_a_quarantine_table(
         table = f"catalog.bronze.{entity.name}"
         bronze = parse_changes(landing_records(spark), entity).bronze
         assert fake_catalog.schemas[table] == (
-            described_schema(table, bronze.schema, bronze_table(entity))
+            described_schema(table, bronze.schema, table_definition(BRONZE, entity.definition))
         )
-        assert fake_catalog.comments[table] == bronze_table(entity).comment
+        assert fake_catalog.definitions[table] == table_definition(BRONZE, entity.definition)
         quarantine = fake_catalog.schemas[f"{table}_quarantine"]
         assert quarantine.fieldNames() == [*QUARANTINE_COLUMNS, MetadataColumn.QUARANTINED_AT]
-        assert fake_catalog.comments[f"{table}_quarantine"] == quarantine_table(entity).comment
+        assert fake_catalog.definitions[f"{table}_quarantine"] == table_definition(
+            QUARANTINE, entity.definition
+        )
     assert quarantine[MetadataColumn.QUARANTINED_AT].dataType == TimestampType()
 
 
@@ -266,9 +231,8 @@ def test_bronze_lands_in_day_partitioned_iceberg_tables_exactly_once(
     assert MetadataColumn.LANDING_FILE in quarantine.columns
     assert MetadataColumn.LANDING_FILE not in bronze.columns
     for table in ("customers", "customers_quarantine"):
-        ddl = spark.sql(f"SHOW CREATE TABLE {iceberg_catalog}.bronze.{table}").first()
-        assert ddl is not None
-        assert f"PARTITIONED BY (days({MetadataColumn.PUBLISHED_AT}))" in ddl[0]
+        ddl = table_ddl(spark, f"{iceberg_catalog}.bronze.{table}")
+        assert f"PARTITIONED BY (days({MetadataColumn.PUBLISHED_AT}))" in ddl
 
 
 def test_iceberg_tables_store_the_table_comment_and_every_column_doc(
@@ -280,8 +244,10 @@ def test_iceberg_tables_store_the_table_comment_and_every_column_doc(
     await_queries(spark.streams, run(spark, settings, available_now=True), available_now=True)
 
     expected = {
-        f"{iceberg_catalog}.bronze.products": bronze_table(PRODUCTS),
-        f"{iceberg_catalog}.bronze.products_quarantine": quarantine_table(PRODUCTS),
+        f"{iceberg_catalog}.bronze.products": table_definition(BRONZE, PRODUCTS.definition),
+        f"{iceberg_catalog}.bronze.products_quarantine": table_definition(
+            QUARANTINE, PRODUCTS.definition
+        ),
     }
     for table, definition in expected.items():
         stored = stored_description(spark, table)
@@ -289,55 +255,3 @@ def test_iceberg_tables_store_the_table_comment_and_every_column_doc(
         assert stored.columns == {
             name: definition.columns[name].description for name in stored.columns
         }
-
-
-def test_a_failed_stream_stops_the_running_ones_and_fails_the_job(
-    spark: SparkSession, streams: StreamingQueryManager, tmp_path: Path
-) -> None:
-    running = start(numbers(spark, tmp_path / "ok", 1), "running", tmp_path, available_now=False)
-    broken = failing(numbers(spark, tmp_path / "bad", 1))
-    failed = start(broken, "broken", tmp_path, available_now=False)
-
-    with pytest.raises(StreamsFailedError, match=r"failed: broken$") as raised:
-        await_queries(streams, [running, failed], available_now=False)
-
-    assert isinstance(raised.value.__cause__, StreamingQueryException)
-    assert not running.isActive
-    assert running.exception() is None
-
-
-def test_a_stream_that_ends_stops_the_running_ones_without_failing(
-    spark: SparkSession, streams: StreamingQueryManager, tmp_path: Path
-) -> None:
-    rows = numbers(spark, tmp_path / "numbers", 1)
-    running = start(rows, "still_running", tmp_path, available_now=False)
-    ended = start(rows, "ended", tmp_path, available_now=True)
-
-    await_queries(streams, [running, ended], available_now=False)
-
-    assert not running.isActive
-    assert not ended.isActive
-
-
-def test_an_available_now_run_finishes_every_stream_before_failing(
-    spark: SparkSession, streams: StreamingQueryManager, tmp_path: Path
-) -> None:
-    broken = failing(numbers(spark, tmp_path / "bad", 1))
-    failed = start(broken, "broken_first", tmp_path, available_now=True)
-    slow = start(numbers(spark, tmp_path / "ok", 5), "slow", tmp_path, available_now=True)
-
-    with pytest.raises(StreamsFailedError, match=r"failed: broken_first$"):
-        await_queries(streams, [failed, slow], available_now=True)
-
-    assert slow.exception() is None
-    assert sorted(row.number for row in spark.table("slow").collect()) == [0, 1, 2, 3, 4]
-
-
-@pytest.mark.parametrize(("argv", "expected"), [([], False), (["--available-now"], True)])
-def test_available_now_is_requested_with_a_flag(argv: list[str], expected: bool) -> None:
-    assert wants_available_now(argv) is expected
-
-
-def test_unknown_arguments_are_rejected() -> None:
-    with pytest.raises(SystemExit):
-        wants_available_now(["--once"])

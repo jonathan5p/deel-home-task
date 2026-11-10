@@ -6,17 +6,18 @@ from pyspark.sql import Column, DataFrame
 from pyspark.sql import functions as F
 from pyspark.sql.types import LongType, StringType, StructField, StructType
 
-from pipelines.bronze.columns import MetadataColumn, RawColumn
+from pipelines.bronze.columns import RawColumn
 from pipelines.bronze.content_hash import content_hash
 from pipelines.bronze.decimals import decode_decimal, is_valid_decimal
 from pipelines.bronze.entities import Entity
+from pipelines.lake.columns import ChangeOp, MetadataColumn
 from pipelines.schemas.definitions import ColumnDefinition, ColumnType
 
-CHANGE_OPS: Mapping[str, str] = {
-    "c": "create",
-    "u": "update",
-    "d": "delete",
-    "r": "snapshot",
+CHANGE_OPS: Mapping[str, ChangeOp] = {
+    "c": ChangeOp.CREATE,
+    "u": ChangeOp.UPDATE,
+    "d": ChangeOp.DELETE,
+    "r": ChangeOp.SNAPSHOT,
 }
 
 _ENVELOPE = "_envelope"
@@ -123,9 +124,9 @@ def _checked(records: DataFrame, entity: Entity) -> DataFrame:
 
 def _change_op(op: Column) -> Column:
     (code, word), *rest = CHANGE_OPS.items()
-    result = F.when(op == code, F.lit(word))
+    result = F.when(op == code, F.lit(str(word)))
     for code, word in rest:
-        result = result.when(op == code, F.lit(word))
+        result = result.when(op == code, F.lit(str(word)))
     return result
 
 

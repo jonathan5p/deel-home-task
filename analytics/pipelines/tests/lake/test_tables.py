@@ -5,54 +5,99 @@ pytest.importorskip("pyspark")
 from pyspark.sql import SparkSession
 from pyspark.sql.types import IntegerType, StringType, StructField, StructType
 
-from analytics.pipelines.tests.bronze.tables_setup import (
+from analytics.pipelines.tests.lake.tables_setup import (
     DEFINITION,
     SCHEMA,
     TABLE,
     metadata_versions,
     redescribed,
     stored_description,
+    table_ddl,
 )
-from pipelines.bronze.columns import MetadataColumn, RawColumn
+from pipelines.bronze.columns import RawColumn
 from pipelines.bronze.entities import ORDER_ITEMS
-from pipelines.bronze.tables import (
+from pipelines.lake.columns import MetadataColumn
+from pipelines.lake.tables import (
+    TABLE_TEMPLATES,
     ColumnTypeMismatchError,
     UndescribedColumnError,
-    bronze_table,
     described_schema,
     description_updates,
     ensure_table,
-    quarantine_table,
     sql_identifier,
     sql_string,
+    table_definition,
 )
-from pipelines.schemas.definitions import load_table_templates
+from pipelines.schemas.definitions import load_entity
+from pipelines.silver.columns import SILVER_METADATA_COLUMNS
+
+
+def test_a_table_definition_takes_the_template_description_and_columns_by_lake_name() -> None:
+    order_items = load_entity("order_items")
+
+    definition = table_definition("bronze", order_items)
+
+    template = TABLE_TEMPLATES["bronze"]
+    assert definition.comment == template.describe(order_items)
+    assert list(definition.columns) == [
+        column.lake_name for column in template.columns_for(order_items)
+    ]
+    assert definition.columns["quantity"].name == "quanity"
+    assert definition.partitioned_by == template.partitioned_by
 
 
 def test_bronze_tables_describe_entity_columns_by_their_lake_name() -> None:
-    columns = bronze_table(ORDER_ITEMS).columns
+    columns = table_definition("bronze", ORDER_ITEMS.definition).columns
 
     assert columns["quantity"].description == "Number of units ordered (source column quanity)"
     assert "quanity" not in columns
-    assert columns[MetadataColumn.COMMIT_SEQUENCE] in load_table_templates()["bronze"].fields
+    assert columns[MetadataColumn.COMMIT_SEQUENCE] in TABLE_TEMPLATES["bronze"].fields
     assert MetadataColumn.LANDING_FILE not in columns
     assert RawColumn.KEY not in columns
 
 
-def test_table_comments_come_from_the_templates_and_name_the_source_table() -> None:
-    bronze = bronze_table(ORDER_ITEMS).comment
-    quarantine = quarantine_table(ORDER_ITEMS).comment
-
-    assert bronze.startswith(f"{ORDER_ITEMS.definition.description}. Change log of source table")
-    assert "source table order_items" in quarantine
-
-
 def test_quarantine_tables_describe_the_raw_kafka_columns() -> None:
-    columns = quarantine_table(ORDER_ITEMS).columns
+    columns = table_definition("bronze_quarantine", ORDER_ITEMS.definition).columns
 
     assert columns[RawColumn.KEY].description == "Raw Kafka record key, as text"
     assert "quantity" not in columns
     assert MetadataColumn.COMMIT_SEQUENCE not in columns
+
+
+def test_silver_tables_describe_the_entity_columns_then_the_version_columns() -> None:
+    columns = table_definition("silver", ORDER_ITEMS.definition).columns
+
+    assert list(columns) == [
+        *(column.lake_name for column in ORDER_ITEMS.columns),
+        *SILVER_METADATA_COLUMNS,
+    ]
+
+
+def test_table_comments_come_from_the_templates_and_name_the_source_table() -> None:
+    description = ORDER_ITEMS.definition.description
+
+    def comment(template: str) -> str:
+        return table_definition(template, ORDER_ITEMS.definition).comment
+
+    assert comment("bronze").startswith(f"{description}. Change log of source table")
+    assert "source table order_items" in comment("bronze_quarantine")
+    assert comment("silver").startswith(
+        f"{description}. Append-only version history of source table order_items"
+    )
+
+
+@pytest.mark.parametrize(
+    ("template", "column"),
+    [
+        ("bronze", MetadataColumn.PUBLISHED_AT),
+        ("bronze_quarantine", MetadataColumn.PUBLISHED_AT),
+        ("silver", MetadataColumn.CHANGED_AT),
+    ],
+)
+def test_each_layer_table_is_partitioned_by_the_day_of_its_template_column(
+    template: str, column: str
+) -> None:
+    assert table_definition(template, ORDER_ITEMS.definition).partitioned_by == column
 
 
 def test_the_described_schema_carries_each_description_as_the_field_comment() -> None:
@@ -127,13 +172,13 @@ def test_columns_missing_on_either_side_are_left_to_schema_changes() -> None:
     assert description_updates(TABLE, stored, "Customers", schema, "Customers") == []
 
 
-def test_a_new_table_is_created_with_its_descriptions_partitioned_by_publish_day(
+def test_a_new_table_is_created_with_its_descriptions_partitioned_by_day(
     spark: SparkSession, iceberg_catalog: str
 ) -> None:
     table = f"{iceberg_catalog}.bronze.customers"
     schema = described_schema(table, SCHEMA, DEFINITION)
 
-    assert ensure_table(spark, table, schema, "It's a \\ table") == []
+    assert ensure_table(spark, table, schema, DEFINITION._replace(comment="It's a \\ table")) == []
 
     stored = stored_description(spark, table)
     assert stored.comment == "It's a \\ table"
@@ -142,21 +187,31 @@ def test_a_new_table_is_created_with_its_descriptions_partitioned_by_publish_day
         "unity_price": "Price",
         "_published_at": "Published",
     }
-    ddl = spark.sql(f"SHOW CREATE TABLE {table}").first()
-    assert ddl is not None
-    assert f"PARTITIONED BY (days({MetadataColumn.PUBLISHED_AT}))" in ddl[0]
-    assert "'write.distribution-mode' = 'none'" in ddl[0]
+    ddl = table_ddl(spark, table)
+    assert f"PARTITIONED BY (days({DEFINITION.partitioned_by}))" in ddl
+    assert "'write.distribution-mode' = 'none'" in ddl
+
+
+def test_a_table_without_a_partition_column_is_created_unpartitioned(
+    spark: SparkSession, iceberg_catalog: str
+) -> None:
+    table = f"{iceberg_catalog}.bronze.unpartitioned"
+    schema = described_schema(table, SCHEMA, DEFINITION)
+
+    ensure_table(spark, table, schema, DEFINITION._replace(partitioned_by=None))
+
+    assert "PARTITIONED BY" not in table_ddl(spark, table)
 
 
 def test_an_existing_table_gets_only_its_changed_descriptions(
     spark: SparkSession, iceberg_catalog: str
 ) -> None:
     table = f"{iceberg_catalog}.bronze.customers"
-    ensure_table(spark, table, described_schema(table, SCHEMA, DEFINITION), "Customers")
+    ensure_table(spark, table, described_schema(table, SCHEMA, DEFINITION), DEFINITION)
     versions = metadata_versions(spark, table)
     changed = redescribed(DEFINITION, unity_price="The customer's \\ price")
 
-    updates = ensure_table(spark, table, described_schema(table, SCHEMA, changed), "Customers")
+    updates = ensure_table(spark, table, described_schema(table, SCHEMA, changed), changed)
 
     assert updates == [
         f"ALTER TABLE {table} ALTER COLUMN `unity_price` COMMENT 'The customer\\'s \\\\ price'"
@@ -169,18 +224,18 @@ def test_an_existing_table_gets_only_its_changed_descriptions(
 def test_an_unchanged_table_is_left_untouched(spark: SparkSession, iceberg_catalog: str) -> None:
     table = f"{iceberg_catalog}.bronze.customers"
     schema = described_schema(table, SCHEMA, DEFINITION)
-    ensure_table(spark, table, schema, "Customers")
+    ensure_table(spark, table, schema, DEFINITION)
     versions = metadata_versions(spark, table)
 
-    assert ensure_table(spark, table, schema, "Customers") == []
+    assert ensure_table(spark, table, schema, DEFINITION) == []
     assert metadata_versions(spark, table) == versions
 
 
 def test_a_changed_table_comment_is_updated(spark: SparkSession, iceberg_catalog: str) -> None:
     table = f"{iceberg_catalog}.bronze.customers"
     schema = described_schema(table, SCHEMA, DEFINITION)
-    ensure_table(spark, table, schema, "Customers")
+    ensure_table(spark, table, schema, DEFINITION)
 
-    ensure_table(spark, table, schema, "Customers who order")
+    ensure_table(spark, table, schema, DEFINITION._replace(comment="Customers who order"))
 
     assert stored_description(spark, table).comment == "Customers who order"

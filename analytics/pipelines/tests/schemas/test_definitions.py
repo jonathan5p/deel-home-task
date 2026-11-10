@@ -43,6 +43,7 @@ def test_the_schemas_folder_holds_the_shared_sources_and_tables_schemas() -> Non
         "sources/products.avsc",
         "tables/bronze_quarantine_template.avsc",
         "tables/bronze_template.avsc",
+        "tables/silver_template.avsc",
     ]
 
 
@@ -204,9 +205,23 @@ def test_table_templates_describe_the_tables_of_an_entity() -> None:
     templates = load_table_templates()
     orders = load_entity("orders")
 
-    assert set(templates) == {"bronze", "bronze_quarantine"}
+    assert set(templates) == {"bronze", "bronze_quarantine", "silver"}
     assert templates["bronze"].describe(orders).startswith(f"{orders.description}. Change log")
     assert "source table orders" in templates["bronze_quarantine"].describe(orders)
+
+
+def test_a_template_is_partitioned_by_one_of_its_own_timestamp_fields(
+    schemas: SchemasTree,
+) -> None:
+    schemas.write_silver(("partitioned_by",), "_valid_to")
+
+    assert load_table_templates(schemas.root)["silver"].partitioned_by == "_valid_to"
+
+
+def test_a_template_without_a_partition_column_is_unpartitioned(schemas: SchemasTree) -> None:
+    schemas.write_silver()
+
+    assert load_table_templates(schemas.root)["silver"].partitioned_by is None
 
 
 def test_a_bronze_table_is_the_source_then_the_audit_then_the_metadata_columns() -> None:
@@ -401,6 +416,14 @@ def test_a_broken_shared_schema_is_refused(schemas: SchemasTree) -> None:
         (("fields", 0, "renamed_to"), "x", "unknown properties of field _valid_to: renamed_to"),
         (("fields", 0, "default"), DELETE, 'nullable field _valid_to needs "default": null'),
         (("fields", 1, "name"), "_valid_to", "two fields are named _valid_to"),
+        (("partitioned_by",), 3, "record silver_template needs a non-blank partitioned_by"),
+        (
+            ("partitioned_by",),
+            "_changed_at",
+            "partitioned_by of record silver_template must name one of its own timestamp or date"
+            " fields, not _changed_at",
+        ),
+        (("partitioned_by",), "_is_current", "own timestamp or date fields, not _is_current"),
     ],
 )
 def test_a_broken_table_template_is_refused(

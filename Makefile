@@ -8,7 +8,7 @@ SPARK_SQL_VARS ?=
 LANDING_ROOT ?= s3a://lake/landing
 PROFILES ?=
 PIPELINE ?=
-PIPELINES = landing bronze
+PIPELINES = landing bronze silver
 .DEFAULT_GOAL := help
 
 export BUILDX_NO_DEFAULT_ATTESTATIONS ?= 1
@@ -46,9 +46,9 @@ help:
 		'spark-sql      Open the Spark SQL shell in its own driver container; SPARK_SQL_FILE runs a file instead; SPARK_SQL_VARS (key=value ...) and LANDING_ROOT set its variables.' \
 		'spark-history  Toggle the optional Spark History Server (localhost:18080): start it if stopped, stop it if running.' \
 		'data-quality   Run the data quality checks against the running stack (landing versus Kafka); fails if any check fails.' \
-		'pipeline       Start the stack, the History Server and the PIPELINE job (landing, bronze or all) as a long-running service.' \
-		'pipeline-logs  Follow the logs of the PIPELINE job (landing, bronze or all).' \
-		'pipeline-stop  Stop and remove the PIPELINE job (landing, bronze or all); the rest of the stack keeps running.' \
+		'pipeline       Start the stack, the History Server and the PIPELINE job (landing, bronze, silver or all) as a long-running service.' \
+		'pipeline-logs  Follow the logs of the PIPELINE job (landing, bronze, silver or all).' \
+		'pipeline-stop  Stop and remove the PIPELINE job (landing, bronze, silver or all); the rest of the stack keeps running.' \
 		'test           Run the unit tests with coverage (fails below 90%) in the app container.' \
 		'lint           Check linting and formatting with ruff in the app container.' \
 		'format         Format the code and apply safe lint fixes with ruff.' \

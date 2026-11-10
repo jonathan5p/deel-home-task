@@ -8,6 +8,7 @@ from pipelines.settings import (
     LandingQualitySettings,
     LandingSettings,
     PipelineSettings,
+    SilverSettings,
 )
 
 KAFKA = {"KAFKA_BOOTSTRAP_SERVERS": "broker:9092", "KAFKA_TOPICS": "topic-a, topic-b"}
@@ -49,6 +50,15 @@ def test_checkpoint_root_can_be_set_independently() -> None:
     settings = LakeSettings.from_env(LAKE | {"CHECKPOINT_ROOT": "s3a://checkpoints/"})
 
     assert settings.checkpoint_root == "s3a://checkpoints"
+
+
+def test_each_layer_has_a_namespace_in_the_catalog_and_a_checkpoint_folder() -> None:
+    settings = LakeSettings.from_env(LAKE)
+
+    assert settings.table("silver", "customers") == "catalog.silver.customers"
+    assert settings.checkpoint_path("silver", "customers") == (
+        "s3a://bucket/checkpoints/silver/customers"
+    )
 
 
 def test_lake_settings_require_the_root_and_catalog() -> None:
@@ -121,6 +131,43 @@ def test_bronze_reads_the_landing_folders_and_writes_one_namespace_per_catalog()
     )
     assert settings.table("customers") == "catalog.bronze.customers"
     assert settings.checkpoint_path("customers") == "s3a://bucket/checkpoints/bronze/customers"
+
+
+def test_silver_settings_need_only_the_topics_and_the_lake() -> None:
+    settings = SilverSettings.from_env({"KAFKA_TOPICS": "topic-a, topic-b"} | LAKE)
+
+    assert settings.topics == ("topic-a", "topic-b")
+    assert settings.lake == LakeSettings.from_env(LAKE)
+    assert settings.trigger_seconds == 10
+
+
+def test_silver_trigger_interval_can_be_overridden() -> None:
+    settings = SilverSettings.from_env(KAFKA | LAKE | {"SILVER_TRIGGER_SECONDS": "30"})
+
+    assert settings.trigger_seconds == 30
+
+
+@pytest.mark.parametrize("value", ["0", "-5", "ten", "1.5"])
+def test_silver_trigger_interval_must_be_a_positive_integer(value: str) -> None:
+    with pytest.raises(InvalidSettingError, match="SILVER_TRIGGER_SECONDS"):
+        SilverSettings.from_env(KAFKA | LAKE | {"SILVER_TRIGGER_SECONDS": value})
+
+
+def test_silver_settings_report_every_missing_variable_at_once() -> None:
+    with pytest.raises(MissingSettingsError) as error:
+        SilverSettings.from_env({})
+
+    assert error.value.names == ("KAFKA_TOPICS", *LakeSettings.REQUIRED)
+
+
+def test_silver_reads_the_bronze_tables_and_writes_its_own_namespace() -> None:
+    settings = SilverSettings.from_env(KAFKA | LAKE)
+
+    assert settings.bronze_table("customers") == BronzeSettings.from_env(KAFKA | LAKE).table(
+        "customers"
+    )
+    assert settings.table("customers") == "catalog.silver.customers"
+    assert settings.checkpoint_path("customers") == "s3a://bucket/checkpoints/silver/customers"
 
 
 def test_pipeline_settings_compose_every_section() -> None:

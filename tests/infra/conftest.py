@@ -6,6 +6,7 @@ import pytest
 
 from tests.infra.bronze_setup import BronzeRuns, run_bronze_scenario
 from tests.infra.landing_avro import landing_avro
+from tests.infra.silver_setup import SilverRuns, run_silver_scenario
 from tests.infra.stack import Stack
 
 LANDING_FIXTURE_ROOT = "test-fixtures/landing"
@@ -67,6 +68,12 @@ def landing_fixture(stack: Stack) -> str:
     return LANDING_FIXTURE_ROOT
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="session")
 def bronze_runs(stack: Stack) -> BronzeRuns:
     return run_bronze_scenario(stack)
+
+
+@pytest.fixture(scope="session")
+def silver_runs(stack: Stack, bronze_runs: BronzeRuns) -> SilverRuns:
+    """Silver runs on the bronze tables the bronze scenario leaves, which it then extends."""
+    return run_silver_scenario(stack, bronze_runs.idle)

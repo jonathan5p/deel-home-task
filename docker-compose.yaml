@@ -38,6 +38,7 @@ x-spark-app: &spark-app
     CHECKPOINT_ROOT: ${CHECKPOINT_ROOT:-}
     LANDING_TRIGGER_SECONDS: ${LANDING_TRIGGER_SECONDS:-}
     BRONZE_TRIGGER_SECONDS: ${BRONZE_TRIGGER_SECONDS:-}
+    SILVER_TRIGGER_SECONDS: ${SILVER_TRIGGER_SECONDS:-}
     LANDING_CHECK_LAST_OFFSETS: ${LANDING_CHECK_LAST_OFFSETS:-}
   volumes:
     - spark-events:/opt/spark/spark-events
@@ -232,6 +233,13 @@ services:
     command: [sh, -c, *pipeline-submit, spark-submit, /opt/app/analytics/pipelines/src/pipelines/bronze/job.py]
     ports:
       - "4041:4040"
+
+  silver-job:
+    <<: *pipeline-job
+    hostname: silver-job
+    command: [sh, -c, *pipeline-submit, spark-submit, /opt/app/analytics/pipelines/src/pipelines/silver/job.py]
+    ports:
+      - "4042:4040"
 
   # Optional: Spark history server
   spark-history:

@@ -4,14 +4,13 @@ from typing import Protocol
 from urllib.parse import urlparse
 
 from pyspark.sql import DataFrame, Row, SparkSession
-from pyspark.sql import functions as F
-from pyspark.sql.streaming import DataStreamWriter, StreamingQuery
-from pyspark.sql.types import StructType
 
 from analytics.pipelines.tests.bronze.parse_samples import Json, change, landing, landing_records
-from pipelines.bronze.columns import MetadataColumn
+from analytics.pipelines.tests.lake.streams_setup import FakeCatalog
 from pipelines.bronze.entities import Entity
-from pipelines.bronze.job import TableSink, await_queries, run
+from pipelines.bronze.job import run
+from pipelines.lake.columns import MetadataColumn
+from pipelines.lake.streams import await_queries
 from pipelines.schemas import KAFKA_RECORD_SCHEMA
 from pipelines.settings import BronzeSettings
 
@@ -64,28 +63,8 @@ def drop_stray_file(spark: SparkSession, settings: BronzeSettings, rows: list[Ro
     return stray
 
 
-class FakeCatalog:
-    def __init__(self, root: Path) -> None:
-        self.root = root
-        self.schemas: dict[str, StructType] = {}
-        self.comments: dict[str, str] = {}
-
-    def create(self, spark: SparkSession, table: str, schema: StructType, comment: str) -> None:
-        self.schemas[table] = schema
-        self.comments[table] = comment
-
-    def sink(self) -> TableSink:
-        def append(writer: DataStreamWriter, table: str) -> StreamingQuery:
-            return writer.format("parquet").start(str(self.root / table))
-
-        return append
-
-    def rows(self, spark: SparkSession, table: str) -> list[Row]:
-        stored = spark.read.schema(self.schemas[table]).parquet(str(self.root / table))
-        return sorted(
-            stored.collect(),
-            key=lambda row: (row[MetadataColumn.RECORD_SOURCE], row[MetadataColumn.SOURCE_OFFSET]),
-        )
+def source_coordinates(row: Row) -> tuple[str, int]:
+    return row[MetadataColumn.RECORD_SOURCE], row[MetadataColumn.SOURCE_OFFSET]
 
 
 def run_until_caught_up(
@@ -97,32 +76,6 @@ def run_until_caught_up(
 
 def offsets(rows: list[Row]) -> list[int]:
     return [row[MetadataColumn.SOURCE_OFFSET] for row in rows]
-
-
-def numbers(spark: SparkSession, folder: Path, count: int) -> DataFrame:
-    """A file stream over `count` one-row files that reads one file per micro-batch."""
-    for number in range(count):
-        batch = spark.createDataFrame([(number,)], "number long")
-        batch.coalesce(1).write.mode("append").parquet(str(folder))
-    return (
-        spark.readStream.schema("number long").option("maxFilesPerTrigger", 1).parquet(str(folder))
-    )
-
-
-def failing(rows: DataFrame) -> DataFrame:
-    return rows.select(F.raise_error(F.lit("bad record")).alias("failure"))
-
-
-def start(rows: DataFrame, name: str, tmp_path: Path, *, available_now: bool) -> StreamingQuery:
-    """Start a query into a memory table called `name`."""
-    writer = (
-        rows.writeStream.queryName(name)
-        .format("memory")
-        .option("checkpointLocation", str(tmp_path / "checkpoints" / name))
-    )
-    if available_now:
-        return writer.trigger(availableNow=True).start()
-    return writer.trigger(processingTime="1 second").start()
 
 
 def no_landed_records(spark: SparkSession, path: str) -> DataFrame:

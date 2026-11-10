@@ -3,39 +3,22 @@ from typing import NamedTuple
 
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import partitioning
-from pyspark.sql.types import (
-    BooleanType,
-    DataType,
-    DateType,
-    IntegerType,
-    LongType,
-    StringType,
-    StructField,
-    StructType,
-    TimestampType,
-)
+from pyspark.sql.types import StructField, StructType
 
-from pipelines.bronze.columns import MetadataColumn
-from pipelines.bronze.decimals import BRONZE_DECIMAL
-from pipelines.bronze.entities import Entity
-from pipelines.schemas.definitions import ColumnDefinition, ColumnType, load_table_templates
+from pipelines.lake.types import SPARK_TYPES
+from pipelines.schemas.definitions import ColumnDefinition, EntityDefinition, load_table_templates
 
-SPARK_TYPES: Mapping[ColumnType, DataType] = {
-    ColumnType.LONG: LongType(),
-    ColumnType.INT: IntegerType(),
-    ColumnType.STRING: StringType(),
-    ColumnType.BOOLEAN: BooleanType(),
-    ColumnType.TIMESTAMP_MILLIS: TimestampType(),
-    ColumnType.DATE: DateType(),
-    ColumnType.DECIMAL: BRONZE_DECIMAL,
-}
 TABLE_TEMPLATES = load_table_templates()
 COMMENT = "comment"
 
 
 class TableDefinition(NamedTuple):
+    """A lake table's description, its columns by lake name, and the timestamp column whose day
+    partitions it, if any."""
+
     comment: str
     columns: Mapping[str, ColumnDefinition]
+    partitioned_by: str | None
 
 
 class UndescribedColumnError(ValueError):
@@ -50,22 +33,15 @@ class ColumnTypeMismatchError(TypeError):
         )
 
 
-def _table(template_name: str, entity: Entity) -> TableDefinition:
-    """The template's description and columns for the entity, by lake name."""
+def table_definition(template_name: str, entity: EntityDefinition) -> TableDefinition:
+    """The entity's table in a layer, from the layer's template (`bronze`, `silver`, ...)."""
     template = TABLE_TEMPLATES[template_name]
-    columns = template.columns_for(entity.definition)
+    columns = template.columns_for(entity)
     return TableDefinition(
-        comment=template.describe(entity.definition),
+        comment=template.describe(entity),
         columns={column.lake_name: column for column in columns},
+        partitioned_by=template.partitioned_by,
     )
-
-
-def bronze_table(entity: Entity) -> TableDefinition:
-    return _table("bronze", entity)
-
-
-def quarantine_table(entity: Entity) -> TableDefinition:
-    return _table("bronze_quarantine", entity)
 
 
 def described_schema(table: str, schema: StructType, definition: TableDefinition) -> StructType:
@@ -140,32 +116,38 @@ def table_comment(spark: SparkSession, table: str) -> str | None:
     return next((row.data_type for row in details if row.col_name == "Comment"), None)
 
 
-def create_table(spark: SparkSession, table: str, schema: StructType, comment: str) -> None:
+def create_table(
+    spark: SparkSession, table: str, schema: StructType, definition: TableDefinition
+) -> None:
     namespace, _, _ = table.rpartition(".")
     spark.sql(f"CREATE NAMESPACE IF NOT EXISTS {namespace}")
     # Streaming disables adaptive execution, so the default hash distribution would shuffle
     # every micro-batch into spark.sql.shuffle.partitions tasks; a local sort is enough here.
-    (
+    writer = (
         spark.createDataFrame([], schema)
         .writeTo(table)
         .using("iceberg")
-        .partitionedBy(partitioning.days(MetadataColumn.PUBLISHED_AT))
         .tableProperty("write.distribution-mode", "none")
-        .tableProperty(COMMENT, comment)
-        .create()
+        .tableProperty(COMMENT, definition.comment)
     )
+    if definition.partitioned_by is not None:
+        writer = writer.partitionedBy(partitioning.days(definition.partitioned_by))
+    writer.create()
 
 
-def ensure_table(spark: SparkSession, table: str, schema: StructType, comment: str) -> list[str]:
+def ensure_table(
+    spark: SparkSession, table: str, schema: StructType, definition: TableDefinition
+) -> list[str]:
     """Create `table` with its descriptions, or update the descriptions of an existing one.
 
     Returns the description updates applied to an existing table.
     """
     if not spark.catalog.tableExists(table):
-        create_table(spark, table, schema, comment)
+        create_table(spark, table, schema, definition)
         return []
     stored = spark.table(table).schema
-    updates = description_updates(table, stored, table_comment(spark, table), schema, comment)
+    stored_comment = table_comment(spark, table)
+    updates = description_updates(table, stored, stored_comment, schema, definition.comment)
     for statement in updates:
         spark.sql(statement)
     return updates
