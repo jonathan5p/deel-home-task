@@ -6,8 +6,7 @@ from pyspark.sql import DataFrame, Row, SparkSession
 from pyspark.sql.types import StructField, StructType
 
 from pipelines.gold.job import SilverReader
-from pipelines.gold.scd2 import Scd2Dimension
-from pipelines.gold.sink import BatchWriter
+from pipelines.gold.sink import BatchWriter, GoldLoad
 from pipelines.lake.tables import table_definition
 from pipelines.lake.types import SPARK_TYPES
 from pipelines.schemas.definitions import EntityDefinition
@@ -35,6 +34,7 @@ def silver_version(entity: EntityDefinition, key: int, sequence: int, **values: 
 
 
 PRODUCT_VALUES = {"product_name": "Notebook", "unity_price": Decimal("1.5300000000")}
+ITEM_VALUES = {"order_id": 70, "product_id": 3, "quantity": 2}
 
 
 def write_silver(
@@ -55,13 +55,13 @@ def silver_folders(root: Path, entities: list[EntityDefinition]) -> SilverReader
 
 
 class RecordingSinks:
-    """A sink factory that keeps every micro-batch it is given, as rows, by dimension."""
+    """A sink factory that keeps every micro-batch it is given, as rows, by load."""
 
     def __init__(self) -> None:
         self.batches: dict[str, list[list[Row]]] = {}
 
-    def __call__(self, dimension: Scd2Dimension) -> BatchWriter:
+    def __call__(self, load: GoldLoad) -> BatchWriter:
         def write(batch: DataFrame, batch_id: int) -> None:
-            self.batches.setdefault(dimension.name, []).append(batch.collect())
+            self.batches.setdefault(load.name, []).append(batch.collect())
 
         return write

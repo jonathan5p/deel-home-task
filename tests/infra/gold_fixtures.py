@@ -15,7 +15,12 @@ INTERNAL_TABLES = {
     "current_orders",
     "current_order_items",
 }
-STAGING_TABLES = {"stage_dim_customer", "stage_dim_product"}
+STAGING_TABLES = {
+    "stage_dim_customer",
+    "stage_dim_product",
+    "stage_fact_order_history",
+    "stage_fact_order_item_history",
+}
 VERSIONS_VIEWS = {"dim_customer_versions", "dim_product_versions"}
 PUBLIC_VIEWS = INTERNAL_TABLES | {"data_freshness"}
 
@@ -197,23 +202,30 @@ def order_change(
     *,
     ignore_duplicate: bool = False,
 ) -> str:
-    """Insert one order history row; changed_at is a SQL timestamp expression."""
+    """Insert one order history row; changed_at is a SQL timestamp expression, and the status
+    stands for the content hash."""
     conflict = " ON CONFLICT DO NOTHING" if ignore_duplicate else ""
     return f"""
 INSERT INTO gold_internal.fact_order_history
-    (order_id, _commit_sequence, _changed_at, _change_op, status_key)
-SELECT {order_id}, {commit_sequence}, {changed_at}, 'update', status_key
+    (order_id, _commit_sequence, _changed_at, _change_op, status_key, _content_hash, _is_deleted)
+SELECT {order_id}, {commit_sequence}, {changed_at}, 'update', status_key, '{status}', false
 FROM gold_internal.dim_order_status
 WHERE status_code = '{status}'{conflict};
 """
 
 
 def item_change(order_item_id: int, commit_sequence: int, changed_at: str, quantity: int) -> str:
-    """Insert one order item history row; changed_at is a SQL timestamp expression."""
+    """Insert one order item history row; changed_at is a SQL timestamp expression, and the
+    quantity stands for the content hash."""
     return f"""
-INSERT INTO gold_internal.fact_order_item_history
-    (order_item_id, _commit_sequence, _changed_at, _change_op, order_id, product_id, quantity)
-VALUES ({order_item_id}, {commit_sequence}, {changed_at}, 'update', 1, 1, {quantity});
+INSERT INTO gold_internal.fact_order_item_history (
+    order_item_id, _commit_sequence, _changed_at, _change_op, order_id, product_id, quantity,
+    _content_hash, _is_deleted
+)
+VALUES (
+    {order_item_id}, {commit_sequence}, {changed_at}, 'update', 1, 1, {quantity},
+    '{quantity}', false
+);
 """
 
 

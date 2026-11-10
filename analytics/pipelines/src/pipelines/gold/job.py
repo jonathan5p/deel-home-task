@@ -7,15 +7,16 @@ from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.streaming import StreamingQuery
 
 from common.settings import AnalyticsDbSettings
-from pipelines.gold.dimensions import DIMENSIONS
+from pipelines.gold.dimensions import DIMENSIONS, FACTS
+from pipelines.gold.facts import ChangeFact
 from pipelines.gold.postgres import connection_factory
 from pipelines.gold.scd2 import Scd2Dimension
-from pipelines.gold.sink import BatchWriter, Scd2Sink, jdbc_stage, staged_rows
+from pipelines.gold.sink import BatchWriter, GoldLoad, MergeSink, jdbc_stage, staged_rows
 from pipelines.lake.streams import await_queries, wants_available_now
 from pipelines.settings import GoldSettings
 
 type SilverReader = Callable[[SparkSession, str], DataFrame]
-type SinkFactory = Callable[[Scd2Dimension], BatchWriter]
+type SinkFactory = Callable[[GoldLoad], BatchWriter]
 
 
 class GoldStream(NamedTuple):
@@ -29,29 +30,31 @@ def read_silver(spark: SparkSession, table: str) -> DataFrame:
     return spark.readStream.table(table)
 
 
-def scd2_sinks(settings: AnalyticsDbSettings) -> SinkFactory:
+def merge_sinks(settings: AnalyticsDbSettings, facts: Iterable[ChangeFact] = FACTS) -> SinkFactory:
+    """Sinks that merge each load and then re-resolve the `facts` that look up what it wrote."""
     stage = jdbc_stage(settings)
     connect = connection_factory(settings)
+    dependents = tuple(facts)
 
-    def sink(dimension: Scd2Dimension) -> BatchWriter:
-        return Scd2Sink(dimension, stage, connect)
+    def sink(load: GoldLoad) -> BatchWriter:
+        return MergeSink(load, stage, connect, dependents)
 
     return sink
 
 
-def dimension_stream(
+def gold_stream(
     spark: SparkSession,
     settings: GoldSettings,
-    dimension: Scd2Dimension,
+    load: GoldLoad,
     read: SilverReader,
     sink: SinkFactory,
 ) -> GoldStream:
-    silver = read(spark, settings.source_table(dimension.entity.name))
+    silver = read(spark, settings.source_table(load.entity.name))
     return GoldStream(
-        name=f"gold {dimension.name}",
-        checkpoint=settings.checkpoint_path(dimension.name),
-        rows=staged_rows(silver, dimension),
-        sink=sink(dimension),
+        name=f"gold {load.name}",
+        checkpoint=settings.checkpoint_path(load.name),
+        rows=staged_rows(silver, load),
+        sink=sink(load),
     )
 
 
@@ -75,15 +78,17 @@ def run(
     settings: GoldSettings,
     *,
     dimensions: Iterable[Scd2Dimension] = DIMENSIONS,
+    facts: Iterable[ChangeFact] = FACTS,
     read: SilverReader = read_silver,
     sink: SinkFactory | None = None,
     available_now: bool = False,
 ) -> list[StreamingQuery]:
-    """Start one stream per SCD2 dimension, from its silver table to its gold table."""
-    sinks = sink or scd2_sinks(settings.analytics_db)
-    streams = [
-        dimension_stream(spark, settings, dimension, read, sinks) for dimension in dimensions
-    ]
+    """Start one stream per SCD2 dimension and one per history fact, each from its silver
+    table to its gold tables."""
+    facts = tuple(facts)
+    sinks = sink or merge_sinks(settings.analytics_db, facts)
+    loads: list[GoldLoad] = [*dimensions, *facts]
+    streams = [gold_stream(spark, settings, load, read, sinks) for load in loads]
     return [start_stream(stream, settings, available_now=available_now) for stream in streams]
 
 

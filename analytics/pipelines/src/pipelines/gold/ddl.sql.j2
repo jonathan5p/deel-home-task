@@ -107,9 +107,20 @@ CREATE TABLE IF NOT EXISTS gold_internal.fact_order_history (
 CREATE TABLE IF NOT EXISTS gold_internal.fact_order_history_default
     PARTITION OF gold_internal.fact_order_history DEFAULT;
 
+CREATE INDEX IF NOT EXISTS fact_order_history_customer_idx
+    ON gold_internal.fact_order_history (customer_id);
+
 {{ describe_table(tables.fact_order_history) }}
 COMMENT ON TABLE gold_internal.fact_order_history_default IS
     'Order history rows outside every monthly partition.';
+COMMENT ON INDEX gold_internal.fact_order_history_customer_idx IS
+    'Finds the changes of a customer''s orders, whose customer_key a dim_customer merge re-resolves.';
+
+CREATE UNLOGGED TABLE IF NOT EXISTS gold_internal.stage_fact_order_history (
+{{ column_list(facts.fact_order_history.staging_table) }}
+);
+
+{{ describe_table(facts.fact_order_history.staging_table) }}
 
 CREATE TABLE IF NOT EXISTS gold_internal.fact_order_item_history (
 {{ column_lines(tables.fact_order_item_history, {
@@ -122,9 +133,20 @@ CREATE TABLE IF NOT EXISTS gold_internal.fact_order_item_history (
 CREATE TABLE IF NOT EXISTS gold_internal.fact_order_item_history_default
     PARTITION OF gold_internal.fact_order_item_history DEFAULT;
 
+CREATE INDEX IF NOT EXISTS fact_order_item_history_product_idx
+    ON gold_internal.fact_order_item_history (product_id);
+
 {{ describe_table(tables.fact_order_item_history) }}
 COMMENT ON TABLE gold_internal.fact_order_item_history_default IS
     'Order item history rows outside every monthly partition.';
+COMMENT ON INDEX gold_internal.fact_order_item_history_product_idx IS
+    'Finds the changes of a product''s order items, whose product_key and price a dim_product merge re-resolves.';
+
+CREATE UNLOGGED TABLE IF NOT EXISTS gold_internal.stage_fact_order_item_history (
+{{ column_list(facts.fact_order_item_history.staging_table) }}
+);
+
+{{ describe_table(facts.fact_order_item_history.staging_table) }}
 
 CREATE TABLE IF NOT EXISTS gold_internal.current_orders (
 {{ column_lines(tables.current_orders, {
@@ -215,7 +237,18 @@ FROM gold_internal.dim_order_status;
 
 {{ describe_view(tables.dim_order_status) }}
 
+-- A change whose content hash and deletion state equal the previous change's is folded away
+-- here, at read time, rather than flagged in the table: a late change landing between two
+-- equal ones turns the later one back into a real change without rewriting history.
 CREATE OR REPLACE VIEW gold.fact_order_history AS
+WITH changes AS (
+    SELECT
+        *,
+        (_content_hash, _is_deleted) IS NOT DISTINCT FROM
+            (lag(_content_hash) OVER by_order, lag(_is_deleted) OVER by_order) AS is_folded
+    FROM gold_internal.fact_order_history
+    WINDOW by_order AS (PARTITION BY order_id ORDER BY _commit_sequence)
+)
 SELECT
     order_id,
     _changed_at,
@@ -226,8 +259,9 @@ SELECT
     order_date_key,
     delivery_date_key,
     lead(_changed_at) OVER versions AS _valid_to,
-    lead(_changed_at) OVER versions IS NULL AS _is_current
-FROM gold_internal.fact_order_history
+    lead(_changed_at) OVER versions IS NULL AND NOT _is_deleted AS _is_current
+FROM changes
+WHERE NOT is_folded
 WINDOW versions AS (PARTITION BY order_id ORDER BY _commit_sequence);
 
 {{ describe_view(
@@ -237,6 +271,14 @@ WINDOW versions AS (PARTITION BY order_id ORDER BY _commit_sequence);
 ) }}
 
 CREATE OR REPLACE VIEW gold.fact_order_item_history AS
+WITH changes AS (
+    SELECT
+        *,
+        (_content_hash, _is_deleted) IS NOT DISTINCT FROM
+            (lag(_content_hash) OVER by_item, lag(_is_deleted) OVER by_item) AS is_folded
+    FROM gold_internal.fact_order_item_history
+    WINDOW by_item AS (PARTITION BY order_item_id ORDER BY _commit_sequence)
+)
 SELECT
     order_item_id,
     _changed_at,
@@ -248,8 +290,9 @@ SELECT
     unit_price,
     line_amount,
     lead(_changed_at) OVER versions AS _valid_to,
-    lead(_changed_at) OVER versions IS NULL AS _is_current
-FROM gold_internal.fact_order_item_history
+    lead(_changed_at) OVER versions IS NULL AND NOT _is_deleted AS _is_current
+FROM changes
+WHERE NOT is_folded
 WINDOW versions AS (PARTITION BY order_item_id ORDER BY _commit_sequence);
 
 {{ describe_view(

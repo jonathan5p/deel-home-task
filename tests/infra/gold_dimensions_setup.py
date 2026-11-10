@@ -1,15 +1,8 @@
-import hashlib
-import json
 from dataclasses import dataclass
-from datetime import datetime, timedelta
 
 from tests.infra.gold_fixtures import rows
+from tests.infra.gold_silver_setup import Batches, Json, SilverFixture, keys, version
 from tests.infra.stack import Stack
-
-LAKE_KEY = "test-fixtures/gold"
-CATALOG = "gold_fixture"
-APP = "tests/infra/apps/gold_from_silver.py"
-FIRST_CHANGE = datetime(2026, 11, 1, 10, 0)
 
 PRICE_CHANGE = 9101
 LATE_VERSION = 9102
@@ -20,36 +13,7 @@ AUDIT_ONLY = 9201
 SINGLE_VERSION = 9202
 CUSTOMERS = (AUDIT_ONLY, SINGLE_VERSION)
 
-type Json = dict[str, object]
 type Table = list[list[str]]
-
-
-def changed_at(sequence: int) -> datetime:
-    """Commit time of the change at `sequence`: one minute per position, in commit order."""
-    return FIRST_CHANGE + timedelta(minutes=sequence)
-
-
-def at(sequence: int) -> str:
-    """`changed_at(sequence)` as psql prints a timestamp."""
-    return changed_at(sequence).strftime("%Y-%m-%d %H:%M:%S")
-
-
-def version(content: Json, sequence: int, op: str, *, deleted: bool, updated_by: int) -> Json:
-    """The silver columns of a version but its key; the hash covers only `content`, as
-    silver's hash leaves the key and the audit columns out."""
-    digest = hashlib.sha256(json.dumps(content, sort_keys=True).encode()).hexdigest()
-    return {
-        **content,
-        "updated_at": changed_at(sequence).isoformat(),
-        "updated_by": updated_by,
-        "created_at": FIRST_CHANGE.isoformat(),
-        "created_by": -1,
-        "_commit_sequence": sequence,
-        "_change_op": op,
-        "_changed_at": changed_at(sequence).isoformat(),
-        "_content_hash": digest,
-        "_is_deleted": deleted,
-    }
 
 
 def product(
@@ -61,21 +25,18 @@ def product(
         "unity_price": float(price),
         "is_active": True,
     }
-    return {
-        "product_id": product_id,
-        **version(content, sequence, op, deleted=deleted, updated_by=-1),
-    }
+    return {"product_id": product_id, **version(content, sequence, op, deleted=deleted)}
 
 
 def customer(
     customer_id: int, sequence: int, name: str, op: str = "update", *, updated_by: int = -1
 ) -> Json:
     content: Json = {"customer_name": name, "is_active": True, "customer_address": "Main Street 1"}
-    row = version(content, sequence, op, deleted=False, updated_by=updated_by)
+    row = version(content, sequence, op, updated_by=updated_by)
     return {"customer_id": customer_id, **row}
 
 
-BATCHES: dict[str, dict[str, list[Json]]] = {
+BATCHES: Batches = {
     "batch-1": {
         "products": [
             product(PRICE_CHANGE, 10, "1.00", "snapshot"),
@@ -99,8 +60,9 @@ BATCHES: dict[str, dict[str, list[Json]]] = {
         ],
         "customers": [customer(SINGLE_VERSION, 20, "Grace", "create")],
     },
-    "batch-late": {"products": [product(DELETED, 95, "8.00")], "customers": []},
+    "batch-late": {"products": [product(DELETED, 95, "8.00")]},
 }
+SILVER = SilverFixture("test-fixtures/gold", "gold_fixture", BATCHES)
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,10 +81,6 @@ class GoldRuns:
     second: GoldState
     replayed: GoldState
     late: GoldState
-
-
-def keys(values: tuple[int, ...]) -> str:
-    return ", ".join(map(str, values))
 
 
 STORED = """
@@ -163,23 +121,9 @@ def gold_state(stack: Stack) -> GoldState:
     )
 
 
-def upload(stack: Stack, batch: str) -> None:
-    for entity, versions in BATCHES[batch].items():
-        lines = "".join(json.dumps(row) + "\n" for row in versions)
-        stack.put_object(f"{LAKE_KEY}/silver/{batch}/{entity}.json", lines.encode())
-
-
 def run_gold(stack: Stack, *batches: str, checkpoints: str = "main") -> GoldState:
     """Append the batches to the fixture silver tables, run the gold job once, read gold."""
-    for batch in batches:
-        upload(stack, batch)
-    env = {
-        "ICEBERG_CATALOG": CATALOG,
-        "LAKE_ROOT": f"s3a://lake/{LAKE_KEY}",
-        "CHECKPOINT_ROOT": f"s3a://lake/{LAKE_KEY}/checkpoints/{checkpoints}",
-    }
-    returncode, output = stack.run_app(APP, LAKE_KEY, *batches, env=env)
-    assert returncode == 0, output
+    SILVER.run_gold(stack, *batches, checkpoints=checkpoints)
     return gold_state(stack)
 
 

@@ -71,8 +71,8 @@ make up
 
 Gold is a star schema built from the silver history tables: SCD2 customer and product dimensions, seeded date and order-status dimensions, append-only history facts for orders and order items (partitioned by month, 3 years kept), and current-state tables for orders and items that the four business questions read. It uses two schemas:
 
-- `gold_internal` holds the tables the pipeline writes, with the metadata it needs to skip replayed batches and order versions (`_commit_sequence`, soft deletes in `_is_deleted`, and in the dimensions `_content_hash`), plus the unlogged staging tables `stage_dim_customer` and `stage_dim_product` that the gold job loads every micro-batch into, and the views `dim_customer_versions` and `dim_product_versions`, which derive each dimension version's fold flag, validity range and current flag.
-- `gold` holds the views consumers read, with the same names, without that metadata: the history views add each version's validity range, the current-state views leave deleted rows out, and the dimension views leave out folded and deleted versions.
+- `gold_internal` holds the tables the pipeline writes, with the metadata it needs to skip replayed batches and order versions (`_commit_sequence`, soft deletes in `_is_deleted`, `_content_hash` to fold unchanged versions), plus the unlogged staging tables `stage_dim_customer`, `stage_dim_product`, `stage_fact_order_history` and `stage_fact_order_item_history` that the gold job loads every micro-batch into, and the views `dim_customer_versions` and `dim_product_versions`, which derive each dimension version's fold flag, validity range and current flag.
+- `gold` holds the views consumers read, with the same names, without that metadata: the history views leave out unchanged changes and add each change's validity range, the current-state views leave deleted rows out, and the dimension views leave out folded and deleted versions.
 
 The design, with the ERD, the grain of every table, the open and pending rules, versioning by `_commit_sequence`, and retention, is in [docs/architecture/gold-model.md](docs/architecture/gold-model.md).
 
@@ -402,7 +402,8 @@ analytics/
       bronze/               bronze layer: source entities, the transforms from landing records to bronze rows, and job.py (streaming job)
       silver/               silver layer: the transform from bronze rows to version rows, the history and current views, and job.py (streaming job)
       gold/                 gold layer: ddl.py and ddl.sql.j2 (the gold DDL from the gold Avro schemas), scd2.py (the SCD2 SQL),
-                            dimensions.py, sink.py, postgres.py and job.py (the gold streaming job)
+                            facts.py (the history fact and current-state SQL), dimensions.py (the dimensions and facts
+                            and their lookups), sink.py, postgres.py and job.py (the gold streaming job)
     tests/
   sql/gold/                 the four business questions as SQL on the gold views in PostgreSQL
 tests/infra/                infra tests that drive an isolated copy of the stack
@@ -764,21 +765,23 @@ Bronze, its tables and its checkpoints are not touched, and the views need nothi
 
 #### Gold job
 
-The gold job (`analytics/pipelines/src/pipelines/gold/job.py`) keeps the SCD2 dimensions `gold_internal.dim_customer` and `gold_internal.dim_product` up to date from the silver tables `<ICEBERG_CATALOG>.silver.customers` and `<ICEBERG_CATALOG>.silver.products`. It needs the silver tables to exist when it starts, and the gold DDL to be applied (`make up`):
+The gold job (`analytics/pipelines/src/pipelines/gold/job.py`) keeps the gold model in the `analytics` database up to date from the silver tables `<ICEBERG_CATALOG>.silver.<entity>`: the SCD2 dimensions `gold_internal.dim_customer` and `gold_internal.dim_product` from `customers` and `products`, and the history facts `gold_internal.fact_order_history` and `gold_internal.fact_order_item_history` with their current-state tables `current_orders` and `current_order_items` from `orders` and `order_items`. It needs the four silver tables to exist when it starts, and the gold DDL to be applied (`make up`):
 
 ```sh
 make pipeline PIPELINE=gold   # as a long-running service, UI on http://localhost:4045
 make spark-submit SPARK_APP=analytics/pipelines/src/pipelines/gold/job.py SPARK_APP_ARGS=--available-now SPARK_CONF="spark.cores.max=2" SPARK_UI_PORT=4045   # or once, ad hoc
 ```
 
-- **One streaming query per dimension,** reading its silver table with Iceberg's streaming source, with its checkpoint in `<CHECKPOINT_ROOT>/gold/<table>/`. Micro-batches run every `GOLD_TRIGGER_SECONDS`; `--available-now` processes what silver holds and stops.
-- **Every micro-batch** is loaded by Spark's JDBC writer into the dimension's unlogged staging table (`gold_internal.stage_<table>`, emptied first), then merged by the driver in one PostgreSQL transaction ([psycopg](https://www.psycopg.org/psycopg3/)) that only inserts the versions not stored yet. The dimensions are append-only: the fold flag, the validity range and the current flag are computed when they are read, by the `gold_internal.<table>_versions` views, from all of a key's stored versions. A replayed batch, a duplicate or a late version therefore lands correctly, and a failed batch is simply replayed.
-- **Unchanged versions are folded, not dropped:** a version whose `_content_hash` and `_is_deleted` equal the previous version's is stored and marked `_is_folded` by the versions view, so a late version that arrives between two equal ones turns it back into a real version. The `gold` dimension views read the versions views and leave folded and deleted versions out.
-- **Deletes are final:** a delete is stored as the key's last version, so the key has no current version afterwards, and replays or late events cannot bring it back.
-- **The column lists come from the gold Avro schemas:** the staging tables, the INSERT and the versions views are built from `dim_customer.avsc` and `dim_product.avsc` (the views are described by `dim_customer_versions.avsc` and `dim_product_versions.avsc`); a dimension column is loaded from the silver column its `from` names, a metadata column from the silver column of the same name, and `_valid_from` from `_changed_at` (`unit_price` from `unity_price`).
+- **Four streaming queries,** one per silver table (customers, products, orders, order items), reading it with Iceberg's streaming source, with its checkpoint in `<CHECKPOINT_ROOT>/gold/<table>/` (`dim_customer`, `dim_product`, `fact_order_history`, `fact_order_item_history`). Micro-batches run every `GOLD_TRIGGER_SECONDS`; `--available-now` processes what silver holds and stops.
+- **Every micro-batch** is loaded by Spark's JDBC writer into the stream's unlogged staging table (`gold_internal.stage_<table>`, emptied first), then merged by the driver in one PostgreSQL transaction ([psycopg](https://www.psycopg.org/psycopg3/)). For a dimension, only the versions not stored yet are inserted: the dimensions are append-only, and the fold flag, the validity range and the current flag are computed when they are read, by the `gold_internal.<table>_versions` views, from all of a key's stored versions. For orders and order items, every change is appended to the history fact and the latest change of each key replaces its current-state row only if its `_commit_sequence` is higher. A replayed batch, a duplicate or a late change therefore lands correctly, and a failed batch is simply replayed.
+- **Unchanged versions are folded, not dropped:** a version whose `_content_hash` and `_is_deleted` equal the previous version's is kept, so a late version that arrives between two equal ones can turn it back into a real version. The dimension versions views mark it with `_is_folded`, and the `gold` dimension views read them and leave folded and deleted versions out; the `gold` history views of the facts leave unchanged changes out at read time.
+- **Deletes are final:** a delete is stored as the key's last version, so the key has no current version afterwards, and replays or late events cannot bring it back; the `gold` current-state views leave deleted orders and items out.
+- **Dimension keys as of the change:** a history fact row takes the customer or product version valid at its `_changed_at` (`customer_key`, or `product_key` with its `unit_price` and `line_amount`), or the first version when the change is older than it, as happens when tables are snapshotted a few milliseconds apart; null while there is none or after a delete. A dimension merge re-resolves the fact rows of the keys it touched, so a customer or product that arrives late, or a late version that changes a validity range, still ends in the right key; the lookup reads the dimension versions views, so it applies the same fold and validity rule as the `gold` dimension views. Every merge first takes one PostgreSQL advisory lock, so these merges never run side by side and miss each other's rows.
+- **Early items:** an item that arrives before its order is stored; the business queries count it once the order arrives.
+- **The column lists come from the gold Avro schemas:** the staging tables, the merge SQL and the dimension versions views are built from the gold `.avsc` files; a column is loaded from the silver column its `from` names, a metadata column from the silver column of the same name, and `_valid_from` from `_changed_at` (`unit_price` from `unity_price`); the facts' status, date and dimension keys come from lookups declared in `pipelines/gold/dimensions.py`.
 - **Fail fast:** like the bronze job, it stops every query when one stops or fails, and exits non-zero if one failed.
 
-The details, with the fold rule and the transaction, are in [Writing gold](docs/architecture/gold-model.md#writing-gold).
+The details, with the fold rule, the transactions and the dimension keys of the facts, are in [Writing gold](docs/architecture/gold-model.md#writing-gold).
 
 #### Tests, lint and format
 

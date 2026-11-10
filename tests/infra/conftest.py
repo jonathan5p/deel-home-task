@@ -6,6 +6,7 @@ import pytest
 
 from tests.infra.bronze_setup import BronzeRuns, run_bronze_scenario
 from tests.infra.gold_dimensions_setup import GoldRuns, remove_fixture_rows, run_gold_scenario
+from tests.infra.gold_facts_setup import FactRuns, remove_fact_rows, run_fact_scenario
 from tests.infra.landing_avro import landing_avro
 from tests.infra.silver_setup import SilverRuns, run_silver_scenario
 from tests.infra.stack import Stack
@@ -88,3 +89,13 @@ def gold_runs(stack: Stack) -> Iterator[GoldRuns]:
         yield run_gold_scenario(stack)
     finally:
         remove_fixture_rows(stack)
+
+
+@pytest.fixture(scope="module")
+def fact_runs(stack: Stack) -> Iterator[FactRuns]:
+    """Run the gold job over the fixture silver changes, then remove the rows it wrote, which
+    the gold model tests must not see."""
+    try:
+        yield run_fact_scenario(stack)
+    finally:
+        remove_fact_rows(stack)

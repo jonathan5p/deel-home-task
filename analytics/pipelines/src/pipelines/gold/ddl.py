@@ -7,8 +7,8 @@ from pathlib import Path
 
 from jinja2 import Environment, StrictUndefined
 
-from pipelines.gold.dimensions import scd2_dimensions
-from pipelines.gold.scd2 import INTERNAL_SCHEMA
+from pipelines.gold.dimensions import change_facts, scd2_dimensions
+from pipelines.gold.scd2 import INTERNAL_SCHEMA, postgres_string
 from pipelines.schemas.definitions import (
     POSTGRES_TYPES,
     SCHEMAS,
@@ -27,10 +27,6 @@ PIPELINE_ONLY_COLUMNS = frozenset(
 class UnknownColumnError(ValueError):
     def __init__(self, table: str, columns: Iterable[str]) -> None:
         super().__init__(f"{table} has no columns named {', '.join(columns)}")
-
-
-def postgres_string(text: str) -> str:
-    return "'" + text.replace("'", "''") + "'"
 
 
 def _column_definitions(table: GoldTable, constraints: Mapping[str, str]) -> list[str]:
@@ -93,9 +89,12 @@ def render(root: Traversable = SCHEMAS, template: Traversable = TEMPLATE) -> str
         lstrip_blocks=True,
     )
     tables = load_gold_tables(root)
+    entities = load_entities(root)
+    dimensions = scd2_dimensions(tables, entities)
     return environment.from_string(template.read_text(encoding="utf-8")).render(
         tables=tables,
-        dimensions=scd2_dimensions(tables, load_entities(root)),
+        dimensions=dimensions,
+        facts=change_facts(tables, entities, dimensions),
         column_lines=column_lines,
         column_list=column_list,
         describe_table=describe_table,

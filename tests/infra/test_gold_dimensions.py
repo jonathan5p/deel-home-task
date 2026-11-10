@@ -8,11 +8,11 @@ from tests.infra.gold_dimensions_setup import (
     RESNAPSHOT,
     SINGLE_VERSION,
     GoldRuns,
-    at,
     by_key,
     current_counts,
     versions,
 )
+from tests.infra.gold_silver_setup import at
 
 
 def test_a_price_change_closes_the_previous_version_and_opens_a_new_one(

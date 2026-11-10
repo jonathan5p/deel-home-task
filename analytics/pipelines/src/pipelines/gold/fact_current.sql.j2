@@ -1,0 +1,26 @@
+MERGE INTO {{ relation }} AS target
+USING (
+    SELECT
+        {{ selected | join(",\n        ") }}
+    FROM (
+        SELECT DISTINCT ON ({{ key }}) *
+        FROM {{ staging }}
+        ORDER BY {{ key }}, _commit_sequence DESC
+    ) AS {{ row }}
+{% for join in joins %}
+{{ join | indent(4, first=true) }}
+{% endfor %}
+) AS source
+ON target.{{ key }} = source.{{ key }}
+WHEN MATCHED AND source._commit_sequence > target._commit_sequence THEN
+    UPDATE SET
+{% for column in replaced %}
+        {{ column }} = source.{{ column }}{{ "," if not loop.last }}
+{% endfor %}
+WHEN NOT MATCHED THEN
+    INSERT (
+        {{ targets | join(",\n        ") }}
+    )
+    VALUES (
+        {{ targets | prefix_columns("source") | join(",\n        ") }}
+    )
