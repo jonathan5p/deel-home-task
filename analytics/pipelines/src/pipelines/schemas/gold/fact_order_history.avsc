@@ -2,8 +2,8 @@
   "type": "record",
   "name": "fact_order_history",
   "namespace": "gold",
-  "doc": "Order history: one row per change to an order, partitioned by month of _changed_at",
-  "public_doc": "Order history: one row per change to an order, with the range in which it was the latest version",
+  "doc": "Order history: one row per change to an order from silver, unchanged versions and deletes included, partitioned by month of _changed_at",
+  "public_doc": "Order history: one row per change to an order, without unchanged versions, with the range in which it was the latest version; a delete is the last row and is never current",
   "fields": [
     {
       "name": "order_id",
@@ -40,7 +40,7 @@
       "name": "customer_key",
       "type": ["null", "long"],
       "default": null,
-      "doc": "Customer version valid at _changed_at; null if the customer is not known yet"
+      "doc": "Customer version valid at _changed_at, or the customer's first version for an earlier change (dim_customer key); null while the customer is not known yet, or once it is deleted"
     },
     {
       "name": "order_date_key",
@@ -53,6 +53,16 @@
       "type": ["null", "int"],
       "default": null,
       "doc": "Delivery date as a dim_date key"
+    },
+    {
+      "name": "_content_hash",
+      "type": "string",
+      "doc": "Hex SHA-256 of the content columns (key and audit columns excluded); unchanged content keeps its hash"
+    },
+    {
+      "name": "_is_deleted",
+      "type": "boolean",
+      "doc": "Whether the row was deleted in the source; the version keeps its last known values"
     }
   ]
 }

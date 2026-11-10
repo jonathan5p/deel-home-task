@@ -5,7 +5,7 @@ from pyspark.sql import SparkSession
 from pyspark.sql.types import StructField, StructType
 
 from pipelines.gold import job
-from pipelines.gold.dimensions import DIMENSIONS
+from pipelines.gold.dimensions import DIMENSIONS, FACTS
 from pipelines.lake.tables import table_definition
 from pipelines.lake.types import SPARK_TYPES
 from pipelines.schemas.definitions import EntityDefinition
@@ -33,8 +33,7 @@ def register_fixture_catalog(spark: SparkSession, catalog: str, warehouse: str) 
 def append_versions(spark: SparkSession, catalog: str, folder: str) -> None:
     """Append `<folder>/<entity>.json` (JSON lines) to the entity's fixture silver table."""
     spark.sql(f"CREATE NAMESPACE IF NOT EXISTS {catalog}.silver")
-    for dimension in DIMENSIONS:
-        entity = dimension.entity
+    for entity in (load.entity for load in (*DIMENSIONS, *FACTS)):
         schema = silver_schema(entity)
         table = f"{catalog}.silver.{entity.name}"
         if not spark.catalog.tableExists(table):

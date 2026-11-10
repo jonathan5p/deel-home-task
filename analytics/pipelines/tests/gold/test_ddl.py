@@ -147,3 +147,51 @@ def test_the_dimension_tables_store_no_derived_flags_or_current_constraint(dimen
     assert "_is_current" not in definition
     assert "CHECK" not in definition
     assert f"{dimension}_current_idx" not in render()
+
+
+@pytest.mark.parametrize("fact", ["fact_order_history", "fact_order_item_history"])
+def test_each_history_fact_has_an_unlogged_staging_table_with_the_lookup_inputs(
+    fact: str,
+) -> None:
+    ddl = render()
+
+    assert f"CREATE UNLOGGED TABLE IF NOT EXISTS gold_internal.stage_{fact} (" in ddl
+    assert f"COMMENT ON TABLE gold_internal.stage_{fact} IS" in ddl
+    assert f"COMMENT ON COLUMN gold_internal.stage_{fact}._content_hash IS" in ddl
+    assert f"COMMENT ON COLUMN gold_internal.stage_{fact}._valid_to IS" not in ddl
+
+
+def test_the_order_status_is_staged_with_its_source_description() -> None:
+    assert (
+        "COMMENT ON COLUMN gold_internal.stage_fact_order_history.status IS\n"
+        "    'Order status as recorded in the source, for example PENDING or COMPLETED';"
+    ) in render()
+
+
+@pytest.mark.parametrize(
+    ("fact", "key"),
+    [("fact_order_history", "order_id"), ("fact_order_item_history", "order_item_id")],
+)
+def test_the_public_history_views_fold_unchanged_changes_at_read_time(fact: str, key: str) -> None:
+    view = render().split(f"CREATE OR REPLACE VIEW gold.{fact} AS", 1)[1].split(";", 1)[0]
+
+    assert "(_content_hash, _is_deleted) IS NOT DISTINCT FROM" in view
+    assert "WHERE NOT is_folded\n" in view
+    assert "lead(_changed_at) OVER versions IS NULL AND NOT _is_deleted AS _is_current" in view
+    assert f"WINDOW versions AS (PARTITION BY {key} ORDER BY _commit_sequence)" in view
+
+
+@pytest.mark.parametrize(
+    ("index", "column"),
+    [
+        ("fact_order_history_customer_idx", "fact_order_history (customer_id)"),
+        ("fact_order_item_history_product_idx", "fact_order_item_history (product_id)"),
+    ],
+)
+def test_history_facts_are_indexed_by_the_dimension_key_they_are_re_resolved_by(
+    index: str, column: str
+) -> None:
+    ddl = render()
+
+    assert f"CREATE INDEX IF NOT EXISTS {index}\n    ON gold_internal.{column};" in ddl
+    assert f"COMMENT ON INDEX gold_internal.{index} IS" in ddl

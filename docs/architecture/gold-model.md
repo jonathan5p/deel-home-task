@@ -18,9 +18,9 @@ Silver keeps one append-only table per source entity, `lake.silver.<entity>`, wi
 
 Exact duplicates are already dropped. Gold reads these tables, not silver's views, because a streaming query can only read a table.
 
-**Unchanged versions.** Silver keeps re-snapshots and audit-only updates as rows of their own. Per key, ordered by `_commit_sequence`, a version whose `_content_hash` and `_is_deleted` both equal the previous version's is not a new version: the silver `_history` view folds it, and gold's writer must skip it.
+**Unchanged versions.** Silver keeps re-snapshots and audit-only updates as rows of their own. Per key, ordered by `_commit_sequence`, a version whose `_content_hash` and `_is_deleted` both equal the previous version's is not a new version: the silver `_history` view folds it, and gold folds it too.
 
-Gold applies the rule without dropping rows: bronze replays can append a missing change late, and a late version that lands between two equal versions turns the later one back into a real change. So the dimensions keep every version silver sends, are only ever appended to, and the views `gold_internal.dim_customer_versions` and `gold_internal.dim_product_versions` derive the folded ones when they are read:
+Gold applies the rule without dropping rows: bronze replays can append a missing change late, and a late version that lands between two equal versions turns the later one back into a real change. So gold keeps every version silver sends and stores no derived flags: the dimensions are only ever appended to, and the views `gold_internal.dim_customer_versions` and `gold_internal.dim_product_versions` derive the folded ones when they are read; the history facts fold at read time too (see [Versioning](#versioning)):
 
 - `_is_folded` is true when a version's `_content_hash` and `_is_deleted` are not distinct from the previous stored version's by `_commit_sequence`; the first version of a key is never folded. Because it is computed from all stored versions on every read, a late version changes it without any update.
 - Folded versions are never current and the `gold` views leave them out. Their `_valid_to` is the one of the version they repeat, so a folded version ends when that version ends.
@@ -34,19 +34,19 @@ Gold applies the rule without dropping rows: bronze replays can append a missing
 
 Gold has two schemas:
 
-- **`gold_internal`** holds the tables. Only the gold streaming query writes them, and they keep the metadata it needs: `_commit_sequence` to skip replayed batches and to order versions, `_is_deleted` for soft deletes, and in the dimensions `_content_hash` to fold unchanged versions. It also holds the staging tables the gold job loads every micro-batch into (see [Writing gold](#writing-gold)), and the dimension versions views, the one place that derives `_is_folded`, `_valid_to` and `_is_current`: the public dimension views and the facts' as-of lookups both read them.
-- **`gold`** holds one view per table, with the same name, for consumers: the business queries, the API and anyone browsing the model. The views leave out `_commit_sequence`, `_content_hash`, `_is_deleted` and `_is_folded`; the current-state views leave out deleted rows, the dimension views leave out folded and deleted versions, and the history views add each version's validity range.
+- **`gold_internal`** holds the tables. Only the gold streaming queries write them, and they keep the metadata they need: `_commit_sequence` to skip replayed batches and to order versions, `_is_deleted` for soft deletes and the fold rule, and `_content_hash` for the fold rule. It also holds the staging tables the gold job loads every micro-batch into (see [Writing gold](#writing-gold)), and the dimension versions views, the one place that derives the dimensions' `_is_folded`, `_valid_to` and `_is_current`: the public dimension views and the facts' as-of lookups both read them.
+- **`gold`** holds one view per table, with the same name, for consumers: the business queries, the API and anyone browsing the model. The views leave out `_commit_sequence`, `_content_hash`, `_is_deleted` and `_is_folded`; the current-state views leave out deleted rows, the dimension views leave out folded and deleted versions, and the history views leave out unchanged changes and add each change's validity range.
 
 Consumers never need to know how the pipeline orders or deduplicates changes, and the tables can change for the pipeline without breaking them.
 
 | Column | In `gold_internal` | In the `gold` views |
 | --- | --- | --- |
 | `_commit_sequence` | every table except `dim_date` and `dim_order_status` | left out |
-| `_is_deleted` | `dim_customer`, `dim_product`, `current_orders`, `current_order_items` | left out; deleted rows are filtered |
-| `_content_hash` | `dim_customer`, `dim_product` | left out |
+| `_is_deleted` | every table except `dim_date` and `dim_order_status` | left out; deleted rows are filtered from the dimension and current-state views, and a delete is the last, never current, row of a history view |
+| `_content_hash` | `dim_customer`, `dim_product`, `fact_order_history`, `fact_order_item_history` | left out |
 | `_is_folded` | not stored; computed by `dim_customer_versions`, `dim_product_versions` | left out; folded versions are filtered |
 | `_valid_to`, `_is_current` of the dimensions | not stored; computed by `dim_customer_versions`, `dim_product_versions` | taken from the versions views |
-| `_valid_to`, `_is_current` of history facts | not stored | computed from the next version by `_commit_sequence` |
+| `_valid_to`, `_is_current` of history facts | not stored | computed from the next change that is not folded, by `_commit_sequence` |
 
 ## Where the definitions live
 
@@ -161,32 +161,50 @@ erDiagram
 | `dim_product` | SCD2 dimension | as `dim_customer`, per product; a new price is a new version | `product_key` (surrogate); unique (`product_id`, `_commit_sequence`) |
 | `dim_customer_versions`, `dim_product_versions` | internal views | every stored version with `_is_folded`, `_valid_to` and `_is_current`; no public view of their own | as their dimension |
 | `stage_dim_customer`, `stage_dim_product` | staging, unlogged | the versions of the micro-batch being written; no view | none |
+| `stage_fact_order_history`, `stage_fact_order_item_history` | staging, unlogged | the changes of the micro-batch being written to the history fact and its current-state table: the silver columns both tables load, plus the ones the lookups read (the order `status`); no view | none |
 | `dim_date` | seeded dimension | one row per calendar day, 2000-01-01 to 2099-12-31 | `date_key` (`yyyymmdd`) |
 | `dim_order_status` | seeded dimension | one row per status: `PENDING`, `PROCESSING`, `REPROCESSING`, `COMPLETED`, `UNKNOWN` | `status_key` |
-| `fact_order_history` | history fact | one row per change to an order | (`order_id`, `_commit_sequence`, `_changed_at`) |
-| `fact_order_item_history` | history fact | one row per change to an order item | (`order_item_id`, `_commit_sequence`, `_changed_at`) |
+| `fact_order_history` | history fact | one row per change to an order from silver, unchanged changes and the delete included; the view leaves unchanged changes out | (`order_id`, `_commit_sequence`, `_changed_at`); indexed on `customer_id` |
+| `fact_order_item_history` | history fact | as `fact_order_history`, per order item | (`order_item_id`, `_commit_sequence`, `_changed_at`); indexed on `product_id` |
 | `current_orders` | current state | one row per order; the view leaves deleted orders out | `order_id` |
 | `current_order_items` | current state | one row per order item; the view leaves deleted items out | `order_item_id` |
 
 Notes:
 
 - `unity_price` is renamed `unit_price` in gold. `order_id`, `customer_id`, `product_id` and `order_item_id` stay as degenerate keys next to the surrogate keys, so facts can be joined to the source without the dimensions.
-- `customer_key` in `fact_order_history` is the customer version valid at the order change's `_changed_at`.
-- `product_key`, `unit_price` and `line_amount` (`quantity × unit_price`) in `fact_order_item_history` come from the product version valid at the item's `_changed_at`, which is when the order was placed: the source inserts an order's items right after the order. This keeps the price the order was placed at, even after the product's price changes.
-- A delete is a history row with `_change_op = 'delete'` and the row's last values. History has no `_is_deleted` column: `_change_op` already says it.
+- `customer_key` in `fact_order_history` is the customer version valid at the order change's `_changed_at`, or the customer's first version for an earlier change (see [Dimension keys of the facts](#dimension-keys-of-the-facts)).
+- `product_key`, `unit_price` and `line_amount` (`quantity × unit_price`) in `fact_order_item_history` come from the product version valid at the item's `_changed_at` (or the product's first version for an earlier item), which is when the order was placed: the source inserts an order's items right after the order. This keeps the price the order was placed at, even after the product's price changes.
+- `status_key` is the `dim_order_status` key whose `status_code` equals the source status exactly; a null or any other status gets the `UNKNOWN` key. `order_date_key` and `delivery_date_key` are the `dim_date` keys of the dates, null when the date is null or outside 2000 to 2099. History and current state derive them with the same expressions.
+- A delete is a history row with `_change_op = 'delete'`, `_is_deleted` and the row's last values. The `gold` history views show it as the key's last row, with no `_valid_to` and never current, so "the order was deleted at" stays queryable.
 - The history facts' keys include `_changed_at` because PostgreSQL requires the partition column in the primary key. A change always has the same `_changed_at`, so the key still identifies one change.
-- The `gold` history views add `_valid_to` (the next version's `_changed_at`, ordered by `_commit_sequence`) and `_is_current`, so history can be queried as of any time, for example "open orders on 2026-11-01".
+- The `gold` history views add `_valid_to` (the next change's `_changed_at`, ordered by `_commit_sequence`) and `_is_current`, so history can be queried as of any time, for example "open orders on 2026-11-01".
 
 ## Rules
 
 ### Versioning
 
 - **History is idempotent.** A history row is inserted only if (key, `_commit_sequence`) is not already there. Replaying a micro-batch, or a Debezium re-send after a restart, adds nothing.
+- **Unchanged changes are folded at read time in the history facts.** History stores every change silver sends, with its `_content_hash` and `_is_deleted`. The `gold` history views leave out a change whose `_content_hash` and `_is_deleted` are not distinct from the previous change's of the same key by `_commit_sequence`, and derive `_valid_to` and `_is_current` from the remaining ones, the same rule as silver's `_history` view. Nothing is stored that a late change would have to rewrite: a late change between two equal ones makes the later one visible again on the next read.
 - **Current state only moves forward.** A version replaces the current row only if its `_commit_sequence` is higher than the stored one. A late version is still appended to history, where its validity range lands in the right place, but it never overwrites newer current state.
 
   Example: order 7 is stored as `PROCESSING` at position 500. A delayed event `PENDING` at position 420 arrives. History gets the 420 row (valid until the 500 change); `current_orders` stays `PROCESSING`. Then `COMPLETED` at 610 arrives and replaces it.
 - **Deletes are soft in current state.** A delete sets `_is_deleted` and keeps the row with the delete's `_commit_sequence`, so a late event older than the delete cannot bring the row back. The `gold` current-state views leave deleted rows out.
+- **Current state is the latest change, folded or not.** A re-snapshot with a higher `_commit_sequence` replaces the current row even though its content is unchanged, so `_commit_sequence` keeps rising and a late change between the two equal ones is still rejected, as the fold rule requires; `_changed_at` of the current row is then the time of the re-snapshot.
+- **Items may arrive before their order.** `current_order_items` has no foreign key to `current_orders`: an item is stored in history and current state when it arrives, and the business queries join it to the open current orders, so it counts as soon as its order arrives.
 - **SCD2 dimensions.** `_valid_from` is the version's `_changed_at`. Among the versions that are not folded, ordered by `_commit_sequence`, each one is valid until the next one's `_valid_from`, and the last one is current unless it is a delete. A new version therefore closes the current row and becomes current itself, and a late older version gets the range between its neighbours. A delete is stored as the key's last version, so the key has no current version afterwards; replays and late events cannot revive it, because they sort before the delete. The versions views compute this on every read from the stored versions, so a key has at most one current version by construction, with no check constraint or partial index to maintain; the unique (key, `_commit_sequence`) index serves their windows, which are all partitioned by the key.
+
+### Dimension keys of the facts
+
+`customer_key` (order history) and `product_key`, `unit_price` and `line_amount` (item history) come from the dimension version, read from the dimension's versions view, that is not folded, not deleted, and whose [`_valid_from`, `_valid_to`) contains the change's `_changed_at`. A change older than the key's first version (by `_commit_sequence`) takes that first version, unless it is a delete: Debezium snapshots each table at a slightly different time, so an order or item can be snapshotted a few milliseconds before its customer or product, and would otherwise keep a null key. If no version matches, because the customer or product is not in gold yet or the change comes after its delete, the columns are null. If clock skew made two ranges overlap, the version with the highest `_commit_sequence` wins. The fact merge and the dimension re-resolution use the same lookup.
+
+Those values can go stale after they are stored: a dimension row can arrive after the facts that need it, and a late dimension version can split a validity range or unfold a version. Gold therefore resolves them on both sides, in the same transaction as the write that changes them:
+
+- the fact merge resolves the keys of the changes it inserts;
+- the dimension merge, after inserting its versions, re-resolves the history rows of every business key its batch touched, and updates only the rows whose resolved values change (`IS DISTINCT FROM`). Which facts depend on which dimension is declared once, as the facts' as-of lookups in `pipelines/gold/dimensions.py`; the SQL is built from them. The indexes `fact_order_history (customer_id)` and `fact_order_item_history (product_id)` let it find those rows.
+
+Example: product 3 costs 3.00 from a change committed at 10:00, with an unchanged re-snapshot at 10:40 (folded). An item changed at 10:30 gets the 10:00 version and 3.00. A late update to 4.00, committed at 10:20, arrives: the item is re-resolved to the 10:20 version, with `unit_price` 4.00 and its `line_amount` recomputed.
+
+**One writer at a time.** Every gold merge transaction first takes a transaction-level advisory lock on one constant key (`pg_advisory_xact_lock(hashtextextended('gold_internal', 0))`), so the four streams' merges commit one after the other. Without it, a fact merge and a dimension merge running side by side would each read the other's tables without its uncommitted rows: the fact would be resolved against the old dimension, and the dimension's re-resolution would not see the new fact, which would keep a wrong or null key for good. Staging runs outside the lock, so Spark still loads the four staging tables in parallel; only the short merges wait for each other.
 
 ### Open orders and pending items
 
@@ -220,10 +238,16 @@ The alternatives were rejected:
 
 ## Writing gold
 
-The gold job (`pipelines/gold/job.py`) runs one streaming query per SCD2 dimension, reading its silver table, and writes every micro-batch in two steps:
+The gold job (`pipelines/gold/job.py`) runs four streaming queries, one per silver table: `customers` into `dim_customer`, `products` into `dim_product`, `orders` into `fact_order_history` and `current_orders`, and `order_items` into `fact_order_item_history` and `current_order_items`. Each has its checkpoint in `<CHECKPOINT_ROOT>/gold/<table>/`, named after its dimension or history fact, and writes every micro-batch in two steps:
 
-1. **Stage.** Spark's JDBC writer replaces the rows of the dimension's staging table, `gold_internal.stage_dim_customer` or `gold_internal.stage_dim_product` (overwrite with `truncate`, so the table and its descriptions stay). The staging tables are unlogged: they hold only the batch being written, so they need no crash safety and write faster.
-2. **Merge, in one transaction.** The driver connects with psycopg and, in one PostgreSQL transaction, inserts the staged versions not stored yet (`ON CONFLICT (key, _commit_sequence) DO NOTHING`). Nothing stored is ever updated: the versions views derive `_is_folded`, `_valid_to` and `_is_current` from all of a key's versions ordered by `_commit_sequence` whenever they are read.
+1. **Stage.** Spark's JDBC writer replaces the rows of the stream's staging table, `gold_internal.stage_<table>` (overwrite with `truncate`, so the table and its descriptions stay). The staging tables are unlogged: they hold only the batch being written, so they need no crash safety and write faster.
+2. **Merge, in one transaction.** The driver connects with psycopg and, in one PostgreSQL transaction, takes the [gold writer lock](#dimension-keys-of-the-facts), then for a dimension:
+   1. inserts the staged versions not stored yet (`ON CONFLICT (key, _commit_sequence) DO NOTHING`); nothing stored is ever updated, because the versions views derive `_is_folded`, `_valid_to` and `_is_current` from all of a key's versions ordered by `_commit_sequence` whenever they are read;
+   2. re-resolves the dimension keys of the history facts that look it up, for the keys the batch touched.
+
+   And for a history fact:
+   1. appends the staged changes not stored yet to the history (`ON CONFLICT (key, _commit_sequence, _changed_at) DO NOTHING`), with their status, date and as-of dimension keys;
+   2. takes the latest staged change of each key (`DISTINCT ON (key) ... ORDER BY key, _commit_sequence DESC`) and upserts it into the current-state table, replacing the stored row only if its `_commit_sequence` is higher (`ON CONFLICT (key) DO UPDATE ... WHERE excluded._commit_sequence > stored._commit_sequence`).
 
 ```mermaid
 sequenceDiagram
@@ -233,16 +257,23 @@ sequenceDiagram
     participant P as PostgreSQL
     S->>J: micro-batch of new silver rows
     J->>X: write the batch
-    X->>P: TRUNCATE + INSERT stage_dim_* (JDBC)
+    X->>P: TRUNCATE + INSERT stage_* (JDBC)
     J->>P: BEGIN
-    J->>P: INSERT new versions ON CONFLICT DO NOTHING
+    J->>P: pg_advisory_xact_lock (gold writer lock)
+    alt dimension
+        J->>P: INSERT new versions ON CONFLICT DO NOTHING
+        J->>P: UPDATE the fact rows whose dimension keys change
+    else history fact
+        J->>P: INSERT changes into history ON CONFLICT DO NOTHING
+        J->>P: upsert the latest change per key into current state if newer
+    end
     J->>P: COMMIT
     J->>S: commit the batch in the checkpoint
 ```
 
-**Idempotency.** Both steps can run again with the same input and leave the same result: staging is replaced, the insert skips stored versions, and the versions views derive the flags from what is stored, not from the batch. A batch replayed after a failure, a whole silver table reprocessed from a fresh checkpoint, a duplicate version and a late older version all end in the same dimension rows. No transaction spans Spark's checkpoint and PostgreSQL, so a batch that fails between them is simply replayed.
+**Idempotency.** Both steps can run again with the same input and leave the same result: staging is replaced, the inserts skip stored versions and changes, the current state only takes a higher `_commit_sequence`, and the versions views and the re-resolution derive their values from what is stored, not from the batch. A batch replayed after a failure, a whole silver table reprocessed from a fresh checkpoint, a duplicate change and a late older change all end in the same rows. No transaction spans Spark's checkpoint and PostgreSQL, so a batch that fails between them is simply replayed.
 
-**Generic writer.** The staging table's columns, the INSERT column list and the versions view are built from the dimension's gold schema (`pipelines/gold/scd2.py`, with the SQL in the templates `scd2_insert.sql.j2` and `scd2_versions.sql.j2` next to it), never written by hand: a column is loaded from the silver column its `from` names (`<entity>.<lake name>`), a metadata column from the silver column of the same name, `_valid_from` from `_changed_at`, and any other column from a rename the dimension declares (`unit_price` from `unity_price`). The surrogate key is left to PostgreSQL, and the derived columns to the versions view. The history facts, the current-state tables and the Iceberg gold tables in the lake are written the same way in later steps.
+**Generic writer.** The staging tables' columns, the INSERT and upsert column lists, the dimension versions views and the re-resolution SQL are built from the gold schemas, never written by hand: `pipelines/gold/scd2.py` for the dimensions (with the SQL in the templates `scd2_insert.sql.j2` and `scd2_versions.sql.j2` next to it) and `pipelines/gold/facts.py` for the history facts and their current-state tables. A column is loaded from the silver column its `from` names (`<entity>.<lake name>`), a metadata column from the silver column of the same name, `_valid_from` from `_changed_at`, and any other column from a rename the dimension declares (`unit_price` from `unity_price`) or a lookup the fact declares (`status_key`, the date keys and the as-of dimension columns, in `pipelines/gold/dimensions.py`). The surrogate keys are left to PostgreSQL, the dimensions' derived columns to their versions views, and the looked-up columns to the merge. The Iceberg gold tables in the lake are written the same way in a later step.
 
 **Freshness.** `gold.data_freshness` reports, per entity, how up to date gold is. For now it is computed from the data, as the source commit time of the newest change gold holds, so it ages when the source stops changing even though the pipeline is healthy. Later it will be filled from the pipeline statistics, with the same shape. Those statistics (per micro-batch rows, durations, last `_commit_sequence`, last event time) are planned in a separate `observability` catalog in the lake, apart from the business data (#127).
 

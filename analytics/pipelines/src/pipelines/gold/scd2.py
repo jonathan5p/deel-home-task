@@ -32,6 +32,35 @@ class Scd2DefinitionError(ValueError):
         super().__init__(f"SCD2 dimension {table}: {problem}")
 
 
+def lines(items: Iterable[str], indent: str = "    ") -> str:
+    return ",\n".join(f"{indent}{item}" for item in items)
+
+
+def postgres_string(text: str) -> str:
+    return "'" + text.replace("'", "''") + "'"
+
+
+def silver_column(
+    table: GoldTable,
+    entity: EntityDefinition,
+    column: str,
+    renamed: Mapping[str, str] | None = None,
+) -> str | None:
+    """The silver column of `entity` a gold column is loaded from, or None if it has none: a
+    rename, the column its `from` names (`<entity>.<lake name>`), or a metadata column of the
+    same name (`_valid_from` comes from `_changed_at`)."""
+    renamed = renamed or {}
+    if column in renamed:
+        return renamed[column]
+    if column in SILVER_COLUMNS:
+        return SILVER_COLUMNS[column]
+    reference = table.reference(column)
+    if reference is None:
+        return column if column.startswith("_") else None
+    owner, _, lake_name = reference.partition(".")
+    return lake_name if owner == entity.name else None
+
+
 @dataclass(frozen=True, slots=True)
 class Scd2Dimension:
     """An SCD2 dimension in gold_internal, loaded from the silver table of one source entity.
@@ -87,18 +116,6 @@ class Scd2Dimension:
             columns=self.staged_columns,
         )
 
-    def _silver_column(self, column: str) -> str | None:
-        renamed = dict(self.renamed)
-        if column in renamed:
-            return renamed[column]
-        if column in SILVER_COLUMNS:
-            return SILVER_COLUMNS[column]
-        reference = self.table.reference(column)
-        if reference is None:
-            return column if column.startswith("_") else None
-        owner, _, lake_name = reference.partition(".")
-        return lake_name if owner == self.entity.name else None
-
     @property
     def silver_columns(self) -> Mapping[str, str]:
         """The silver column each staged column is loaded from, by gold column."""
@@ -109,7 +126,10 @@ class Scd2Dimension:
         unknown = sorted(set(dict(self.renamed)) - set(staged))
         if unknown:
             self._fail(f"renamed names columns it does not stage: {', '.join(unknown)}")
-        sources = {column: self._silver_column(column) for column in staged}
+        renamed = dict(self.renamed)
+        sources = {
+            column: silver_column(self.table, self.entity, column, renamed) for column in staged
+        }
         unmapped = [column for column, source in sources.items() if source is None]
         if unmapped:
             self._fail(
