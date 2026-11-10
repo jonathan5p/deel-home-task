@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from pyspark.sql import SparkSession
 
 from pipelines.lake.views import ViewDefinition
@@ -34,3 +36,17 @@ def view_metadata_file(spark: SparkSession, catalog: str, view: str) -> str:
     assert jvm is not None
     name = jvm.org.apache.iceberg.catalog.TableIdentifier.parse(view.removeprefix(f"{catalog}."))
     return str(iceberg.loadView(name).operations().current().metadataFileLocation())
+
+
+def register_view_catalog(spark: SparkSession, folder: Path) -> str:
+    """Register an in-memory Iceberg catalog, which unlike the Hadoop catalog stores views.
+
+    Without the caching wrapper, tests can reach the catalog's own view API.
+    """
+    name = f"iceberg_views_{folder.name.replace('-', '_')}"
+    prefix = f"spark.sql.catalog.{name}"
+    spark.conf.set(prefix, "org.apache.iceberg.spark.SparkCatalog")
+    spark.conf.set(f"{prefix}.catalog-impl", "org.apache.iceberg.inmemory.InMemoryCatalog")
+    spark.conf.set(f"{prefix}.cache-enabled", "false")
+    spark.conf.set(f"{prefix}.warehouse", f"file://{folder}/warehouse")
+    return name

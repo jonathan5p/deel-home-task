@@ -1,8 +1,8 @@
-# Gold dimensional model (PostgreSQL)
+# Gold dimensional model
 
-**Gold lives in PostgreSQL, not in the lake.** Bronze and silver are Iceberg tables in the lake (SeaweedFS); gold is the `analytics` database on the `analytics-db` PostgreSQL service, in two schemas: `gold_internal` (the tables the pipeline writes) and `gold` (the views consumers read).
+**Gold is stored in PostgreSQL and computed in the lake.** Bronze and silver are Iceberg tables in the lake (SeaweedFS); gold is the `analytics` database on the `analytics-db` PostgreSQL service, in two schemas: `gold_internal` (the tables the pipeline writes) and `gold` (the views consumers read). The lake has the same model as Iceberg views over silver, `lake.gold.<relation>`, which store nothing (see [Gold in the lake](#gold-in-the-lake)).
 
-Gold is the serving layer: a star schema in PostgreSQL that answers the four business questions with near-real-time current state and keeps the history of every change. Spark builds it from the silver history tables in the lake, and writes the same rows to Iceberg gold tables in the lake as a second sink.
+Gold is the serving layer: a star schema in PostgreSQL that answers the four business questions with near-real-time current state and keeps the history of every change. Spark builds it from the silver history tables in the lake.
 
 ## Inputs from silver
 
@@ -236,7 +236,7 @@ The alternatives were rejected:
 - A materialized view recomputes everything on every refresh, too slow for one refresh per micro-batch.
 - Both would lose orders that are still open but whose last change is older than the retention window.
 
-**Retention:** the history facts keep 3 years by default in PostgreSQL. They are range-partitioned by month on `_changed_at`, so retention drops whole partitions instead of deleting rows. The retention job creates the monthly partitions ahead and drops the expired ones; the DDL creates only each history table's default partition, which catches every row outside the monthly partitions. Current-state tables and the dimensions are never trimmed, so an order that is still open keeps its current row however old it is. The lake gold tables keep the full history.
+**Retention:** the history facts keep 3 years by default in PostgreSQL. They are range-partitioned by month on `_changed_at`, so retention drops whole partitions instead of deleting rows. The retention job creates the monthly partitions ahead and drops the expired ones; the DDL creates only each history table's default partition, which catches every row outside the monthly partitions. Current-state tables and the dimensions are never trimmed, so an order that is still open keeps its current row however old it is. The gold views in the lake keep the full history, from silver.
 
 The retention job (`pipelines/gold/retention.py`, run once by `make up` and `make pipeline` and then daily by the `gold-retention-job` service) calls `gold_internal.apply_history_retention(keep_months, months_ahead, as_of)` in one transaction that first takes the [gold writer lock](#dimension-keys-of-the-facts):
 
@@ -295,7 +295,7 @@ sequenceDiagram
 
 **Idempotency.** Both steps can run again with the same input and leave the same result: staging is replaced, the inserts skip stored versions and changes, the current state only takes a higher `_commit_sequence`, and the versions views and the re-resolution derive their values from what is stored, not from the batch. A batch replayed after a failure, a whole silver table reprocessed from a fresh checkpoint, a duplicate change and a late older change all end in the same rows. No transaction spans Spark's checkpoint and PostgreSQL, so a batch that fails between them is simply replayed.
 
-**Generic writer.** The staging tables' columns, the INSERT and MERGE column lists, the dimension versions views and the re-resolution SQL are built from the gold schemas, never written by hand: `pipelines/gold/scd2.py` for the dimensions (with the SQL in the templates `scd2_insert.sql.j2` and `scd2_versions.sql.j2` next to it) and `pipelines/gold/facts.py` for the history facts and their current-state tables (with the SQL in the templates `fact_history.sql.j2`, `fact_current.sql.j2`, `fact_dimension_version_lookup.sql.j2` and `fact_resolve.sql.j2`). A column is loaded from the silver column its `from` names (`<entity>.<lake name>`), a metadata column from the silver column of the same name, `_valid_from` from `_changed_at`, and any other column from a rename the dimension declares (`unit_price` from `unity_price`) or a lookup the fact declares (`status_key` and `is_open`, the date keys and the as-of dimension columns, in `pipelines/gold/dimensions.py`). The surrogate keys are left to PostgreSQL, the dimensions' derived columns to their versions views, and the looked-up columns to the merge. The Iceberg gold tables in the lake are written the same way in a later step.
+**Generic writer.** The staging tables' columns, the INSERT and MERGE column lists, the dimension versions views and the re-resolution SQL are built from the gold schemas, never written by hand: `pipelines/gold/scd2.py` for the dimensions (with the SQL in the templates `scd2_insert.sql.j2` and `scd2_versions.sql.j2` next to it) and `pipelines/gold/facts.py` for the history facts and their current-state tables (with the SQL in the templates `fact_history.sql.j2`, `fact_current.sql.j2`, `fact_dimension_version_lookup.sql.j2` and `fact_resolve.sql.j2`). A column is loaded from the silver column its `from` names (`<entity>.<lake name>`), a metadata column from the silver column of the same name, `_valid_from` from `_changed_at`, and any other column from a rename the dimension declares (`unit_price` from `unity_price`) or a lookup the fact declares (`status_key` and `is_open`, the date keys and the as-of dimension columns, in `pipelines/gold/dimensions.py`). The surrogate keys are left to PostgreSQL, the dimensions' derived columns to their versions views, and the looked-up columns to the merge. The gold views in the lake are built from the same declarations.
 
 **Freshness.** `gold.data_freshness` reports, per entity, how up to date gold is. For now it is computed from the data, as the source commit time of the newest change gold holds, so it ages when the source stops changing even though the pipeline is healthy. Later it will be filled from the pipeline statistics, with the same shape. Those statistics (per micro-batch rows, durations, last `_commit_sequence`, last event time) are planned in a separate `observability` catalog in the lake, apart from the business data (#127).
 
@@ -323,6 +323,41 @@ sequenceDiagram
     end
     J->>P: apply_history_retention under the writer lock
 ```
+
+## Gold in the lake
+
+The lake has the gold model too, for consumers that read the lake rather than PostgreSQL: one Iceberg view per public gold relation in `lake.gold` (`dim_customer`, `dim_product`, `dim_date`, `dim_order_status`, `fact_order_history`, `fact_order_item_history`, `current_orders`, `current_order_items`, `open_orders`, the four business-question views and `data_freshness`). Silver is already an append-only store of every version, so the lake keeps no copy of gold: the views compute it from silver on every read, and nothing writes them but `make lake-views`, which creates them after the silver views and replaces only those whose query or descriptions changed. The gold job writes PostgreSQL only. The lake keeps the full history; PostgreSQL's retention window does not apply to it.
+
+```mermaid
+flowchart LR
+    S[lake.silver.entity] --> H[lake.silver.entity_history]
+    S --> J[gold job] --> P[(PostgreSQL gold)]
+    H --> D[lake.gold dimensions and history facts]
+    S --> C[lake.gold current state]
+```
+
+**Same rules, read time instead of write time.** The views apply the rules of [Rules](#rules) and give the rows the PostgreSQL `gold` views show:
+
+- **Folding and validity** come from silver's `<entity>_history` views, which apply the fold rule of [Inputs from silver](#inputs-from-silver) and give each remaining version `_valid_from`, `_valid_to` and `_is_current`. The dimension views leave deletes out, so the version before a delete ends at it and a deleted key has no current version; the history facts keep the delete as the key's last row, never current.
+- **Current state** is the latest change of each key by `_commit_sequence`, folded or not, read from the silver table, without deleted keys: the change PostgreSQL's current-state tables hold, with the same `_changed_at`.
+- **Key lookups** (`status_key` with the `UNKNOWN` fallback, the date keys) join the `dim_order_status` and `dim_date` views. Those two generate their rows (a `VALUES` list and a `sequence` of days); an infra test checks they equal PostgreSQL's seeds.
+- **As-of attributes** (`unit_price` and `line_amount` of the item history) come from the product version that is not deleted and whose [`_valid_from`, `_valid_to`) contains the change's `_changed_at`, or the product's first version for an older change, the highest `_commit_sequence` winning when clock skew overlaps two ranges. A late product version needs no re-resolution: the next read takes it into account.
+- **Freshness** is the newest `_changed_at` of each silver table.
+- **Open orders and the business questions** are the same SQL as in PostgreSQL, over the lake views: `open_orders` keeps the current orders whose status is open, and the four business-question views read it.
+- **Described from the gold schemas:** each view and column has the description of the PostgreSQL `gold` view and column of the same name.
+
+**Natural keys, no surrogate keys.** PostgreSQL generates the surrogate keys (`customer_key`, `product_key`), and the lake cannot reproduce them, so the lake views leave them out. Facts refer to the dimensions by their natural keys (`customer_id`, `product_id`) and carry the dimension attributes resolved as of each change (`unit_price`, `line_amount`). To look up any other attribute of the version valid at a change, join on the natural key and the validity range:
+
+```sql
+SELECT i.order_item_id, i._changed_at, p.product_name
+FROM lake.gold.fact_order_item_history AS i
+JOIN lake.gold.dim_product AS p
+  ON p.product_id = i.product_id
+ AND p._valid_from <= i._changed_at
+ AND (p._valid_to IS NULL OR i._changed_at < p._valid_to);
+```
+
+This join finds no version for a change older than the product's first version (the tables are snapshotted a few milliseconds apart), and finds two when clock skew overlaps two ranges; the attributes the fact carries handle both cases as PostgreSQL does.
 
 ## The four business questions
 

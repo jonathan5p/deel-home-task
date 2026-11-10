@@ -44,17 +44,9 @@ def iceberg_catalog(spark: SparkSession, tmp_path: Path) -> str:
 
 @pytest.fixture
 def iceberg_view_catalog(spark: SparkSession, tmp_path: Path) -> str:
-    """Register an in-memory Iceberg catalog, which unlike the Hadoop catalog stores views.
+    from analytics.pipelines.tests.lake.views_setup import register_view_catalog
 
-    Without the caching wrapper, tests can reach the catalog's own view API.
-    """
-    name = f"iceberg_views_{tmp_path.name.replace('-', '_')}"
-    prefix = f"spark.sql.catalog.{name}"
-    spark.conf.set(prefix, "org.apache.iceberg.spark.SparkCatalog")
-    spark.conf.set(f"{prefix}.catalog-impl", "org.apache.iceberg.inmemory.InMemoryCatalog")
-    spark.conf.set(f"{prefix}.cache-enabled", "false")
-    spark.conf.set(f"{prefix}.warehouse", f"file://{tmp_path}/warehouse")
-    return name
+    return register_view_catalog(spark, tmp_path)
 
 
 @pytest.fixture

@@ -8,6 +8,7 @@ from tests.infra.bronze_replay_setup import ReplayRuns, run_replay_scenario
 from tests.infra.bronze_setup import BronzeRuns, run_bronze_scenario
 from tests.infra.gold_dimensions_setup import GoldRuns, remove_fixture_rows, run_gold_scenario
 from tests.infra.gold_facts_setup import FactRuns, remove_fact_rows, run_fact_scenario
+from tests.infra.gold_lake_setup import LakeComparison, run_lake_scenario
 from tests.infra.landing_avro import landing_avro
 from tests.infra.silver_setup import SilverRuns, run_silver_scenario
 from tests.infra.stack import Stack
@@ -105,3 +106,11 @@ def fact_runs(stack: Stack) -> Iterator[FactRuns]:
 @pytest.fixture(scope="module")
 def replay_runs(stack: Stack) -> ReplayRuns:
     return run_replay_scenario(stack)
+
+
+@pytest.fixture(scope="module")
+def lake_comparison(stack: Stack) -> Iterator[LakeComparison]:
+    try:
+        yield run_lake_scenario(stack)
+    finally:
+        remove_fact_rows(stack)

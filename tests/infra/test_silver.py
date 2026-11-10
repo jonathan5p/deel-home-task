@@ -10,6 +10,7 @@ from tests.infra.bronze_setup import (
     table_descriptions,
 )
 from tests.infra.silver_setup import (
+    GOLD_VIEWS,
     SILVER_APP,
     SILVER_TABLES,
     SILVER_VIEWS,
@@ -170,7 +171,7 @@ def test_the_views_job_fails_while_a_silver_table_is_missing(stack: Stack) -> No
 def test_running_the_views_job_again_leaves_unchanged_views_as_they_are(
     silver_runs: SilverRuns,
 ) -> None:
-    assert sorted(silver_runs.first_view_files) == sorted(SILVER_VIEWS)
+    assert sorted(silver_runs.first_view_files) == sorted([*SILVER_VIEWS, *GOLD_VIEWS])
     assert silver_runs.idle_view_files == silver_runs.first_view_files
 
 

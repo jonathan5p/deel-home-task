@@ -1,0 +1,6 @@
+{% for entity, table in sources %}
+{% if not loop.first %}
+UNION ALL
+{% endif %}
+SELECT '{{ entity }}' AS entity, max(_changed_at) AS last_changed_at FROM {{ table }}
+{% endfor %}

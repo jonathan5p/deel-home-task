@@ -53,7 +53,7 @@
       "name": "unit_price",
       "type": ["null", {"type": "bytes", "logicalType": "decimal", "precision": 38, "scale": 10}],
       "default": null,
-      "doc": "Unit price of the product version in product_key, the price the order was placed at"
+      "doc": "Unit price of the product version valid at _changed_at, or of the product's first version for an earlier change: the price the order was placed at"
     },
     {
       "name": "line_amount",

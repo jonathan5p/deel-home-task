@@ -7,6 +7,8 @@ from datetime import datetime, timedelta
 from tests.infra.stack import Stack
 
 APP = "tests/infra/apps/gold_from_silver.py"
+LAKE_VIEWS = "--lake-views"
+COMPARED = "GOLD LAKE "
 ENTITIES = ("customers", "products", "orders", "order_items")
 FIRST_CHANGE = datetime(2026, 11, 1, 10, 0)
 
@@ -81,6 +83,13 @@ class SilverFixture:
         )
         assert returncode == 0, output
         return output
+
+    def compare_lake_views(self, stack: Stack) -> list[Json]:
+        """The lake views' comparison with PostgreSQL, one result per line the app prints."""
+        returncode, output = stack.run_app(APP, self.lake_key, LAKE_VIEWS, env=self.env("main"))
+        assert returncode == 0, output
+        lines = [line for line in output.splitlines() if line.startswith(COMPARED)]
+        return [json.loads(line.removeprefix(COMPARED)) for line in lines]
 
 
 def keys(values: Sequence[int]) -> str:
