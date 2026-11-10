@@ -1,18 +1,26 @@
-INSERT INTO {{ relation }} AS stored (
-    {{ targets | join(",\n    ") }}
-)
-SELECT
-    {{ expressions | join(",\n    ") }}
-FROM (
-    SELECT DISTINCT ON ({{ key }}) *
-    FROM {{ staging }}
-    ORDER BY {{ key }}, _commit_sequence DESC
-) AS {{ row }}
+MERGE INTO {{ relation }} AS target
+USING (
+    SELECT
+        {{ selected | join(",\n        ") }}
+    FROM (
+        SELECT DISTINCT ON ({{ key }}) *
+        FROM {{ staging }}
+        ORDER BY {{ key }}, _commit_sequence DESC
+    ) AS {{ row }}
 {% for join in joins %}
-{{ join }}
+{{ join | indent(4, first=true) }}
 {% endfor %}
-ON CONFLICT ({{ key }}) DO UPDATE SET
+) AS source
+ON target.{{ key }} = source.{{ key }}
+WHEN MATCHED AND source._commit_sequence > target._commit_sequence THEN
+    UPDATE SET
 {% for column in replaced %}
-    {{ column }} = excluded.{{ column }}{{ "," if not loop.last }}
+        {{ column }} = source.{{ column }}{{ "," if not loop.last }}
 {% endfor %}
-WHERE excluded._commit_sequence > stored._commit_sequence
+WHEN NOT MATCHED THEN
+    INSERT (
+        {{ targets | join(",\n        ") }}
+    )
+    VALUES (
+        {{ targets | qualify("source") | join(",\n        ") }}
+    )

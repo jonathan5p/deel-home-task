@@ -247,7 +247,7 @@ The gold job (`pipelines/gold/job.py`) runs four streaming queries, one per silv
 
    And for a history fact:
    1. appends the staged changes not stored yet to the history (`ON CONFLICT (key, _commit_sequence, _changed_at) DO NOTHING`), with their status, date and as-of dimension keys;
-   2. takes the latest staged change of each key (`DISTINCT ON (key) ... ORDER BY key, _commit_sequence DESC`) and upserts it into the current-state table, replacing the stored row only if its `_commit_sequence` is higher (`ON CONFLICT (key) DO UPDATE ... WHERE excluded._commit_sequence > stored._commit_sequence`).
+   2. takes the latest staged change of each key (`DISTINCT ON (key) ... ORDER BY key, _commit_sequence DESC`) and merges it into the current-state table with PostgreSQL `MERGE`: a key not stored yet is inserted (`WHEN NOT MATCHED THEN INSERT`), and a stored row is replaced only if the change's `_commit_sequence` is higher (`WHEN MATCHED AND source._commit_sequence > target._commit_sequence THEN UPDATE`). The writer lock keeps two merges from inserting the same new key at once.
 
 ```mermaid
 sequenceDiagram
@@ -265,7 +265,7 @@ sequenceDiagram
         J->>P: UPDATE the fact rows whose dimension keys change
     else history fact
         J->>P: INSERT changes into history ON CONFLICT DO NOTHING
-        J->>P: upsert the latest change per key into current state if newer
+        J->>P: MERGE the latest change per key into current state if newer
     end
     J->>P: COMMIT
     J->>S: commit the batch in the checkpoint
@@ -273,7 +273,7 @@ sequenceDiagram
 
 **Idempotency.** Both steps can run again with the same input and leave the same result: staging is replaced, the inserts skip stored versions and changes, the current state only takes a higher `_commit_sequence`, and the versions views and the re-resolution derive their values from what is stored, not from the batch. A batch replayed after a failure, a whole silver table reprocessed from a fresh checkpoint, a duplicate change and a late older change all end in the same rows. No transaction spans Spark's checkpoint and PostgreSQL, so a batch that fails between them is simply replayed.
 
-**Generic writer.** The staging tables' columns, the INSERT and upsert column lists, the dimension versions views and the re-resolution SQL are built from the gold schemas, never written by hand: `pipelines/gold/scd2.py` for the dimensions (with the SQL in the templates `scd2_insert.sql.j2` and `scd2_versions.sql.j2` next to it) and `pipelines/gold/facts.py` for the history facts and their current-state tables (with the SQL in the templates `fact_history.sql.j2`, `fact_current.sql.j2`, `fact_as_of_join.sql.j2` and `fact_resolve.sql.j2`). A column is loaded from the silver column its `from` names (`<entity>.<lake name>`), a metadata column from the silver column of the same name, `_valid_from` from `_changed_at`, and any other column from a rename the dimension declares (`unit_price` from `unity_price`) or a lookup the fact declares (`status_key`, the date keys and the as-of dimension columns, in `pipelines/gold/dimensions.py`). The surrogate keys are left to PostgreSQL, the dimensions' derived columns to their versions views, and the looked-up columns to the merge. The Iceberg gold tables in the lake are written the same way in a later step.
+**Generic writer.** The staging tables' columns, the INSERT and MERGE column lists, the dimension versions views and the re-resolution SQL are built from the gold schemas, never written by hand: `pipelines/gold/scd2.py` for the dimensions (with the SQL in the templates `scd2_insert.sql.j2` and `scd2_versions.sql.j2` next to it) and `pipelines/gold/facts.py` for the history facts and their current-state tables (with the SQL in the templates `fact_history.sql.j2`, `fact_current.sql.j2`, `fact_as_of_join.sql.j2` and `fact_resolve.sql.j2`). A column is loaded from the silver column its `from` names (`<entity>.<lake name>`), a metadata column from the silver column of the same name, `_valid_from` from `_changed_at`, and any other column from a rename the dimension declares (`unit_price` from `unity_price`) or a lookup the fact declares (`status_key`, the date keys and the as-of dimension columns, in `pipelines/gold/dimensions.py`). The surrogate keys are left to PostgreSQL, the dimensions' derived columns to their versions views, and the looked-up columns to the merge. The Iceberg gold tables in the lake are written the same way in a later step.
 
 **Freshness.** `gold.data_freshness` reports, per entity, how up to date gold is. For now it is computed from the data, as the source commit time of the newest change gold holds, so it ages when the source stops changing even though the pipeline is healthy. Later it will be filled from the pipeline statistics, with the same shape. Those statistics (per micro-batch rows, durations, last `_commit_sequence`, last event time) are planned in a separate `observability` catalog in the lake, apart from the business data (#127).
 

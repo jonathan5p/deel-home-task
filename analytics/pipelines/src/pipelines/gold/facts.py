@@ -336,17 +336,23 @@ class ChangeFact:
         )
 
     def current_statement(self) -> str:
-        """Apply the latest staged change of each key to the current-state table, only if it
-        is newer than the stored one, so a late or replayed change never overwrites newer
-        state. A delete is kept as a deleted row with its `_commit_sequence`, so an older
-        change arriving later cannot bring the row back."""
+        """Merge the latest staged change of each key into the current-state table: a new key
+        is inserted, and a stored row is replaced only by a change with a higher
+        `_commit_sequence`, so a late or replayed change never overwrites newer state. A delete
+        is kept as a deleted row with its `_commit_sequence`, so an older change arriving later
+        cannot bring the row back."""
+        expressions, joins = self._expressions(self.current)
+        targets = [column.name for column in self.current.columns]
         return render_sql(
             "fact_current",
             relation=self.current_relation,
             staging=self.staging_relation,
             key=self.key,
-            replaced=[column.name for column in self.current.columns if column.name != self.key],
-            **self._selected(self.current),
+            row=ROW,
+            selected=[f"{expressions[column]} AS {column}" for column in targets],
+            joins=joins,
+            targets=targets,
+            replaced=[column for column in targets if column != self.key],
         )
 
     def merge_statements(self) -> Sequence[str]:

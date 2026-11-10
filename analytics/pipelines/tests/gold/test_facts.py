@@ -163,28 +163,50 @@ def test_the_merge_and_the_re_resolution_share_the_as_of_lookup() -> None:
     assert indented in statement
 
 
-def test_the_current_state_takes_the_latest_staged_change_of_each_key() -> None:
+def test_the_current_state_is_merged_from_the_latest_staged_change_of_each_key() -> None:
     statement = ORDERS.current_statement()
 
-    assert statement.startswith("INSERT INTO gold_internal.current_orders AS stored (\n")
+    assert statement.startswith("MERGE INTO gold_internal.current_orders AS target\nUSING (\n")
     assert (
-        "FROM (\n"
-        "    SELECT DISTINCT ON (order_id) *\n"
-        "    FROM gold_internal.stage_fact_order_history\n"
-        "    ORDER BY order_id, _commit_sequence DESC\n"
-        ") AS fact_row\n"
+        "    FROM (\n"
+        "        SELECT DISTINCT ON (order_id) *\n"
+        "        FROM gold_internal.stage_fact_order_history\n"
+        "        ORDER BY order_id, _commit_sequence DESC\n"
+        "    ) AS fact_row\n"
+        ") AS source\n"
+        "ON target.order_id = source.order_id\n"
     ) in statement
+    assert f"        {STATUS.expression('fact_row')} AS status_key,\n" in statement
     assert "LATERAL" not in statement
 
 
 def test_a_current_row_is_only_replaced_by_a_newer_change() -> None:
-    updates = ORDERS.current_statement().split("DO UPDATE SET\n", 1)[1].splitlines()
+    statement = ORDERS.current_statement()
+    matched = statement.split("WHEN MATCHED", 1)[1].split("WHEN NOT MATCHED", 1)[0]
     replaced = [c.name for c in ORDERS.current.columns if c.name != "order_id"]
 
-    assert [line.rstrip(",") for line in updates[:-1]] == [
-        f"    {name} = excluded.{name}" for name in replaced
+    assert matched.splitlines() == [
+        " AND source._commit_sequence > target._commit_sequence THEN",
+        "    UPDATE SET",
+        *(f"        {name} = source.{name}," for name in replaced[:-1]),
+        f"        {replaced[-1]} = source.{replaced[-1]}",
     ]
-    assert updates[-1] == "WHERE excluded._commit_sequence > stored._commit_sequence"
+
+
+def test_a_new_key_is_inserted_with_every_current_column() -> None:
+    inserted = ORDERS.current_statement().split("WHEN NOT MATCHED THEN\n", 1)[1]
+    names = [c.name for c in ORDERS.current.columns]
+
+    assert inserted.splitlines() == [
+        "    INSERT (",
+        *(f"        {name}," for name in names[:-1]),
+        f"        {names[-1]}",
+        "    )",
+        "    VALUES (",
+        *(f"        source.{name}," for name in names[:-1]),
+        f"        source.{names[-1]}",
+        "    )",
+    ]
 
 
 def test_the_merge_appends_history_then_applies_the_current_state() -> None:
