@@ -844,7 +844,7 @@ Run it as a service with `make pipeline PIPELINE=silver` (see [Running the pipel
 
 **Views: version history and current state.** Two Iceberg views per entity sit next to the silver table, in the same catalog and namespace (the `lake` catalog stores views because it is a JDBC catalog with schema version V1). They read the table by its fully qualified name. Their SQL is in `silver/history.sql.j2` and `silver/current.sql.j2`, filled in with the entity's table, key and columns.
 
-The streaming job does not manage them. `refresh_views(spark, settings)` in `pipelines/silver/views.py` creates them and updates them, and two commands run it:
+The streaming job does not manage them. `refresh_views(spark, settings)` in `pipelines/silver/views.py` creates them and updates them, and lake maintenance (see **Lake maintenance**) and two commands run it:
 
 - **`make lake-views`** runs it once, as the one-shot job `silver/views_job.py`, against the running stack. Run it after changing a view's SQL or its descriptions. It prints how many silver views and how many gold views it created or replaced; 0 means all were up to date.
 - **`make pipeline PIPELINE=silver`** (or `all`) also starts the `lake-views` service, which runs the same job once. On a fresh stack the silver tables do not exist yet, so it fails with `MissingSilverTablesError`, before creating any view, and Compose restarts it (`restart: on-failure`) until the silver job has created every table. Then it creates the views and exits.
@@ -988,7 +988,9 @@ Streams commit small files and one snapshot per micro-batch, so the bronze and s
 2. `expire_snapshots` removes the snapshots older than `MAINTENANCE_SNAPSHOT_RETENTION_HOURS` (default 7 days), always keeping the newest `MAINTENANCE_RETAIN_LAST` (default 10), together with the files only they referenced. It runs only when no stream reading the table still needs those snapshots (see below).
 3. `remove_orphan_files` deletes files no snapshot references, such as the leftovers of a failed write, once they are older than `MAINTENANCE_ORPHAN_AGE_HOURS` (default 3 days). A write still in progress is far younger than that, so its files are never taken; Iceberg refuses anything under 24 hours. It lists the table's files through the table's own FileIO (`prefix_listing`), because the warehouse uses `s3://` paths that Hadoop cannot list.
 
-No step rewrites or deletes rows: the tables stay append-only for the streams that read them. One table failing does not stop the others; the job reports every table and fails at the end if any table failed.
+After the tables, every run calls `refresh_views` (see the silver views), so a changed view definition reaches the lake without a restart; it reports `silver views: created or replaced <n>` or `silver views: up to date`. While the silver tables do not exist yet, it reports `silver views: skipped: ...` instead, which is not a failure.
+
+No step rewrites or deletes rows: the tables stay append-only for the streams that read them. One table, or the view refresh, failing does not stop the others; the job reports every step and fails at the end if any step failed.
 
 ```sh
 make lake-maintenance                        # run it once, Spark UI on localhost:4044
