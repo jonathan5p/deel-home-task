@@ -4,7 +4,7 @@ import sys
 from pyspark.sql import SparkSession
 from pyspark.sql.types import StructField, StructType
 
-from pipelines.gold import job
+from pipelines.gold import job, rebuild
 from pipelines.gold.dimensions import DIMENSIONS, FACTS
 from pipelines.lake.tables import table_definition
 from pipelines.lake.types import SPARK_TYPES
@@ -42,10 +42,12 @@ def append_versions(spark: SparkSession, catalog: str, folder: str) -> None:
 
 
 def main(argv: list[str]) -> None:
-    """Append a batch of silver versions to the fixture silver tables, if one is named, then
-    run the gold job on them with --available-now.
+    """Append batches of silver versions to the fixture silver tables, if any are named, then
+    run the gold job on them with --available-now; or, after --rebuild, run the rebuild job on
+    them with the arguments that follow it.
 
-    Arguments: the fixture folder's key in the lake bucket, then the batch's folder name.
+    Arguments: the fixture folder's key in the lake bucket, then the batches' folder names or
+    --rebuild and the rebuild job's arguments.
     """
     key, *batch = argv
     catalog = os.environ["ICEBERG_CATALOG"]
@@ -55,6 +57,9 @@ def main(argv: list[str]) -> None:
         .getOrCreate()
     )
     register_fixture_catalog(spark, catalog, f"s3://lake/{key}/warehouse")
+    if batch[:1] == ["--rebuild"]:
+        rebuild.main(batch[1:])
+        return
     for name in batch:
         append_versions(spark, catalog, f"s3a://lake/{key}/silver/{name}")
     job.main(["--available-now"])

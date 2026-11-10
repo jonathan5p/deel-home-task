@@ -11,6 +11,7 @@ PIPELINE ?=
 PIPELINES = landing bronze silver gold
 GOLD_CHECKPOINTS ?= /buckets/lake/checkpoints/gold
 MAINTENANCE_UI_PORT ?= 4044
+GOLD_REBUILD_UI_PORT ?= 4045
 .DEFAULT_GOAL := help
 
 export BUILDX_NO_DEFAULT_ATTESTATIONS ?= 1
@@ -39,7 +40,7 @@ PIPELINE_JOBS = $(addsuffix -job,$(if $(filter all,$(PIPELINE)),$(PIPELINES),$(f
 PIPELINE_SERVICES = $(PIPELINE_JOBS) $(if $(filter silver all,$(PIPELINE)),lake-views)
 CHECK_PIPELINE = $(if $(and $(PIPELINE_JOBS),$(filter 1,$(words $(PIPELINE)))),,$(error Set PIPELINE to one of: $(PIPELINES) all (got "$(PIPELINE)"), e.g. make $@ PIPELINE=landing))
 
-.PHONY: help up down clean gold-reset gold-retention spark-submit bronze-replay spark-sql spark-history data-quality lake-maintenance pipeline pipeline-logs pipeline-stop lake-views test lint format typecheck schemas test-infra hooks
+.PHONY: help up down clean gold-reset gold-rebuild gold-retention spark-submit bronze-replay spark-sql spark-history data-quality lake-maintenance pipeline pipeline-logs pipeline-stop lake-views test lint format typecheck schemas test-infra hooks
 
 help:
 	@printf '%s\n' \
@@ -47,6 +48,7 @@ help:
 		'down           Stop all project services, including optional profiles; keep volumes.' \
 		'clean          Delete project containers and volumes (DATA LOSS); requires CONFIRM=1.' \
 		'gold-reset     Stop the gold job, recreate the gold schemas from the rendered DDL and delete the gold checkpoints (gold DATA LOSS; the lake is kept); requires CONFIRM=1.' \
+		'gold-rebuild   Run gold-reset, then reload gold from the silver tables in one batch up to TO_TIME (ISO 8601 source commit time, inclusive; default: everything) and apply retention; the gold job stays stopped; requires CONFIRM=1.' \
 		'gold-retention Drop the gold history months outside GOLD_RETENTION_MONTHS (default 36) and create the months ahead; the maintenance profile runs it every GOLD_RETENTION_INTERVAL_HOURS (default 24).' \
 		'spark-submit   Run SPARK_APP (repo path; default: UI check job) in its own driver container; options SPARK_APP_ARGS, SPARK_CONF, SPARK_UI_PORT.' \
 		'bronze-replay  Append the changes of a landing range that bronze lacks: TOPIC plus FROM_OFFSET and TO_OFFSET (optional PARTITION) or FROM_TIME and TO_TIME.' \
@@ -166,6 +168,18 @@ ifeq ($(CONFIRM),1)
 	@$(COMPOSE) exec -T seaweedfs curl -sf -X DELETE "http://localhost:8888$(GOLD_CHECKPOINTS)?recursive=true"
 else
 	@printf '%s\n' "Refusing gold reset: this deletes all gold data and the gold checkpoints. Run make gold-reset CONFIRM=1 to confirm." >&2
+	@exit 1
+endif
+
+gold-rebuild:
+ifeq ($(CONFIRM),1)
+	@$(MAKE) --no-print-directory gold-reset CONFIRM=1
+	@$(MAKE) --no-print-directory spark-submit SPARK_APP=analytics/pipelines/src/pipelines/gold/rebuild.py \
+		SPARK_UI_PORT=$(GOLD_REBUILD_UI_PORT) SPARK_CONF="spark.cores.max=2 $(SPARK_CONF)" \
+		SPARK_APP_ARGS='$(if $(TO_TIME),--to-time $(TO_TIME))'
+	@printf '%s\n' "The gold job stays stopped; make pipeline PIPELINE=gold resumes streaming from silver."
+else
+	@printf '%s\n' "Refusing gold rebuild: this deletes all gold data and the gold checkpoints, then reloads gold from silver. Run make gold-rebuild CONFIRM=1 to confirm." >&2
 	@exit 1
 endif
 
