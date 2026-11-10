@@ -1,0 +1,18 @@
+INSERT INTO {{ relation }} AS stored (
+    {{ targets | join(",\n    ") }}
+)
+SELECT
+    {{ expressions | join(",\n    ") }}
+FROM (
+    SELECT DISTINCT ON ({{ key }}) *
+    FROM {{ staging }}
+    ORDER BY {{ key }}, _commit_sequence DESC
+) AS {{ row }}
+{% for join in joins %}
+{{ join }}
+{% endfor %}
+ON CONFLICT ({{ key }}) DO UPDATE SET
+{% for column in replaced %}
+    {{ column }} = excluded.{{ column }}{{ "," if not loop.last }}
+{% endfor %}
+WHERE excluded._commit_sequence > stored._commit_sequence

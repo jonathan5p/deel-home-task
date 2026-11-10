@@ -7,12 +7,11 @@ from pipelines.gold.scd2 import (
     INTERNAL_SCHEMA,
     STAGING_DESCRIPTION,
     STAGING_PREFIX,
-    Scd2Column,
     Scd2Dimension,
-    lines,
     postgres_string,
     silver_column,
 )
+from pipelines.gold.sql import render_sql
 from pipelines.schemas.definitions import ColumnDefinition, EntityDefinition
 from pipelines.schemas.gold_definitions import GoldTable
 
@@ -110,34 +109,21 @@ class AsOfLookup:
 
     def join(self, row: str) -> str:
         """The lateral join that finds the version in the dimension's versions view, which
-        derives the fold flag and validity. The first version by `_commit_sequence` is
-        never folded, so it also covers every earlier time unless it is a delete. When clock skew
+        derives the fold flag and validity. The first version by `_commit_sequence` is never
+        folded, so it also covers every earlier time unless it is a delete. When clock skew
         makes two ranges overlap, the version committed last wins, so the lookup always yields
         at most one row."""
         dimension = self.dimension
-        selected = ", ".join(f"version.{column}" for _, column in self.columns)
-        valid_from = Scd2Column.VALID_FROM
-        changed_at = f"{row}.{FactColumn.CHANGED_AT}"
-        sequence = Scd2Column.COMMIT_SEQUENCE
-        return f"""LEFT JOIN LATERAL (
-    SELECT {selected}
-    FROM {dimension.versions_relation} AS version
-    WHERE version.{dimension.key} = {row}.{self.business_key}
-      AND NOT version._is_folded
-      AND NOT version.{Scd2Column.IS_DELETED}
-      AND (
-          version.{valid_from} <= {changed_at}
-          OR NOT EXISTS (
-              SELECT 1
-              FROM {dimension.relation} AS earlier
-              WHERE earlier.{dimension.key} = version.{dimension.key}
-                AND earlier.{sequence} < version.{sequence}
-          )
-      )
-      AND (version._valid_to IS NULL OR {changed_at} < version._valid_to)
-    ORDER BY version.{sequence} DESC
-    LIMIT 1
-) AS {self.alias} ON true"""
+        return render_sql(
+            "fact_as_of_join",
+            columns=[column for _, column in self.columns],
+            versions=dimension.versions_relation,
+            relation=dimension.relation,
+            key=dimension.key,
+            row=row,
+            business_key=self.business_key,
+            alias=self.alias,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -329,18 +315,24 @@ class ChangeFact:
                 joins.append(lookup.join(ROW))
         return expressions, joins
 
-    def _select(self, table: GoldTable, source: str) -> str:
+    def _selected(self, table: GoldTable) -> Mapping[str, object]:
+        """The template values that select the columns of `table` from the staged row."""
         expressions, joins = self._expressions(table)
-        selected = lines(expressions[column.name] for column in table.columns)
-        return "\n".join([f"SELECT\n{selected}", f"FROM {source} AS {ROW}", *joins])
+        return {
+            "targets": [column.name for column in table.columns],
+            "expressions": [expressions[column.name] for column in table.columns],
+            "joins": joins,
+            "row": ROW,
+        }
 
     def history_statement(self) -> str:
         """Append the staged changes not stored yet; a replayed change is skipped."""
-        targets = lines(column.name for column in self.history.columns)
-        return (
-            f"INSERT INTO {self.relation} (\n{targets}\n)\n"
-            f"{self._select(self.history, self.staging_relation)}\n"
-            f"ON CONFLICT ({', '.join(self.history_key)}) DO NOTHING"
+        return render_sql(
+            "fact_history",
+            relation=self.relation,
+            staging=self.staging_relation,
+            history_key=self.history_key,
+            **self._selected(self.history),
         )
 
     def current_statement(self) -> str:
@@ -348,22 +340,13 @@ class ChangeFact:
         is newer than the stored one, so a late or replayed change never overwrites newer
         state. A delete is kept as a deleted row with its `_commit_sequence`, so an older
         change arriving later cannot bring the row back."""
-        key, sequence = self.key, FactColumn.COMMIT_SEQUENCE
-        latest = (
-            f"(\n    SELECT DISTINCT ON ({key}) *\n    FROM {self.staging_relation}\n"
-            f"    ORDER BY {key}, {sequence} DESC\n)"
-        )
-        targets = lines(column.name for column in self.current.columns)
-        updates = lines(
-            f"{column.name} = excluded.{column.name}"
-            for column in self.current.columns
-            if column.name != key
-        )
-        return (
-            f"INSERT INTO {self.current_relation} AS stored (\n{targets}\n)\n"
-            f"{self._select(self.current, latest)}\n"
-            f"ON CONFLICT ({key}) DO UPDATE SET\n{updates}\n"
-            f"WHERE excluded.{sequence} > stored.{sequence}"
+        return render_sql(
+            "fact_current",
+            relation=self.current_relation,
+            staging=self.staging_relation,
+            key=self.key,
+            replaced=[column.name for column in self.current.columns if column.name != self.key],
+            **self._selected(self.current),
         )
 
     def merge_statements(self) -> Sequence[str]:
@@ -371,33 +354,18 @@ class ChangeFact:
         return (self.history_statement(), self.current_statement())
 
     def _resolve_statement(self, lookup: AsOfLookup) -> str:
-        dimension = lookup.dimension
         expressions = lookup.expressions(ROW)
-        resolved = lines(
-            [
-                *(f"{ROW}.{column}" for column in self.history_key),
-                *(f"{expressions[column]} AS {column}" for column in lookup.fact_columns),
-            ],
-            indent="        ",
-        )
-        assignments = lines(f"{column} = resolved.{column}" for column in lookup.fact_columns)
-        stored = ", ".join(f"stored.{column}" for column in lookup.fact_columns)
-        changed = ", ".join(f"resolved.{column}" for column in lookup.fact_columns)
-        conditions = [
-            *(f"stored.{column} = resolved.{column}" for column in self.history_key),
-            f"({stored}) IS DISTINCT FROM ({changed})",
-        ]
-        where = "\n  AND ".join(conditions)
-        join = "\n".join(f"    {line}" for line in lookup.join(ROW).splitlines())
-        touched = f"SELECT {dimension.key} FROM {dimension.staging_relation}"
-        return (
-            f"WITH resolved AS (\n    SELECT\n{resolved}\n    FROM {self.relation} AS {ROW}\n"
-            f"{join}\n"
-            f"    WHERE {ROW}.{lookup.business_key} IN ({touched})\n)\n"
-            f"UPDATE {self.relation} AS stored\n"
-            f"SET\n{assignments}\n"
-            "FROM resolved\n"
-            f"WHERE {where}"
+        return render_sql(
+            "fact_resolve",
+            relation=self.relation,
+            row=ROW,
+            history_key=self.history_key,
+            looked_up=[f"{expressions[column]} AS {column}" for column in lookup.fact_columns],
+            columns=lookup.fact_columns,
+            join=lookup.join(ROW),
+            business_key=lookup.business_key,
+            dimension_key=lookup.dimension.key,
+            dimension_staging=lookup.dimension.staging_relation,
         )
 
     def resolve_statements(self, dimension: str) -> Sequence[str]:

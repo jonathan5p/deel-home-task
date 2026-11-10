@@ -1,0 +1,15 @@
+WITH resolved AS (
+    SELECT
+        {{ ((history_key | qualify(row)) + looked_up) | join(",\n        ") }}
+    FROM {{ relation }} AS {{ row }}
+{{ join | indent(4, first=true) }}
+    WHERE {{ row }}.{{ business_key }} IN (SELECT {{ dimension_key }} FROM {{ dimension_staging }})
+)
+UPDATE {{ relation }} AS stored
+SET
+{% for column in columns %}
+    {{ column }} = resolved.{{ column }}{{ "," if not loop.last }}
+{% endfor %}
+FROM resolved
+WHERE {% for column in history_key %}stored.{{ column }} = resolved.{{ column }}
+  AND {% endfor %}({{ columns | qualify("stored") | join(", ") }}) IS DISTINCT FROM ({{ columns | qualify("resolved") | join(", ") }})

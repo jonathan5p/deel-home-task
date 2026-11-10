@@ -32,10 +32,6 @@ class Scd2DefinitionError(ValueError):
         super().__init__(f"SCD2 dimension {table}: {problem}")
 
 
-def lines(items: Iterable[str], indent: str = "    ") -> str:
-    return ",\n".join(f"{indent}{item}" for item in items)
-
-
 def postgres_string(text: str) -> str:
     return "'" + text.replace("'", "''") + "'"
 

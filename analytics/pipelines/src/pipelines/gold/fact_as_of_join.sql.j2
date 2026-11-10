@@ -1,0 +1,19 @@
+LEFT JOIN LATERAL (
+    SELECT {{ columns | qualify("version") | join(", ") }}
+    FROM {{ versions }} AS version
+    WHERE version.{{ key }} = {{ row }}.{{ business_key }}
+      AND NOT version._is_folded
+      AND NOT version._is_deleted
+      AND (
+          version._valid_from <= {{ row }}._changed_at
+          OR NOT EXISTS (
+              SELECT 1
+              FROM {{ relation }} AS earlier
+              WHERE earlier.{{ key }} = version.{{ key }}
+                AND earlier._commit_sequence < version._commit_sequence
+          )
+      )
+      AND (version._valid_to IS NULL OR {{ row }}._changed_at < version._valid_to)
+    ORDER BY version._commit_sequence DESC
+    LIMIT 1
+) AS {{ alias }} ON true

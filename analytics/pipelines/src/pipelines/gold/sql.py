@@ -1,9 +1,16 @@
+from collections.abc import Iterable
 from functools import cache
 from importlib.resources import files
 
 from jinja2 import Environment, StrictUndefined, Template
 
+
+def qualify(columns: Iterable[str], relation: str) -> list[str]:
+    return [f"{relation}.{column}" for column in columns]
+
+
 SQL = Environment(autoescape=False, undefined=StrictUndefined, trim_blocks=True, lstrip_blocks=True)
+SQL.filters["qualify"] = qualify
 
 
 @cache
