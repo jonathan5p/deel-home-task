@@ -66,17 +66,28 @@ class Stack:
         wait_until(self.kafka_ready, timeout=120, message="Kafka never accepted connections")
 
     def kafka_ready(self) -> bool:
-        listing = self.compose(
-            "exec",
-            "-T",
-            "kafka",
-            "kafka-topics",
-            "--bootstrap-server",
-            "kafka:29092",
-            "--list",
-            check=False,
+        return self.kafka("kafka-topics", "--list", check=False).returncode == 0
+
+    def kafka(
+        self, tool: str, *args: str, stdin: str | None = None, check: bool = True
+    ) -> subprocess.CompletedProcess[str]:
+        """Run a Kafka command-line tool inside the broker container against the broker."""
+        command = ["exec", "-T", "kafka", tool, "--bootstrap-server", "kafka:29092", *args]
+        return subprocess.run(
+            ["docker", "compose", *command],
+            cwd=REPO_ROOT,
+            env=self.env,
+            input=stdin,
+            capture_output=True,
+            text=True,
+            check=check,
         )
-        return listing.returncode == 0
+
+    def recreate(self, *services: str) -> None:
+        """Replace the services' containers with new ones, as `make down` and `make up` do."""
+        self.compose("stop", *services)
+        self.compose("rm", "--force", *services)
+        self.compose("up", "--detach", "--wait", *services)
 
     def down(self) -> None:
         for process in self.running:
