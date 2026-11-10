@@ -85,8 +85,7 @@ class SilverFixture:
         return output
 
     def compare_lake_views(self, stack: Stack) -> list[Json]:
-        """Create the lake's silver and gold views over the fixture silver tables and compare
-        the gold ones with PostgreSQL's; one result per line the app prints."""
+        """The lake views' comparison with PostgreSQL, one result per line the app prints."""
         returncode, output = stack.run_app(APP, self.lake_key, LAKE_VIEWS, env=self.env("main"))
         assert returncode == 0, output
         lines = [line for line in output.splitlines() if line.startswith(COMPARED)]

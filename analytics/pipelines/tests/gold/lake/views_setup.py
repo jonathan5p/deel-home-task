@@ -35,7 +35,6 @@ def change(
     deleted: bool = False,
     changed_at: datetime | None = None,
 ) -> Row:
-    """A silver version of `entity`; equal content gives an equal hash, as silver's does."""
     definition = ENTITIES[entity]
     row = dict.fromkeys(silver_schema(definition).fieldNames())
     metadata = {
@@ -103,8 +102,6 @@ def item(
 
 @dataclass(frozen=True, slots=True)
 class GoldLake:
-    """Silver tables in a view catalog, with the silver and gold views over them."""
-
     spark: SparkSession
     lake: LakeSettings
 

@@ -1,5 +1,3 @@
--- The gold views in the lake over the silver tables the silver scenario leaves.
-
 SELECT 'calendar', count(*) FROM lake.gold.dim_date;
 
 SELECT 'statuses', count(*) FROM lake.gold.dim_order_status;

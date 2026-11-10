@@ -25,8 +25,6 @@ COMPARED_VIEWS = (
 
 
 class Matching(NamedTuple):
-    """A lake view's rows, and how many rows it or PostgreSQL's view has that the other lacks."""
-
     rows: int
     lake_only: int
     postgres_only: int
@@ -38,16 +36,11 @@ class Matching(NamedTuple):
 
 @dataclass(frozen=True, slots=True)
 class LakeComparison:
-    """How often the views job created or replaced the gold views, and how each gold view in
-    the lake compares with PostgreSQL's, by view."""
-
     refreshes: Json
     views: dict[str, Matching]
 
 
 def run_lake_scenario(stack: Stack) -> LakeComparison:
-    """Run the gold job over the fact scenario's batches, one run each, then compare the lake
-    views with PostgreSQL."""
     for batch in BATCHES:
         LAKE_SILVER.run_gold(stack, batch)
     refreshes, *views = LAKE_SILVER.compare_lake_views(stack)

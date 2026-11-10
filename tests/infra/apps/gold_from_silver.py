@@ -51,9 +51,7 @@ def append_versions(spark: SparkSession, catalog: str, folder: str) -> None:
 
 
 def matching(lake: DataFrame, postgres: DataFrame, *, every_row: bool) -> dict[str, int]:
-    """How many rows of a lake view and of its PostgreSQL view the other lacks, comparing the
-    PostgreSQL rows of the keys the lake view holds, a null key included, or all of them for
-    `every_row`."""
+    """The rows of a lake view, and the rows it or its PostgreSQL view has that the other lacks."""
     postgres = postgres.select(*(F.col(f.name).cast(f.dataType) for f in lake.schema.fields))
     if not every_row:
         keys = lake.select(F.col(lake.columns[0]).alias("lake_key")).distinct()
@@ -67,9 +65,6 @@ def matching(lake: DataFrame, postgres: DataFrame, *, every_row: bool) -> dict[s
 
 
 def compare_lake_views(spark: SparkSession) -> None:
-    """Create the silver and gold views over the fixture silver tables, twice, then print how
-    each gold view compares with PostgreSQL's view of the same name. Freshness is left out: it
-    covers every row PostgreSQL holds, not only the fixture's."""
     settings = SilverSettings.from_env(os.environ)
     views = GoldLakeViews(settings.lake)
     refresh_views(spark, settings)

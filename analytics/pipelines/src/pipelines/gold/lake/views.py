@@ -27,7 +27,6 @@ BUSINESS_VIEWS = (
     "pending_items_by_product",
     "top_customers_by_pending_orders",
 )
-# The columns PostgreSQL's public views keep internal besides the pipeline-only ones.
 INTERNAL_COLUMNS: Mapping[str, frozenset[str]] = {"current_orders": frozenset({"is_open"})}
 HISTORY_COLUMNS = (MetadataColumn.VALID_TO, MetadataColumn.IS_CURRENT)
 DIMENSION_RANGE_COLUMNS = (Scd2Column.VALID_FROM, *HISTORY_COLUMNS)
@@ -43,8 +42,6 @@ def _selected(source: str, column: str) -> str:
 
 
 class KeyJoin(NamedTuple):
-    """A seeded dimension view joined on its code to fill one key column."""
-
     alias: str
     relation: str
     code: str
@@ -52,9 +49,6 @@ class KeyJoin(NamedTuple):
 
 
 class AsOfJoin(NamedTuple):
-    """The dimension versions an as-of lookup reads, and the fact columns it takes from them
-    as (fact column, silver column) pairs."""
-
     name: str
     versions: str
     dimension_key: str
@@ -63,14 +57,6 @@ class AsOfJoin(NamedTuple):
 
 
 class GoldLakeViews:
-    """The gold views in the lake: the public gold relations computed at read time from
-    silver, with natural keys instead of the surrogate keys PostgreSQL generates.
-
-    The fold rule and the validity ranges come from silver's history views; these views add
-    the key lookups, the as-of dimension attributes and the current state, from the same
-    declarations the PostgreSQL writer uses.
-    """
-
     def __init__(
         self,
         lake: LakeSettings,
@@ -119,8 +105,6 @@ class GoldLakeViews:
         return self._definition(table, table.columns, _render(name))
 
     def dimension(self, dimension: Scd2Dimension) -> ViewDefinition:
-        """A dimension's versions from its silver history view, deletes left out: the version
-        before a delete ends with it and is not current."""
         columns = self.public_columns(dimension.table, self._validity_columns(dimension))
         sources = dimension.silver_columns
         selected = [
@@ -167,8 +151,6 @@ class GoldLakeViews:
             joins.append(join)
             expressions |= {column: f"{join.name}.{column}" for column, _ in join.columns}
             for multiplied in lookup.multiplied:
-                # DECIMAL(27, 10) times an int fits DECIMAL(38, 10) exactly; at the lake's
-                # DECIMAL(38, 10) Spark would round the product to 6 decimals.
                 expressions[multiplied.column] = (
                     f"CAST(CAST({join.name}.{multiplied.looked_up} AS DECIMAL(27, 10))"
                     f" * change.{fact.silver_columns[multiplied.factor]} AS DECIMAL(38, 10))"
@@ -226,24 +208,18 @@ class GoldLakeViews:
         return self._definition(table, columns, query)
 
     def history(self, fact: ChangeFact) -> ViewDefinition:
-        """A fact's changes from its entity's silver history view, which folds unchanged ones
-        and gives each its range; a delete is the last change and never current."""
         columns = self.public_columns(fact.history, self._validity_columns(self.dimensions[0]))
         return self._fact(fact, fact.history, columns, latest=False)
 
     def _validity_columns(self, dimension: Scd2Dimension) -> list[ColumnDefinition]:
-        """`_valid_to` and `_is_current`, described like the columns of the same name of the
-        dimension's versions, as in PostgreSQL's public views."""
+        """`_valid_to` and `_is_current` of the dimension's versions."""
         versions = self.tables[f"{dimension.name}{VERSIONS_SUFFIX}"]
         return [versions.column(name) for name in HISTORY_COLUMNS]
 
     def current(self, fact: ChangeFact) -> ViewDefinition:
-        """The latest change of every key not deleted, folded or not, from the silver table:
-        the change PostgreSQL's current state holds."""
         return self._fact(fact, fact.current, self.public_columns(fact.current), latest=True)
 
     def derived(self, name: str) -> ViewDefinition:
-        """A view over other gold views, written as SQL in its template."""
         table = self.tables[name]
         columns = [column.name for column in table.columns]
         return self._definition(
@@ -268,8 +244,8 @@ class GoldLakeViews:
 
 
 def refresh_gold_views(spark: SparkSession, views: GoldLakeViews) -> list[str]:
-    """Create the gold views in the lake, or replace those whose query or descriptions changed;
-    returns the statements that ran. The silver views they read must exist."""
+    """Create or replace the gold views whose query or descriptions changed; returns the
+    statements that ran."""
     spark.sql(f"CREATE NAMESPACE IF NOT EXISTS {views.namespace}")
     statements = []
     for view, definition in views.definitions().items():

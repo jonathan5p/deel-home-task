@@ -110,8 +110,6 @@ def replay_runs(stack: Stack) -> ReplayRuns:
 
 @pytest.fixture(scope="module")
 def lake_comparison(stack: Stack) -> Iterator[LakeComparison]:
-    """Run the gold job over the fact scenario's silver changes in a catalog of their own, then
-    compare the gold views in the lake with PostgreSQL; remove the rows it wrote afterwards."""
     try:
         yield run_lake_scenario(stack)
     finally:

@@ -20,8 +20,6 @@ def gold_lake_in(spark: SparkSession, folder: Path) -> GoldLake:
 
 @pytest.fixture(scope="module")
 def gold_lake(spark: SparkSession, tmp_path_factory: pytest.TempPathFactory) -> GoldLake:
-    """Empty silver tables with every view over them, shared by the module's tests; each test
-    appends rows of its own keys, which the views read without a refresh."""
     return gold_lake_in(spark, tmp_path_factory.mktemp("gold_lake"))
 
 
