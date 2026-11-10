@@ -34,7 +34,8 @@ DRIVER_CONF = --master "$$SPARK_MASTER_URL" \
 CHECKS_PROJECT ?= deel-checks-$(shell basename "$(CURDIR)" | LC_ALL=C tr 'A-Z' 'a-z' | LC_ALL=C sed 's/[^a-z0-9_-]/-/g')
 APP_BUILD ?= --build
 PYTEST_WORKERS ?= 4
-CODE_MOUNTS = -v "$(CURDIR)/analytics:/opt/app/analytics" -v "$(CURDIR)/tests:/opt/app/tests"
+CODE_MOUNTS = -v "$(CURDIR)/analytics:/opt/app/analytics" -v "$(CURDIR)/tests:/opt/app/tests" \
+	-v "$(CURDIR)/docker/grafana:/opt/app/docker/grafana:ro"
 RENDER_GOLD_DDL = uv run --frozen python -m pipelines.gold.ddl docker/analytics-db/initdb/02-gold-model.sql
 
 SPARK_TESTS = analytics/common/tests analytics/pipelines/tests
