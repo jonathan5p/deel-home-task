@@ -15,6 +15,9 @@ class MetadataColumn(StrEnum):
     FAILURE_REASON = "_failure_reason"
     QUARANTINED_AT = "_quarantined_at"
     IS_DELETED = "_is_deleted"
+    VALID_FROM = "_valid_from"
+    VALID_TO = "_valid_to"
+    IS_CURRENT = "_is_current"
 
 
 class ChangeOp(StrEnum):

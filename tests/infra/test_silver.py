@@ -2,18 +2,31 @@ import pytest
 
 from pipelines.lake.columns import ChangeOp, MetadataColumn
 from pipelines.schemas.definitions import load_entity, load_table_templates
-from tests.infra.bronze_setup import AUDIT_BRONZE, BRONZE_ROWS, ENTITIES, table_descriptions
+from tests.infra.bronze_setup import (
+    AUDIT_BRONZE,
+    BRONZE_ROWS,
+    ENTITIES,
+    KEYS,
+    table_descriptions,
+)
 from tests.infra.silver_setup import (
+    SILVER_APP,
     SILVER_TABLES,
+    SILVER_VIEWS,
+    VIEWS_APP,
+    VIEWS_SQL_ENTITY,
     SilverRuns,
     commit_sequence,
     commit_sequences,
-    run_silver_without_bronze_tables,
+    run_without_upstream_tables,
     state_store_files,
 )
 from tests.infra.stack import Stack
 
-SILVER = load_table_templates()["silver"]
+TEMPLATES = load_table_templates()
+SILVER = TEMPLATES["silver"]
+HISTORY = TEMPLATES["silver_history"]
+CURRENT = TEMPLATES["silver_current"]
 
 
 @pytest.mark.parametrize("entity", ENTITIES)
@@ -91,24 +104,84 @@ def test_silver_data_files_are_partitioned_by_change_day(
         assert partitions == {f"{MetadataColumn.CHANGED_AT}_day=2026-11-08"}, entity
 
 
-def test_every_silver_table_and_column_is_described(stack: Stack, silver_runs: SilverRuns) -> None:
+def test_every_silver_table_and_view_and_their_columns_are_described(
+    stack: Stack, silver_runs: SilverRuns
+) -> None:
     descriptions = {
         description["table"]: description
-        for description in table_descriptions(stack, SILVER_TABLES)
+        for description in table_descriptions(stack, [*SILVER_TABLES, *SILVER_VIEWS])
     }
 
-    assert sorted(descriptions) == sorted(SILVER_TABLES)
+    assert sorted(descriptions) == sorted([*SILVER_TABLES, *SILVER_VIEWS])
     for entity in ENTITIES:
-        description = descriptions[f"lake.silver.{entity}"]
-        columns = SILVER.columns_for(load_entity(entity))
-        assert description["comment"] == SILVER.describe(load_entity(entity))
-        assert description["columns"] == {
-            column.lake_name: column.description for column in columns
-        }
+        for template in (SILVER, HISTORY, CURRENT):
+            table = f"lake.silver.{template.table_name(load_entity(entity))}"
+            columns = template.columns_for(load_entity(entity))
+            assert descriptions[table]["comment"] == template.describe(load_entity(entity))
+            assert descriptions[table]["columns"] == {
+                column.lake_name: column.description for column in columns
+            }
 
 
 def test_the_job_fails_while_a_bronze_table_is_missing(stack: Stack) -> None:
-    returncode, output = run_silver_without_bronze_tables(stack)
+    returncode, output = run_without_upstream_tables(stack, SILVER_APP, "--available-now")
 
     assert returncode != 0
     assert "TABLE_OR_VIEW_NOT_FOUND" in output
+
+
+@pytest.mark.parametrize("entity", ENTITIES)
+def test_the_history_view_folds_the_unchanged_update_and_keeps_the_delete_and_re_create(
+    silver_runs: SilverRuns, entity: str
+) -> None:
+    first = silver_runs.first[f"lake.silver.{entity}_history"]
+    rows = silver_runs.restarted[f"lake.silver.{entity}_history"]
+
+    assert commit_sequences(first) == [100, 103]
+    assert commit_sequences(rows) == [100, 103, 104]
+    columns = [column.lake_name for column in HISTORY.columns_for(load_entity(entity))]
+    assert [list(row) for row in rows] == [columns] * 3
+    assert [row[MetadataColumn.IS_DELETED] for row in rows] == ["false", "true", "false"]
+    assert [row[MetadataColumn.VALID_TO] is None for row in rows] == [False, False, True]
+    assert [row[MetadataColumn.IS_CURRENT] for row in rows] == ["false", "false", "true"]
+
+
+@pytest.mark.parametrize("entity", ENTITIES)
+def test_the_current_view_holds_the_live_row_with_the_source_values(
+    silver_runs: SilverRuns, entity: str
+) -> None:
+    view = f"lake.silver.{entity}_current"
+
+    assert silver_runs.first[view] == []
+    (row,) = silver_runs.restarted[view]
+    assert list(row) == [column.lake_name for column in CURRENT.columns_for(load_entity(entity))]
+    assert commit_sequence(row) == 104
+    expected = BRONZE_ROWS[entity] | AUDIT_BRONZE
+    assert {name: row[name] for name in expected} == expected
+
+
+def test_the_views_job_fails_while_a_silver_table_is_missing(stack: Stack) -> None:
+    returncode, output = run_without_upstream_tables(stack, VIEWS_APP)
+
+    assert returncode != 0
+    assert "MissingSilverTablesError" in output
+
+
+def test_running_the_views_job_again_leaves_unchanged_views_as_they_are(
+    silver_runs: SilverRuns,
+) -> None:
+    assert sorted(silver_runs.first_view_files) == sorted(SILVER_VIEWS)
+    assert silver_runs.idle_view_files == silver_runs.first_view_files
+
+
+def test_the_views_can_be_queried_with_make_spark_sql(silver_runs: SilverRuns) -> None:
+    key = BRONZE_ROWS[VIEWS_SQL_ENTITY][KEYS[VIEWS_SQL_ENTITY]]
+
+    assert silver_runs.spark_sql == {
+        "history": [
+            [key, "100", "snapshot", "false", "false", "false"],
+            [key, "103", "delete", "true", "false", "false"],
+            [key, "104", "update", "false", "true", "true"],
+        ],
+        "current": [[key, "104", "update"]],
+    }

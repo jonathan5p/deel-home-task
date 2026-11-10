@@ -388,9 +388,9 @@ analytics/
       schemas/              the Avro table and column schemas, their loader, and the landing record schema
       quality/checks.py     the data quality check framework
       landing/              landing layer: job.py (streaming job), quality.py and quality_job.py (data quality checks)
-      lake/                 code the lake layers share: metadata column names, Spark types, Iceberg table creation and description sync, starting and awaiting streaming queries
+      lake/                 code the lake layers share: metadata column names, Spark types, Iceberg table creation and description sync, Iceberg view creation and sync, starting and awaiting streaming queries
       bronze/               bronze layer: source entities, the transforms from landing records to bronze rows, and job.py (streaming job)
-      silver/               silver layer: the transform from bronze rows to version rows, and job.py (streaming job)
+      silver/               silver layer: the transform from bronze rows to version rows, the history and current views, and job.py (streaming job)
     tests/
   sql/gold/                 the four business questions as SQL on the gold views in PostgreSQL
 tests/infra/                infra tests that drive an isolated copy of the stack
@@ -417,10 +417,11 @@ The pipelines name and describe their tables and columns from one set of [Avro s
 ```text
 audit.avsc                        shared record: the audit columns every source table ends with (updated_at, updated_by, created_at, created_by)
 sources/<table>.avsc              one source table of the operations schema (customers, products, orders, order_items)
-tables/<table>_template.avsc      one table a layer keeps per entity (bronze, bronze_quarantine, silver): its description, the column
-                                  groups it includes and the full definition of the layer's own columns
+tables/<table>_template.avsc      one table or view a layer keeps per entity (bronze, bronze_quarantine, silver, silver_history,
+                                  silver_current): its description, the column groups it includes and the full definition of the
+                                  layer's own columns
 definitions.py                    the loader
-render.py                         renders every resulting table as a flat Avro schema (make schemas, into target/schemas/)
+render.py                         renders every resulting table and view as a flat Avro schema (make schemas, into target/schemas/)
 landing.py                        the Spark schema of the landed Kafka records (KAFKA_RECORD_SCHEMA)
 ```
 
@@ -480,7 +481,7 @@ A table template is the layout of one table a layer keeps per entity. It is an o
 So `lake.bronze.order_items` is the source fields of `order_items`, then its audit fields, then the nine fields of `bronze_template.avsc`; the quarantine template includes nothing (`"include": []`) and its table is just its own fields.
 
 - **Why this shape:** every description is defined once, next to the table that owns the column, and each template reads as the table it produces. Avro can reference a named record from another file, but a reference nests the fields under one column instead of flattening them, so the flat composition (`include` on source records and templates) is our own convention, done by the loader.
-- **The resulting tables, flat:** `make schemas` renders the full flat Avro schema of every lake table (each template plus the entity's source and audit columns, with every column's type, nullability and description) into the git-ignored `target/schemas/<layer>/<table>.avsc` (`target/schemas/bronze/orders.avsc`, `orders_quarantine.avsc` and so on), as plain, standard Avro records with namespace `lake.<layer>` and the filled-in table description. They are for reading only: like dbt's `target/`, they are build output, regenerated on every run and never committed. To change a table, edit the definitions in `analytics/pipelines/src/pipelines/schemas/`, not the rendered output. A unit test checks the rendered columns and types against the schema the bronze and silver jobs actually write.
+- **The resulting tables, flat:** `make schemas` renders the full flat Avro schema of every lake table and view (each template plus the entity's source and audit columns, with every column's type, nullability and description) into the git-ignored `target/schemas/<layer>/<table>.avsc` (`target/schemas/bronze/orders.avsc`, `orders_quarantine.avsc`, `target/schemas/silver/orders_history.avsc`, `orders_current.avsc` and so on), as plain, standard Avro records with namespace `lake.<layer>` and the filled-in table description. They are for reading only: like dbt's `target/`, they are build output, regenerated on every run and never committed. To change a table, edit the definitions in `analytics/pipelines/src/pipelines/schemas/`, not the rendered output. A unit test checks the rendered columns and types against the schema the bronze and silver jobs actually write.
 - **Types** follow Avro: `long` (BIGINT), `int` (INTEGER), `string` (VARCHAR), `boolean`, `{"type": "long", "logicalType": "timestamp-millis"}` (TIMESTAMP(3)), `{"type": "int", "logicalType": "date"}` and `{"type": "bytes", "logicalType": "decimal", "precision": 38, "scale": 10}`. The source DECIMAL declares no precision, so it has no exact Avro equivalent: the schemas declare DECIMAL(38,10), the type bronze stores. The lake layers map these types to Spark types in `pipelines/lake/types.py`.
 - **Nullability** follows Avro too: a column that is NOT NULL in the source, or always set by the pipeline, has the plain type; a nullable one is the union `["null", <type>]` with `"default": null`.
 - **Custom properties** carry what Avro has no attribute for (Avro allows extra attributes and ignores them): `key` on a source record names its primary key, `renamed_to` on a field gives its name in the lake when the source name is misspelled, and `include` composes column groups as above.
@@ -488,7 +489,7 @@ So `lake.bronze.order_items` is the source fields of `order_items`, then its aud
 
 `pipelines.schemas.definitions` reads the files with the standard `json` module, so the Spark image needs no Avro library, into frozen dataclasses: `load_entities()` and `load_entity(name)` (`EntityDefinition`: `name`, `key`, `description`, `columns`, `included_columns`, `all_columns`), `load_shared_columns(name)` and `load_table_templates()` (`TableTemplate`, by name without `_template`: `name`, `description`, `include` (`ColumnGroup`s), `fields`, `layer`, `describe(entity)`, `table_name(entity)`, `columns_for(entity)`). A column is a `ColumnDefinition` (`name`, `type`, `description`, `not_null`, `renamed_to`, `lake_name`). The loader refuses, naming the file, a type it does not support, an unknown property, a missing or blank `doc`, a nullable field without `"default": null`, a key that is not a field, an unknown include, a template without columns or whose name does not end in `_template`, a record whose `name` differs from its file name, or two columns with the same lake name. A unit test also checks every file, and every source table with its included fields, with `fastavro.parse_schema` (a development dependency only).
 
-To add or change a column or a description, edit the schema file (a new field goes where the column is in the source; a new pipeline column goes in the `fields` of each template that holds it, defined the same way in each), then restart the job (run `make schemas` to read the resulting tables): the descriptions of existing tables are updated on start, while new columns also need `ALTER TABLE ... ADD COLUMN` (see schema evolution in the bronze layer). Column names used in code stay typed (the `MetadataColumn` enum in `pipelines/lake/columns.py`, shared by every layer, and bronze's `RawColumn`), and tests check that each of them is defined in a template and that the fields of each bronze and silver template are exactly the columns the job writes to that table.
+To add or change a column or a description, edit the schema file (a new field goes where the column is in the source; a new pipeline column goes in the `fields` of each template that holds it, defined the same way in each), then restart the job (run `make schemas` to read the resulting tables): the descriptions of existing tables are updated on start and changed views are replaced, while new table columns also need `ALTER TABLE ... ADD COLUMN` (see schema evolution in the bronze layer). Column names used in code stay typed (the `MetadataColumn` enum in `pipelines/lake/columns.py`, shared by every layer, and bronze's `RawColumn`), and tests check that each of them is defined in a template and that the fields of each bronze and silver template are exactly the columns the job writes to that table or the view returns.
 
 #### Configuration
 
@@ -544,6 +545,7 @@ make pipeline PIPELINE=landing        # start the stack, the History Server and 
 make pipeline PIPELINE=all            # the same with every job
 make pipeline-logs PIPELINE=landing   # follow the job's logs (Ctrl+C stops following, not the job)
 make pipeline-stop PIPELINE=landing   # stop and remove the job; the rest of the stack keeps running
+make lake-views                       # create or update the silver views once (silver and all also start it)
 ```
 
 `make pipeline` rebuilds changed images like `make up`, starts the default stack and the Spark History Server, then starts the selected jobs. Running it again after a code change restarts only the jobs whose image changed. A change to the Spark image restarts the cluster, and a job's driver does not survive that; `make pipeline` restarts the jobs along with it, but after a plain `make up`, run `make pipeline` again. Without a valid `PIPELINE` (`landing`, `bronze`, `silver` or `all`), the targets fail and list the valid names. `make down` stops the jobs with the rest of the stack.
@@ -671,12 +673,15 @@ Kafka coordinates are lineage; the change identity is the entity key, `_commit_s
 
 #### Silver layer
 
-Silver is the version history of each source table: one row per bronze change, appended and never updated or removed. Gold reads it as a stream, and an Iceberg stream only accepts append snapshots, so silver must stay append-only. A change that bronze holds more than once (Debezium delivers at least once, and a replay delivers changes again) gets one row. Versions that change nothing, such as a re-snapshot or an update of audit columns only, keep rows of their own. The package `analytics/pipelines/src/pipelines/silver/` holds:
+Silver is the version history of each source table: one row per bronze change, appended and never updated or removed. Gold reads it as a stream, and an Iceberg stream only accepts append snapshots, so silver must stay append-only. A change that bronze holds more than once (Debezium delivers at least once, and a replay delivers changes again) gets one row. Versions that change nothing, such as a re-snapshot or an update of audit columns only, keep rows of their own; the views `<entity>_history` and `<entity>_current` fold them away for readers. The package `analytics/pipelines/src/pipelines/silver/` holds:
 
 - `versions.py`: `versions(bronze, entity)` turns bronze rows into version rows. It is a pure DataFrame transform (no UDFs), so it works on batch and streaming DataFrames.
 - `deduplication.py`: `drop_duplicate_changes(rows, entity)` keeps one row per change. It is separate from `versions` because it is stateful on a stream: it needs a checkpoint, and its tests feed several micro-batches.
 - `columns.py`: the metadata columns silver copies from bronze and the one it adds, in table order.
-- `job.py`: the silver streaming job, which reads each bronze table as an Iceberg stream, turns its rows into versions, drops duplicate changes and appends the rest to the silver table, defined by `tables/silver_template.avsc` (partitioned by `_changed_at`) through `table_definition`, as in bronze.
+- `history.sql.j2` and `current.sql.j2`: the SQL of the history and current views, as Jinja templates filled in with the entity's table, key and columns.
+- `views.py`: `silver_views(entity, settings)`, the definitions of an entity's history and current views (their rendered SQL and their descriptions), and `refresh_views(spark, settings)`, which creates or updates the views of every entity.
+- `views_job.py`: the one-shot job that runs `refresh_views` (`make lake-views`).
+- `job.py`: the silver streaming job, which creates its tables at start, then reads each bronze table as an Iceberg stream, turns its rows into versions, drops duplicate changes and appends the rest to the silver table, defined by `tables/silver_template.avsc` (partitioned by `_changed_at`) through `table_definition`, as in bronze.
 
 Run it as a service with `make pipeline PIPELINE=silver` (see [Running the pipeline](#running-the-pipeline)). It reads the bronze tables, so bronze must be running too (with landing before it), or use `PIPELINE=all`. Until the bronze job has created an entity's table, the silver job stops at start with `TABLE_OR_VIEW_NOT_FOUND` for that table, before it creates any silver table, and Compose restarts it. Don't also start it with `make spark-submit` while the service runs: both would write to the same tables with the same checkpoints.
 
@@ -685,11 +690,50 @@ Run it as a service with `make pipeline PIPELINE=silver` (see [Running the pipel
 - **Tables are created at start** when missing, the same way as bronze (`CREATE NAMESPACE IF NOT EXISTS silver`, then `writeTo(...).create()` from an empty DataFrame with the schema of the version rows), partitioned by `days(_changed_at)`, with `write.distribution-mode` `none` for the same reason as bronze. Every column is nullable. The schema of an existing table is never altered.
 - **Every table and column is described from the Avro schemas,** as in bronze: the table comment is the description in `tables/silver_template.avsc`, the business columns take the `doc` of their source schema and the metadata columns the one in the template, which defines the four copied columns exactly as `bronze_template.avsc` does. On every start the job updates only the stored descriptions that differ (`ALTER TABLE ... SET TBLPROPERTIES ('comment' = ...)`, `ALTER TABLE ... ALTER COLUMN ... COMMENT ...`), and it refuses to start when a column has no definition or a different type. `make schemas` renders the flat result to `target/schemas/silver/`, and `DESCRIBE TABLE EXTENDED lake.silver.customers` shows the stored descriptions.
 - **Duplicate changes are dropped:** a change is identified by the entity key, `_commit_sequence` and `_change_op`. The Kafka offset and `_captured_at` are not part of it, because Debezium sends a change again at a new offset after a restart. Each query runs `dropDuplicates` on those three columns, so a change that bronze holds twice, in the same micro-batch or in different ones, gets one version row. There is no watermark: a late change, older than versions already stored, is appended like any other and never dropped, and the state keeps every change it has seen (one small entry per change) without ever removing one. Different keys can share a `_commit_sequence` (every row of a snapshot has the snapshot's position), and each of them is kept.
-- **Unchanged versions are kept:** a re-snapshot, an update of audit columns only, a delete (which keeps the last known values) and a re-create with the same values each get a row, even when its `_content_hash` equals the previous version's. Folding such a version into the previous one is left to readers of the table; a history view that does it is not built yet.
+- **Unchanged versions are kept:** a re-snapshot, an update of audit columns only, a delete (which keeps the last known values) and a re-create with the same values each get a row, even when its `_content_hash` equals the previous version's. The history view folds the versions that change nothing (see the views below), so "one version per change that changed the row" holds for the view, not the table, and the table has more rows than the view.
 - **Deduplication state in RocksDB:** the job sets `spark.sql.streaming.stateStore.providerClass` to `org.apache.spark.sql.execution.streaming.state.RocksDBStateStoreProvider` on its own Spark session, so the state lives in RocksDB on the executors' local disks instead of in executor memory, and each micro-batch saves it under `<CHECKPOINT_ROOT>/silver/<entity>/state/`. It also sets `spark.sql.shuffle.partitions` to 2, one state partition per core the job gets, instead of Spark's 200, which would save 200 state stores per entity on every micro-batch. The other jobs keep Spark's defaults. A query keeps the provider and the number of state partitions its checkpoint was created with, so changing either needs the reset below.
 - **Restart-safe, exactly once:** each query's checkpoint records the bronze snapshots it has read and the deduplication state, and Iceberg's streaming sink skips a batch it has already committed, so a restart neither skips nor repeats bronze rows, and a change seen before the restart is still dropped after it. Bronze keeps every delivery: a change Debezium delivered twice is two rows in bronze and one in silver.
 - **Micro-batches** run every `SILVER_TRIGGER_SECONDS` until the job is stopped; `SPARK_APP_ARGS=--available-now` processes the bronze snapshots committed so far and then stops. An `--available-now` restart goes back to the first bronze snapshot its checkpoint recorded, so once lake maintenance has expired that snapshot it fails, and needs the reset below; the service, on its processing-time trigger, is not affected.
 - **Fail fast:** like bronze, when any query stops or fails the job stops the others and exits non-zero if a query failed, so Compose restarts it from its checkpoints.
+
+**Views: version history and current state.** Two Iceberg views per entity sit next to the silver table, in the same catalog and namespace (the `lake` catalog stores views because it is a JDBC catalog with schema version V1). They read the table by its fully qualified name. Their SQL is in `silver/history.sql.j2` and `silver/current.sql.j2`, filled in with the entity's table, key and columns.
+
+The streaming job does not manage them. `refresh_views(spark, settings)` in `pipelines/silver/views.py` creates them and updates them, and two commands run it:
+
+- **`make lake-views`** runs it once, as the one-shot job `silver/views_job.py`, against the running stack. Run it after changing a view's SQL or its descriptions. It prints how many views it created or replaced; 0 means all were up to date.
+- **`make pipeline PIPELINE=silver`** (or `all`) also starts the `lake-views` service, which runs the same job once. On a fresh stack the silver tables do not exist yet, so it fails with `MissingSilverTablesError`, before creating any view, and Compose restarts it (`restart: on-failure`) until the silver job has created every table. Then it creates the views and exits.
+
+In production, CI would run the same command (`make lake-views`, or the job on the production cluster) whenever a view definition changes.
+
+What the views compute:
+
+- **The fold rule:** per key, ordered by `_commit_sequence`, a version folds into the previous one when its `_content_hash` and its `_is_deleted` both equal the previous version's (`lag`); the first version of a key never folds. So a re-snapshot and an audit-only update fold, while a delete, which keeps the last known values and so the previous hash, does not, and neither does a re-create after it with the same values.
+- **`<entity>_history`** (`lake.silver.customers_history`, ...) is the version history: the folded versions are filtered out first, then each remaining version gets `_valid_from` (its `_changed_at`), `_valid_to` (the next remaining version's `_valid_from`, null for the latest) and `_is_current` (whether it is the key's latest remaining version). Columns: the key, the business and audit columns, `_commit_sequence`, `_change_op`, `_changed_at`, `_content_hash`, `_is_deleted`, `_valid_from`, `_valid_to`, `_is_current`. A delete is a version of its own: it ends the validity of the version before it, and it is the current version while the key stays deleted.
+- **`<entity>_current`** is the current state: one row per live key, the rows of `<entity>_history` with `_is_current` true and `_is_deleted` false, so a key whose latest version is a delete is left out. It reads the history view, so the fold rule is written once. Columns: the same as the history view without `_valid_to`, `_is_current` and `_is_deleted`.
+- **Late versions need no special handling:** the views compute over the whole table on every query, so a version appended after newer ones takes its place by `_commit_sequence`: it is valid until the next version, the version before it now ends at it, and the current state does not change.
+- **Described from the Avro schemas,** in `tables/silver_history_template.avsc` and `tables/silver_current_template.avsc`, through `CREATE VIEW ... (<column> COMMENT ..., ...) COMMENT ... AS ...`. `_valid_from`, `_valid_to`, `_is_current` and `_is_deleted` have the same definitions as in gold. `make schemas` renders them to `target/schemas/silver/<entity>_history.avsc` and `<entity>_current.avsc`.
+- **Replaced only when they change:** `refresh_views` reads each stored view (its query from `SHOW CREATE TABLE`, its comments from `DESCRIBE TABLE EXTENDED`) and runs `CREATE OR REPLACE VIEW` only when the query or a description differs from the one it builds, so running it again does not write a new view version.
+- **Gold applies the same rule:** gold streams the silver table, not the views, so its writer folds versions with the same rule; the silver → gold contract is in [docs/architecture/gold-model.md](docs/architecture/gold-model.md), "Inputs from silver".
+
+Query them in `make spark-sql`:
+
+```sql
+-- Every version of customer 7, oldest first, with the time range it was current
+SELECT customer_id, customer_name, _change_op, _is_deleted, _valid_from, _valid_to, _is_current
+FROM lake.silver.customers_history
+WHERE customer_id = 7
+ORDER BY _commit_sequence;
+
+-- The orders as they were at a point in time
+SELECT order_id, status
+FROM lake.silver.orders_history
+WHERE _valid_from <= TIMESTAMP '2026-11-08 15:00:00'
+  AND (_valid_to IS NULL OR _valid_to > TIMESTAMP '2026-11-08 15:00:00')
+  AND NOT _is_deleted;
+
+-- The live orders by status
+SELECT status, count(*) AS orders FROM lake.silver.orders_current GROUP BY status;
+```
 
 **Tables and checkpoints written before deduplication.** Deduplication adds state to every silver query, and Spark cannot add state to a query whose checkpoint was written without it: the job starts, but fails at the first micro-batch with new bronze rows (`CANNOT_LOAD_STATE_STORE.CANNOT_READ_STREAMING_STATE_FILE`). Those tables can also hold duplicate changes. Reset silver, and only silver:
 
@@ -698,7 +742,7 @@ Run it as a service with `make pipeline PIPELINE=silver` (see [Running the pipel
 3. Delete the silver checkpoints, `<CHECKPOINT_ROOT>/silver/`. Locally: `curl -X DELETE "http://localhost:8888/buckets/lake/checkpoints/silver/?recursive=true"`.
 4. Start the job again: `make pipeline PIPELINE=silver`. It creates the tables and versions every bronze row from the start.
 
-Bronze, its tables and its checkpoints are not touched. `make clean CONFIRM=1` also works, by discarding all local data.
+Bronze, its tables and its checkpoints are not touched, and the views need nothing: they read the tables by name. `make clean CONFIRM=1` also works, by discarding all local data.
 
 #### Tests, lint and format
 
@@ -709,7 +753,7 @@ make test       # unit tests with branch coverage; fails below 90%
 make lint       # ruff lint and format check
 make format     # format the code and apply safe lint fixes (files keep your ownership)
 make typecheck  # check types with ty; any diagnostic fails
-make schemas    # render the flat Avro schema of every lake table to the git-ignored target/schemas/, for reading (on the host, with uv)
+make schemas    # render the flat Avro schema of every lake table and view to the git-ignored target/schemas/, for reading (on the host, with uv)
 ```
 
 - **Unit tests** live next to each project and mirror its source tree (`analytics/<project>/tests/test_<module>.py`).
@@ -734,7 +778,7 @@ They start an isolated Compose project named after the checkout folder (`deel-in
 - two applications capped with `spark.cores.max=2` run at the same time, both with executors, in two separate driver containers;
 - the landing example queries (`make spark-sql`) return the expected records from neutral, landing-shaped fixture data (topics `topic-a` and `topic-b`), including an update, a delete, a tombstone and a snapshot read, and inspect only the chosen topic;
 - the bronze job, run with `--available-now` on records landed through the landing job's file sink (topics `test.operations.<table>`), writes typed rows with their change metadata to each entity's Iceberg table, partitioned by publish day; quarantines invalid records while valid ones flow, each with the path of the landing file it was read from, and drops tombstones; after new records land, a second run appends only those, and a third run with nothing new appends nothing, so every Kafka offset is written exactly once; and ignores an Avro file in a landing folder that the commit log does not record;
-- the silver job, run with `--available-now` on the bronze tables those runs leave, writes one version row per bronze change to each entity's silver table, with the bronze values and change metadata and `_is_deleted` true only for the delete, which keeps the last known values; partitions the table by change day and describes every table and column; after bronze appends another change, that change delivered again and an already versioned change delivered again, a second run appends only the new change once, and a third run with nothing new appends nothing; keeps its deduplication state in RocksDB (the checkpoint's state folder holds RocksDB files); and exits with an error when a bronze table is missing.
+- the silver job, run with `--available-now` on the bronze tables those runs leave, writes one version row per bronze change to each entity's silver table, with the bronze values and change metadata and `_is_deleted` true only for the delete, which keeps the last known values; partitions the table by change day and describes every table and column; after bronze appends another change, that change delivered again and an already versioned change delivered again, a second run appends only the new change once, and a third run with nothing new appends nothing; keeps its deduplication state in RocksDB (the checkpoint's state folder holds RocksDB files); and exits with an error when a bronze table is missing; the views job, run after each silver run, creates each entity's history and current views in the JDBC catalog, where the history view folds the unchanged update but keeps the delete and the change after it, and the current view holds the live row with the source values; describes every view and column from its template; leaves the views' metadata files untouched when it runs again with nothing changed; serves the views to `make spark-sql`; and fails before creating any view when a silver table is missing.
 - the gold DDL applies again to an existing database, describes every schema, table and column, keeps only views without `_commit_sequence` and `_is_deleted` in `gold` and hides deleted rows from its current-state views, seeds the date and status dimensions, routes history rows to their monthly or default partition, rejects replayed history rows, orders versions by `_commit_sequence` despite late events, and the four business queries return the expected rows on a fixture with a completed order, a deleted order, an unknown status and ties for third place (each test rolls its rows back).
 
 #### Pre-commit hooks

@@ -1,0 +1,4 @@
+SELECT
+    {{ columns | join(",\n    ") }}
+FROM {{ history }}
+WHERE _is_current AND NOT _is_deleted
