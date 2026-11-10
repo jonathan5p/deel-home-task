@@ -7,11 +7,11 @@ from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.streaming import StreamingQuery
 
 from common.settings import AnalyticsDbSettings
-from pipelines.bronze.job import await_queries, wants_available_now
 from pipelines.gold.dimensions import DIMENSIONS
 from pipelines.gold.postgres import connection_factory
 from pipelines.gold.scd2 import Scd2Dimension
 from pipelines.gold.sink import BatchWriter, Scd2Sink, jdbc_stage, staged_rows
+from pipelines.lake.streams import await_queries, wants_available_now
 from pipelines.settings import GoldSettings
 
 type SilverReader = Callable[[SparkSession, str], DataFrame]

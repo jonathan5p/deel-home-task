@@ -2,33 +2,21 @@ import os
 import sys
 
 from pyspark.sql import SparkSession
-from pyspark.sql.types import (
-    BooleanType,
-    LongType,
-    StringType,
-    StructField,
-    StructType,
-    TimestampType,
-)
+from pyspark.sql.types import StructField, StructType
 
-from pipelines.bronze.tables import SPARK_TYPES
 from pipelines.gold import job
 from pipelines.gold.dimensions import DIMENSIONS
+from pipelines.lake.tables import table_definition
+from pipelines.lake.types import SPARK_TYPES
 from pipelines.schemas.definitions import EntityDefinition
 
 LAKE_CATALOG = "spark.sql.catalog.lake"
-SILVER_METADATA = [
-    StructField("_commit_sequence", LongType()),
-    StructField("_change_op", StringType()),
-    StructField("_changed_at", TimestampType()),
-    StructField("_content_hash", StringType()),
-    StructField("_is_deleted", BooleanType()),
-]
 
 
 def silver_schema(entity: EntityDefinition) -> StructType:
-    columns = [StructField(c.lake_name, SPARK_TYPES[c.type]) for c in entity.all_columns]
-    return StructType([*columns, *SILVER_METADATA])
+    """The real silver table's columns, from the silver template."""
+    columns = table_definition("silver", entity).columns.items()
+    return StructType([StructField(name, SPARK_TYPES[column.type]) for name, column in columns])
 
 
 def register_fixture_catalog(spark: SparkSession, catalog: str, warehouse: str) -> None:

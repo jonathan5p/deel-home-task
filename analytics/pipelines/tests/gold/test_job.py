@@ -16,10 +16,10 @@ from analytics.pipelines.tests.gold.silver_setup import (
     silver_version,
     write_silver,
 )
-from pipelines.bronze.job import await_queries
 from pipelines.gold.dimensions import DIMENSIONS, load_dimensions
 from pipelines.gold.job import dimension_stream, run, scd2_sinks
 from pipelines.gold.sink import Scd2Sink
+from pipelines.lake.streams import await_queries
 from pipelines.settings import GoldSettings
 
 CUSTOMERS = load_dimensions()["dim_customer"]
