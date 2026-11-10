@@ -437,8 +437,9 @@ analytics/
       silver/               silver layer: the transform from bronze rows to version rows, the history and current views, and job.py (streaming job)
       gold/                 gold layer: ddl.py and ddl.sql.j2 (the gold DDL from the gold Avro schemas), scd2.py (the SCD2 SQL),
                             facts.py (the history fact and current-state SQL), dimensions.py (the dimensions and facts
-                            and their lookups), sink.py, postgres.py, job.py (the gold streaming job) and
-                            retention.py and rebuild.py (the gold retention and rebuild jobs)
+                            and their lookups), sink.py, postgres.py, job.py (the gold streaming job),
+                            retention.py and rebuild.py (the gold retention and rebuild jobs) and
+                            quality.py (the gold checks against silver)
     tests/
   sql/gold/                 the four business questions as SQL on the gold views in PostgreSQL
 tests/infra/                infra tests that drive an isolated copy of the stack
@@ -673,6 +674,8 @@ The bronze checks reconcile each topic's landing records with bronze and its qua
 | `committed_records_only` | each table holds only records of the landing files its own query committed |
 
 A record whose file only one of the two queries has committed so far is not missing yet: the other query has not read it. The results report the counts (`committed_records`, `missing`, `held_records`, `duplicated`, `unexpected`) and the committed batch of each query; a topic whose queries have not committed a batch yet has nothing to check and passes.
+
+The gold checks compare every public table view of `gold` with silver, at the silver snapshot of what the gold job has committed: each layer is checked only against the layer it is built from, because the source never stands still. A view passes if it matches silver at the snapshot of its stream's last committed micro-batch or of the one being written, and a stream that has committed nothing fails as not checked. Each result reports the rows in silver and in gold, the rows missing from gold, extra in gold or different, the snapshot compared, and sample keys. They will run as `make data-quality CHECK=gold` once the shared quality job that runs every layer's checks lands. The bounds, the columns compared and those skipped are in [Validation](docs/architecture/gold-model.md#validation). On `current_orders` and `current_order_items` the key and every business column are compared but `_changed_at` is not, because gold's current row takes the time of the latest change, re-snapshots included, while silver's current version starts at the first of the repeats ([Versioning](docs/architecture/gold-model.md#versioning)).
 
 #### Bronze layer
 

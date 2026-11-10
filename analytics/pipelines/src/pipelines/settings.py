@@ -291,6 +291,22 @@ class LandingQualitySettings:
 
 
 @dataclass(frozen=True, slots=True)
+class GoldQualitySettings(SourcedLakeLayerNames):
+    """Reads the silver tables and the gold job's checkpoints."""
+
+    LAYER: ClassVar[str] = GoldSettings.LAYER
+    SOURCE_LAYER: ClassVar[str] = SilverSettings.LAYER
+
+    lake: LakeSettings
+    analytics_db: AnalyticsDbSettings
+
+    @classmethod
+    def from_env(cls, env: Mapping[str, str]) -> Self:
+        require(env, *LakeSettings.REQUIRED, *AnalyticsDbSettings.REQUIRED)
+        return cls(lake=LakeSettings.from_env(env), analytics_db=AnalyticsDbSettings.from_env(env))
+
+
+@dataclass(frozen=True, slots=True)
 class PipelineSettings:
     kafka: KafkaSettings
     lake: LakeSettings

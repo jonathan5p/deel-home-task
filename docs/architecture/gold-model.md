@@ -359,6 +359,23 @@ JOIN lake.gold.dim_product AS p
 
 This join finds no version for a change older than the product's first version (the tables are snapshotted a few milliseconds apart), and finds two when clock skew overlaps two ranges; the attributes the fact carries handle both cases as PostgreSQL does.
 
+## Validation
+
+Each layer is checked only against the layer it is built from, up to what it has committed: the source never stands still, so comparing gold with it would always race. Gold's part of the chain is silver to gold, in `pipelines/gold/quality.py`, which compares every public table view of `gold` with the rows silver's own views give.
+
+- **Bounds.** Each view is compared with silver at the snapshot its gold stream has read up to, from the stream's checkpoint (`<CHECKPOINT_ROOT>/gold/<stream>/`): the Iceberg snapshot of the last batch in `commits/`, and of the newest batch in `offsets/` above it. PostgreSQL commits a batch before Spark writes its `commits/<n>`, so a running job can be one batch ahead. The committed batch is read before gold and the newest batch after it, so gold is at one of the two snapshots, and **a view passes if it matches silver at either**. A stream with no committed batch is reported as not checked, which fails.
+- **Silver side.** The silver table is read at that snapshot and silver's `_history` and `_current` view SQL is rendered over it, so the fold rule, the validity ranges and the current rows come from silver's own definition. Gold's views hide what silver shows in two places, and the silver side mirrors them: a delete is never current, and the dimension views leave deleted versions out.
+- **What is compared.** Every column of the view that silver has, under its silver name from the gold schemas (`from`, the metadata columns, and renames such as `unit_price` from `unity_price`), by key:
+
+  | Gold view | Silver view | Key |
+  | --- | --- | --- |
+  | `dim_customer`, `dim_product` | `<entity>_history`, live versions | business key, `_valid_from` |
+  | `fact_order_history`, `fact_order_item_history` | `<entity>_history`, deletes included | business key, `_changed_at` |
+  | `current_orders`, `current_order_items` | `<entity>_current` | business key |
+
+- **What is skipped.** Columns only gold derives: the surrogate keys, `status_key`, the date keys, the as-of `customer_key`, `product_key` and `unit_price` of the facts, and `line_amount`. `_changed_at` of the current-state views is skipped too, because [current state is the latest change, folded or not](#versioning), while silver's current version starts at the first of the repeats.
+- **Result.** One result per view, with `silver_rows`, `gold_rows`, rows `missing` from gold, rows `extra` in gold, keys whose rows are `different`, and the `snapshot_id` that matched (the committed one when neither did), plus up to 10 sample keys of each kind. The rows are compared as multisets with Spark (`exceptAll` and joins), and gold is read once per view.
+
 ## The four business questions
 
 Each question is a view in `gold`, built on `gold.open_orders` and the `gold` views of the current items and the dimensions, and described like every other view (from its schema in `schemas/gold/<view>.avsc`):

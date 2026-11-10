@@ -4,6 +4,7 @@ from common.settings import AnalyticsDbSettings, InvalidSettingError, MissingSet
 from pipelines.settings import (
     BronzeSettings,
     GoldRetentionSettings,
+    GoldQualitySettings,
     GoldSettings,
     KafkaSettings,
     LakeSettings,
@@ -351,3 +352,26 @@ def test_gold_retention_needs_only_the_database() -> None:
         GoldRetentionSettings.from_env({})
 
     assert error.value.names == AnalyticsDbSettings.REQUIRED
+
+
+def test_gold_quality_settings_read_the_lake_and_the_database() -> None:
+    settings = GoldQualitySettings.from_env(LAKE | DATABASE)
+
+    assert settings.lake == LakeSettings.from_env(LAKE)
+    assert settings.analytics_db == AnalyticsDbSettings.from_env(DATABASE)
+
+
+def test_gold_quality_settings_require_the_lake_and_the_database() -> None:
+    with pytest.raises(MissingSettingsError) as error:
+        GoldQualitySettings.from_env({})
+
+    assert error.value.names == (*LakeSettings.REQUIRED, *AnalyticsDbSettings.REQUIRED)
+
+
+def test_gold_quality_reads_the_silver_tables_and_the_gold_job_checkpoints() -> None:
+    settings = GoldQualitySettings.from_env(LAKE | DATABASE)
+
+    assert settings.source_table("orders") == GoldSettings.from_env(LAKE | DATABASE).source_table(
+        "orders"
+    )
+    assert settings.checkpoint_path("dim_customer") == "s3a://bucket/checkpoints/gold/dim_customer"
