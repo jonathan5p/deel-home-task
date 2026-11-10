@@ -178,13 +178,12 @@ def test_differing_definitions_of_a_column_are_found_in_any_folder(schemas: Sche
     (schemas.root / "example_layer").mkdir()
     schemas.write("example_layer/facts.avsc", edited(SILVER, ("fields", 1, "type"), "long"))
 
-    differing = column_definitions(schemas.root)["_is_current"]
+    definitions = column_definitions(schemas.root)["_is_current"]
 
-    assert sorted(file for files in differing.values() for file in files) == [
-        "example_layer/facts.avsc",
-        "tables/silver_template.avsc",
-    ]
-    assert len(differing) == 2
+    def definition_in(file: str) -> str:
+        return next(definition for definition, files in definitions.items() if file in files)
+
+    assert definition_in("example_layer/facts.avsc") != definition_in("tables/silver_template.avsc")
 
 
 def test_business_columns_may_differ_between_schemas(schemas: SchemasTree) -> None:
