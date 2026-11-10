@@ -1,6 +1,6 @@
 ## Data Engineering Take-Home Task
 
-This README is the run guide. The [docs site](https://jonathan5p.github.io/deel-home-task/) (sources in [`docs/`](docs/README.md), built with `make docs`) has the architecture, the design decisions and the table reference.
+This README is the run guide. The [docs site](https://jonathan5p.github.io/deel-home-task/) (sources in [`docs/`](docs/README.md), built with `make docs`) has the architecture, the sizing strategy, the design decisions and the table reference.
 
 ### Welcome
 

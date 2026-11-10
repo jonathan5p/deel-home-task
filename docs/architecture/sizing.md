@@ -2,16 +2,7 @@
 
 The Spark cluster is sized for one developer machine running the whole stack in Docker. This page states the variables the sizing depends on, ties each setting to one of them, and names the metrics that show whether the sizing holds. The measured values come from a real run (#58).
 
-> **Status.** This page describes the cluster once the open pull requests below have merged. Until then, main has 4-core, 4 GiB workers and three streaming jobs.
->
-> | Part | Pull request or issue |
-> | --- | --- |
-> | Workers with 5 cores and 5 GiB each | #159 |
-> | Gold job, the fourth streaming application | #139, #141 |
-> | Lake maintenance job | #135 |
-> | Business-question views and their indexes | #142 |
-> | Bronze replay, gold rebuild and the data quality runner | #133, #150, #151 |
-> | Measured values in the metrics table | #58 |
+> **In progress.** The "Measured" columns are filled in from a real run in #58.
 
 ## Variables
 
@@ -108,7 +99,7 @@ flowchart LR
 
 ## PostgreSQL query cost
 
-The serving side is sized by query plans, not by Spark resources. The gold indexes exist only for the current use cases: the four business-question views and `gold.open_orders`. Each index was chosen by reading that query's EXPLAIN plan (decision D40, #142).
+The serving side is sized by query plans, not by Spark resources. The gold indexes exist only for the current use cases: the four business-question views and `gold.open_orders`. Each index was chosen by reading that query's EXPLAIN plan (decision [D40](decisions.md#d40--gold-indexes-chosen-from-the-query-plans-of-the-current-use-cases), #142).
 - `current_orders` stores `is_open`.
 - Two partial indexes `WHERE is_open AND NOT _is_deleted` hold only the open orders:
   - `current_orders_open_delivery_idx (delivery_date, status_key)`;
@@ -149,7 +140,7 @@ The "Measured" column is filled in from that run.
 
 ## Scaling to production
 
-The local layout mirrors a production deployment but shares one small cluster (decision D27). This is what would change:
+The local layout mirrors a production deployment but shares one small cluster (decision [D27](decisions.md#d27--one-driver-container-per-application-executors-on-shared-workers)). This is what would change:
 
 - **Deployment.** Each streaming job runs as its own application on a managed runtime:
   - Amazon EMR: a long-running step in YARN cluster mode, so the driver runs in the cluster with YARN's restart attempts. EMR Serverless is an option for the batch jobs.
@@ -162,11 +153,11 @@ The local layout mirrors a production deployment but shares one small cluster (d
   - Gold is bounded by the single writer lock in PostgreSQL. Spark cores don't help there. The options are:
     - longer triggers with larger batches;
     - finer-grained locking once the cross-table consistency rules allow it;
-    - a store built for larger fact volumes (decision D3 names ClickHouse).
+    - a store built for larger fact volumes (decision [D3](decisions.md#d3--gold-in-postgresql-not-clickhouse) names ClickHouse).
 - **Rates.** `maxOffsetsPerTrigger` caps catch-up batches, and the triggers are chosen from the latency target and the commit cost.
 - **Memory.** Executor memory is sized from the batch size and RocksDB's footprint. `spark.sql.streaming.stateStore.rocksdb.boundedMemoryUsage` bounds RocksDB's native memory per executor.
 - **Storage and catalog.**
-  - SeaweedFS gives way to S3, a configuration change (decisions D8, D13).
+  - SeaweedFS gives way to S3, a configuration change (decisions [D8](decisions.md#d8--fully-local-no-cloud-services), [D13](decisions.md#d13--object-store-seaweedfs-instead-of-minio)).
   - The JDBC catalog gives way to a REST catalog or AWS Glue.
   - Checkpoints and event logs live on S3, and the history server reads them there.
 - **Monitoring.** The metrics above go to a time-series system instead of being read from the UI (#126), and the per-batch stats into an observability catalog (#127).

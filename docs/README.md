@@ -5,6 +5,7 @@ The design documentation of the pipeline that streams the supplied `finance_db` 
 ## Architecture
 
 - [Architecture overview](architecture/overview.md): every service, the data flow from the source database to gold, one micro-batch end to end, the replay, rebuild, retention and maintenance operations, and the data quality chain.
+- [Spark sizing strategy](architecture/sizing.md): the variables the cluster is sized by, how cores and memory are shared between the jobs, the PostgreSQL query cost of the business views, the key streaming metrics, and scaling to production.
 - [Design decisions](architecture/decisions.md): the main design decisions, the alternatives weighed, and links to their issues and pull requests.
 - [Gold model](architecture/gold-model.md): the dimensional model in PostgreSQL, its rules, the business-question views and the indexes behind them.
 
