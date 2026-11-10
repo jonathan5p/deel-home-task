@@ -1,0 +1,34 @@
+{
+  "type": "record",
+  "name": "silver_template",
+  "namespace": "lake",
+  "doc": "{entity_description}. Append-only version history of source table {entity}: one row per change, never updated or removed; the input of the gold layer",
+  "include": ["source", "audit"],
+  "fields": [
+    {
+      "name": "_commit_sequence",
+      "type": "long",
+      "doc": "Position of the change in the source's commit log (Debezium source.lsn); increases in commit order"
+    },
+    {
+      "name": "_change_op",
+      "type": "string",
+      "doc": "Kind of change: create, update, delete or snapshot (Debezium op c, u, d or r)"
+    },
+    {
+      "name": "_changed_at",
+      "type": {"type": "long", "logicalType": "timestamp-millis"},
+      "doc": "Time the change was committed in the source database (Debezium source.ts_ms)"
+    },
+    {
+      "name": "_content_hash",
+      "type": "string",
+      "doc": "Hex SHA-256 of the content columns (key and audit columns excluded); unchanged content keeps its hash"
+    },
+    {
+      "name": "_is_deleted",
+      "type": "boolean",
+      "doc": "Whether the row was deleted in the source; the version keeps its last known values"
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 import pytest
 
-from pipelines.bronze.columns import MetadataColumn, RawColumn
+from pipelines.bronze.columns import RawColumn
+from pipelines.lake.columns import MetadataColumn
 from pipelines.schemas.definitions import load_entity, load_table_templates
 from tests.infra.bronze_setup import (
     AUDIT_BRONZE,

@@ -1,9 +1,10 @@
 import json
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TypedDict
 
-from pipelines.bronze.columns import MetadataColumn
+from pipelines.lake.columns import MetadataColumn
 from tests.infra.landing_avro import landing_avro
 from tests.infra.stack import Stack
 
@@ -192,15 +193,22 @@ def land(stack: Stack, batch: str, records: dict[str, list[Json]]) -> None:
     submit(stack, LAND_APP, f"s3a://lake/{STAGING_KEY}")
 
 
-def run_bronze_and_read_tables(stack: Stack) -> Tables:
-    submit(stack, BRONZE_APP, "--available-now")
-    output = submit(stack, ROWS_APP, *TABLES)
-    tables: Tables = {}
+def read_tables(
+    stack: Stack, tables: Sequence[str], order_by: Callable[[dict[str, str | None]], int]
+) -> Tables:
+    """Every row of each table, with every value as text, sorted by `order_by`."""
+    output = submit(stack, ROWS_APP, *tables)
+    read: Tables = {}
     for line in output.splitlines():
         if line.startswith(ROWS_PREFIX):
             dump = json.loads(line.removeprefix(ROWS_PREFIX))
-            tables[dump["table"]] = sorted(dump["rows"], key=offset)
-    return tables
+            read[dump["table"]] = sorted(dump["rows"], key=order_by)
+    return read
+
+
+def run_bronze_and_read_tables(stack: Stack) -> Tables:
+    submit(stack, BRONZE_APP, "--available-now")
+    return read_tables(stack, TABLES, offset)
 
 
 def offsets(rows: Rows) -> list[int]:
@@ -213,9 +221,10 @@ class StoredDescription(TypedDict):
     columns: dict[str, str | None]
 
 
-def table_descriptions(stack: Stack) -> list[StoredDescription]:
-    """The comment and column docs of every bronze table, as the catalog stores them."""
-    output = submit(stack, DESCRIPTIONS_APP, *TABLES)
+def table_descriptions(stack: Stack, tables: Sequence[str] = TABLES) -> list[StoredDescription]:
+    """The comment and column docs of each table (every bronze table by default), as the catalog
+    stores them."""
+    output = submit(stack, DESCRIPTIONS_APP, *tables)
     return [
         json.loads(line.removeprefix(DESCRIPTIONS_PREFIX))
         for line in output.splitlines()

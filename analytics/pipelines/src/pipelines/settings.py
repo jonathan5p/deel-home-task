@@ -13,6 +13,7 @@ from common.settings import (
 
 DEFAULT_LANDING_TRIGGER_SECONDS = 10
 DEFAULT_BRONZE_TRIGGER_SECONDS = 10
+DEFAULT_SILVER_TRIGGER_SECONDS = 10
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,6 +47,12 @@ class LakeSettings:
     def landing_path(self, topic: str) -> str:
         return f"{self.root}/landing/{topic}"
 
+    def table(self, layer: str, name: str) -> str:
+        return f"{self.catalog}.{layer}.{name}"
+
+    def checkpoint_path(self, layer: str, name: str) -> str:
+        return f"{self.checkpoint_root}/{layer}/{name}"
+
 
 @dataclass(frozen=True, slots=True)
 class LandingSettings:
@@ -73,6 +80,8 @@ class LandingSettings:
 
 @dataclass(frozen=True, slots=True)
 class BronzeSettings:
+    LAYER: ClassVar[str] = "bronze"
+
     topics: tuple[str, ...]
     lake: LakeSettings
     trigger_seconds: int
@@ -92,10 +101,39 @@ class BronzeSettings:
         return self.lake.landing_path(topic)
 
     def table(self, name: str) -> str:
-        return f"{self.lake.catalog}.bronze.{name}"
+        return self.lake.table(self.LAYER, name)
 
     def checkpoint_path(self, name: str) -> str:
-        return f"{self.lake.checkpoint_root}/bronze/{name}"
+        return self.lake.checkpoint_path(self.LAYER, name)
+
+
+@dataclass(frozen=True, slots=True)
+class SilverSettings:
+    LAYER: ClassVar[str] = "silver"
+
+    topics: tuple[str, ...]
+    lake: LakeSettings
+    trigger_seconds: int
+
+    @classmethod
+    def from_env(cls, env: Mapping[str, str]) -> Self:
+        topics, *_ = require(env, "KAFKA_TOPICS", *LakeSettings.REQUIRED)
+        return cls(
+            topics=split_list("KAFKA_TOPICS", topics),
+            lake=LakeSettings.from_env(env),
+            trigger_seconds=positive_int(
+                env, "SILVER_TRIGGER_SECONDS", DEFAULT_SILVER_TRIGGER_SECONDS
+            ),
+        )
+
+    def bronze_table(self, name: str) -> str:
+        return self.lake.table(BronzeSettings.LAYER, name)
+
+    def table(self, name: str) -> str:
+        return self.lake.table(self.LAYER, name)
+
+    def checkpoint_path(self, name: str) -> str:
+        return self.lake.checkpoint_path(self.LAYER, name)
 
 
 @dataclass(frozen=True, slots=True)

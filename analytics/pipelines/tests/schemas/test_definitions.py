@@ -43,6 +43,7 @@ def test_the_schemas_folder_holds_the_shared_sources_and_tables_schemas() -> Non
         "sources/products.avsc",
         "tables/bronze_quarantine_template.avsc",
         "tables/bronze_template.avsc",
+        "tables/silver_template.avsc",
     ]
 
 
@@ -204,7 +205,7 @@ def test_table_templates_describe_the_tables_of_an_entity() -> None:
     templates = load_table_templates()
     orders = load_entity("orders")
 
-    assert set(templates) == {"bronze", "bronze_quarantine"}
+    assert set(templates) == {"bronze", "bronze_quarantine", "silver"}
     assert templates["bronze"].describe(orders).startswith(f"{orders.description}. Change log")
     assert "source table orders" in templates["bronze_quarantine"].describe(orders)
 

@@ -27,7 +27,7 @@ from pipelines.schemas.render import (
 RENDERED = render_tables(load_table_templates().values(), load_entities())
 
 
-def test_every_entity_has_a_rendered_bronze_and_quarantine_schema() -> None:
+def test_every_entity_has_a_rendered_bronze_quarantine_and_silver_schema() -> None:
     assert sorted(RENDERED) == [
         "bronze/customers.avsc",
         "bronze/customers_quarantine.avsc",
@@ -37,6 +37,10 @@ def test_every_entity_has_a_rendered_bronze_and_quarantine_schema() -> None:
         "bronze/orders_quarantine.avsc",
         "bronze/products.avsc",
         "bronze/products_quarantine.avsc",
+        "silver/customers.avsc",
+        "silver/order_items.avsc",
+        "silver/orders.avsc",
+        "silver/products.avsc",
     ]
 
 

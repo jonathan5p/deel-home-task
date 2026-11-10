@@ -232,6 +232,7 @@ bootstrap.servers=localhost:9092
 | `spark-app` (one container per run) | http://localhost:4040 | Driver of an application started by `make spark-submit`; its UI is only available while it runs |
 | `landing-job` (optional) | http://localhost:4040 | Driver of the landing job, a long-running service started by `make pipeline` (see [Running the pipeline](#running-the-pipeline)) |
 | `bronze-job` (optional) | http://localhost:4041 | Driver of the bronze job, started the same way |
+| `silver-job` (optional) | http://localhost:4042 | Driver of the silver job, started the same way |
 
 Spark runs PySpark on **Python 3.14** (3.14.10), the newest version PySpark 4.1.4 supports. The official `apache/spark` images ship Python 3.10, so the Dockerfile installs CPython 3.14 with [uv](https://docs.astral.sh/uv/) at build time and points `PYSPARK_PYTHON` at it; every driver and executor uses it.
 
@@ -357,7 +358,9 @@ analytics/
       schemas/              the Avro table and column schemas, their loader, and the landing record schema
       quality/checks.py     the data quality check framework
       landing/              landing layer: job.py (streaming job), quality.py and quality_job.py (data quality checks)
+      lake/                 code the lake layers share: metadata column names, Spark types, Iceberg table creation and description sync, starting and awaiting streaming queries
       bronze/               bronze layer: source entities, the transforms from landing records to bronze rows, and job.py (streaming job)
+      silver/               silver layer: the transform from bronze rows to version rows, and job.py (streaming job)
     tests/
 tests/infra/                infra tests that drive an isolated copy of the stack
   apps/                     Spark applications they submit (UI check, Iceberg smoke check, version and hold apps, fixture helpers)
@@ -383,7 +386,7 @@ The pipelines name and describe their tables and columns from one set of [Avro s
 ```text
 audit.avsc                        shared record: the audit columns every source table ends with (updated_at, updated_by, created_at, created_by)
 sources/<table>.avsc              one source table of the operations schema (customers, products, orders, order_items)
-tables/<table>_template.avsc      one table a layer keeps per entity (bronze, bronze_quarantine): its description, the column
+tables/<table>_template.avsc      one table a layer keeps per entity (bronze, bronze_quarantine, silver): its description, the column
                                   groups it includes and the full definition of the layer's own columns
 definitions.py                    the loader
 render.py                         renders every resulting table as a flat Avro schema (make schemas, into target/schemas/)
@@ -445,15 +448,15 @@ A table template is the layout of one table a layer keeps per entity. It is an o
 So `lake.bronze.order_items` is the source fields of `order_items`, then its audit fields, then the nine fields of `bronze_template.avsc`; the quarantine template includes nothing (`"include": []`) and its table is just its own fields.
 
 - **Why this shape:** every description is defined once, next to the table that owns the column, and each template reads as the table it produces. Avro can reference a named record from another file, but a reference nests the fields under one column instead of flattening them, so the flat composition (`include` on source records and templates) is our own convention, done by the loader.
-- **The resulting tables, flat:** `make schemas` renders the full flat Avro schema of every lake table (each template plus the entity's source and audit columns, with every column's type, nullability and description) into the git-ignored `target/schemas/<layer>/<table>.avsc` (`target/schemas/bronze/orders.avsc`, `orders_quarantine.avsc` and so on), as plain, standard Avro records with namespace `lake.<layer>` and the filled-in table description. They are for reading only: like dbt's `target/`, they are build output, regenerated on every run and never committed. To change a table, edit the definitions in `analytics/pipelines/src/pipelines/schemas/`, not the rendered output. A unit test checks the rendered columns and types against the schema the bronze job actually writes.
-- **Types** follow Avro: `long` (BIGINT), `int` (INTEGER), `string` (VARCHAR), `boolean`, `{"type": "long", "logicalType": "timestamp-millis"}` (TIMESTAMP(3)), `{"type": "int", "logicalType": "date"}` and `{"type": "bytes", "logicalType": "decimal", "precision": 38, "scale": 10}`. The source DECIMAL declares no precision, so it has no exact Avro equivalent: the schemas declare DECIMAL(38,10), the type bronze stores. Each layer maps these types to its engine's types (bronze: `tables.py`).
+- **The resulting tables, flat:** `make schemas` renders the full flat Avro schema of every lake table (each template plus the entity's source and audit columns, with every column's type, nullability and description) into the git-ignored `target/schemas/<layer>/<table>.avsc` (`target/schemas/bronze/orders.avsc`, `orders_quarantine.avsc` and so on), as plain, standard Avro records with namespace `lake.<layer>` and the filled-in table description. They are for reading only: like dbt's `target/`, they are build output, regenerated on every run and never committed. To change a table, edit the definitions in `analytics/pipelines/src/pipelines/schemas/`, not the rendered output. A unit test checks the rendered columns and types against the schema the bronze and silver jobs actually write.
+- **Types** follow Avro: `long` (BIGINT), `int` (INTEGER), `string` (VARCHAR), `boolean`, `{"type": "long", "logicalType": "timestamp-millis"}` (TIMESTAMP(3)), `{"type": "int", "logicalType": "date"}` and `{"type": "bytes", "logicalType": "decimal", "precision": 38, "scale": 10}`. The source DECIMAL declares no precision, so it has no exact Avro equivalent: the schemas declare DECIMAL(38,10), the type bronze stores. The lake layers map these types to Spark types in `pipelines/lake/types.py`.
 - **Nullability** follows Avro too: a column that is NOT NULL in the source, or always set by the pipeline, has the plain type; a nullable one is the union `["null", <type>]` with `"default": null`.
 - **Custom properties** carry what Avro has no attribute for (Avro allows extra attributes and ignores them): `key` on a source record names its primary key, `renamed_to` on a field gives its name in the lake when the source name is misspelled, and `include` composes column groups as above.
 - **A metadata (`_`) column used by several schemas** (such as the Kafka coordinates, in bronze and its quarantine, or `_commit_sequence` in bronze and gold) is defined in each, and a unit test checks that every definition of it, in any `.avsc` under `pipelines/schemas/`, has the same type, nullability and description. Business columns are exempt: a key and the references to it share a name but not a description or nullability.
 
 `pipelines.schemas.definitions` reads the files with the standard `json` module, so the Spark image needs no Avro library, into frozen dataclasses: `load_entities()` and `load_entity(name)` (`EntityDefinition`: `name`, `key`, `description`, `columns`, `included_columns`, `all_columns`), `load_shared_columns(name)` and `load_table_templates()` (`TableTemplate`, by name without `_template`: `name`, `description`, `include` (`ColumnGroup`s), `fields`, `layer`, `describe(entity)`, `table_name(entity)`, `columns_for(entity)`). A column is a `ColumnDefinition` (`name`, `type`, `description`, `not_null`, `renamed_to`, `lake_name`). The loader refuses, naming the file, a type it does not support, an unknown property, a missing or blank `doc`, a nullable field without `"default": null`, a key that is not a field, an unknown include, a template without columns or whose name does not end in `_template`, a record whose `name` differs from its file name, or two columns with the same lake name. A unit test also checks every file, and every source table with its included fields, with `fastavro.parse_schema` (a development dependency only).
 
-To add or change a column or a description, edit the schema file (a new field goes where the column is in the source; a new pipeline column goes in the `fields` of each template that holds it, defined the same way in each), then restart the job (run `make schemas` to read the resulting tables): the descriptions of existing tables are updated on start, while new columns also need `ALTER TABLE ... ADD COLUMN` (see schema evolution in the bronze layer). Column names used in code stay typed (bronze's `MetadataColumn` and `RawColumn` enums), and a test checks each of them is defined in a template and that each bronze template's fields are exactly the columns the job writes to that table.
+To add or change a column or a description, edit the schema file (a new field goes where the column is in the source; a new pipeline column goes in the `fields` of each template that holds it, defined the same way in each), then restart the job (run `make schemas` to read the resulting tables): the descriptions of existing tables are updated on start, while new columns also need `ALTER TABLE ... ADD COLUMN` (see schema evolution in the bronze layer). Column names used in code stay typed (the `MetadataColumn` enum in `pipelines/lake/columns.py`, shared by every layer, and bronze's `RawColumn`), and tests check that each of them is defined in a template and that the fields of each bronze and silver template are exactly the columns the job writes to that table.
 
 #### Configuration
 
@@ -478,12 +481,13 @@ The code holds no deployment details: anything that depends on where it runs (br
 | `CHECKPOINT_ROOT` | `pipelines.settings.LakeSettings` | `<LAKE_ROOT>/checkpoints` | not set | Root for Structured Streaming checkpoints |
 | `LANDING_TRIGGER_SECONDS` | `pipelines.settings.LandingSettings` | `10` | not set | Micro-batch interval of the landing job (a positive integer) |
 | `BRONZE_TRIGGER_SECONDS` | `pipelines.settings.BronzeSettings` | `10` | not set | Micro-batch interval of the bronze job (a positive integer) |
+| `SILVER_TRIGGER_SECONDS` | `pipelines.settings.SilverSettings` | `10` | not set | Micro-batch interval of the silver job (a positive integer) |
 | `LANDING_CHECK_LAST_OFFSETS` | `pipelines.settings.LandingQualitySettings` | all landed offsets | not set | Limit the landing data quality checks to the latest offsets of each partition (a positive integer) |
 | `ANALYTICS_DB_URL` | `common.settings.AnalyticsDbSettings` | required | `jdbc:postgresql://analytics-db:5432/analytics` | JDBC URL of the analytics database (gold layer) |
 | `ANALYTICS_DB_USER` | `common.settings.AnalyticsDbSettings` | required | `analytics` | Analytics database user |
 | `ANALYTICS_DB_PASSWORD` | `common.settings.AnalyticsDbSettings` | required | `analytics` | Analytics database password |
 
-`PipelineSettings` combines the Kafka, lake and analytics database settings. `LandingSettings` combines the Kafka and lake settings with the trigger interval and needs no database credentials. `BronzeSettings` needs only `KAFKA_TOPICS`, the lake settings and its trigger interval: it reads the landing zone, not Kafka. A missing or empty required variable raises `MissingSettingsError`, which lists every missing name of the settings being built at once; a malformed value, such as an empty topic list or a trigger interval that is not a positive integer, raises `InvalidSettingError`.
+`PipelineSettings` combines the Kafka, lake and analytics database settings. `LandingSettings` combines the Kafka and lake settings with the trigger interval and needs no database credentials. `BronzeSettings` needs only `KAFKA_TOPICS`, the lake settings and its trigger interval: it reads the landing zone, not Kafka. `SilverSettings` needs the same, with its own trigger interval: `KAFKA_TOPICS` only names the entities whose bronze tables it reads. A missing or empty required variable raises `MissingSettingsError`, which lists every missing name of the settings being built at once; a malformed value, such as an empty topic list or a trigger interval that is not a positive integer, raises `InvalidSettingError`.
 
 #### Landing zone
 
@@ -491,7 +495,7 @@ The landing job (`analytics/pipelines/src/pipelines/landing/job.py`) streams eve
 
 ```sh
 make pipeline PIPELINE=landing   # as a long-running service; see Running the pipeline below
-make spark-submit SPARK_APP=analytics/pipelines/src/pipelines/landing/job.py SPARK_CONF="spark.cores.max=2" SPARK_UI_PORT=4042   # or ad hoc, in the foreground
+make spark-submit SPARK_APP=analytics/pipelines/src/pipelines/landing/job.py SPARK_CONF="spark.cores.max=2" SPARK_UI_PORT=4050   # or ad hoc, in the foreground
 ```
 
 - **One streaming query per topic,** reading from the earliest offset and writing to `<LAKE_ROOT>/landing/<topic>/`: one folder per topic, with no partition folders.
@@ -510,12 +514,13 @@ make pipeline-logs PIPELINE=landing   # follow the job's logs (Ctrl+C stops foll
 make pipeline-stop PIPELINE=landing   # stop and remove the job; the rest of the stack keeps running
 ```
 
-`make pipeline` rebuilds changed images like `make up`, starts the default stack and the Spark History Server, then starts the selected jobs. Running it again after a code change restarts only the jobs whose image changed. A change to the Spark image restarts the cluster, and a job's driver does not survive that; `make pipeline` restarts the jobs along with it, but after a plain `make up`, run `make pipeline` again. Without a valid `PIPELINE` (`landing`, `bronze` or `all`), the targets fail and list the valid names. `make down` stops the jobs with the rest of the stack.
+`make pipeline` rebuilds changed images like `make up`, starts the default stack and the Spark History Server, then starts the selected jobs. Running it again after a code change restarts only the jobs whose image changed. A change to the Spark image restarts the cluster, and a job's driver does not survive that; `make pipeline` restarts the jobs along with it, but after a plain `make up`, run `make pipeline` again. Without a valid `PIPELINE` (`landing`, `bronze`, `silver` or `all`), the targets fail and list the valid names. `make down` stops the jobs with the rest of the stack.
 
 | Job | Service | Application UI |
 | --- | --- | --- |
 | landing | `landing-job` | http://localhost:4040 |
 | bronze | `bronze-job` | http://localhost:4041 |
+| silver | `silver-job` | http://localhost:4042 |
 
 Where to look while a job runs:
 
@@ -525,7 +530,7 @@ Where to look while a job runs:
 
 Each job service submits its application with the same settings as `make spark-submit`, plus `spark.cores.max=2` and the service name as the driver host, so executors on the workers can connect back to it. The services restart unless they were stopped (`restart: unless-stopped`): a job whose driver fails is restarted and resumes from its checkpoints, without skipping or duplicating records. A container stopped with `make pipeline-stop` or `docker stop`/`docker kill` stays stopped until the next `make pipeline`.
 
-The cluster has two workers with 4 cores each, and each job takes at most 2 cores. That leaves room for three jobs plus 2 cores for ad-hoc runs (`make spark-submit`, `make spark-sql`, `make data-quality`); further runs wait for free cores until one ends. Each executor takes Spark's default 1 GiB, within the workers' 4 GiB.
+The cluster has two workers with 4 cores each, and each job takes at most 2 cores. That leaves room for the three jobs (landing, bronze and silver) plus 2 cores for ad-hoc runs (`make spark-submit`, `make spark-sql`, `make data-quality`); further runs wait for free cores until one ends. Each executor takes Spark's default 1 GiB, within the workers' 4 GiB.
 
 #### Data quality checks
 
@@ -561,10 +566,10 @@ Bronze is a typed, faithful log of every change event: one row per event, no ded
 
 - `entities.py`: one `Entity` per source table, built from its Avro schema in `pipelines/schemas/sources/`, with its key, content and audit columns, its NOT NULL columns and the JSON row schema Debezium emits. `entity_for_topic` resolves the entity from the last segment of a `<prefix>.<schema>.<table>` topic and rejects unknown tables.
 - `parse.py`: `parse_changes(records, entity)` turns landing records (the Kafka columns as landed, plus `_landing_file`, the path of the landing file each record was read from) into typed bronze rows and quarantine rows. It is a pure DataFrame transform, so it works on batch and streaming DataFrames.
-- `columns.py`: the names of the metadata columns (`MetadataColumn`) and of the raw Kafka columns quarantine keeps (`RawColumn`), as string enums used everywhere instead of literals.
-- `tables.py`: the definitions of the bronze and quarantine tables (descriptions and types from the Avro schemas, mapped to Spark types), and the creation of the Iceberg tables and the update of their descriptions.
+- `columns.py`: the names of the raw Kafka columns quarantine keeps (`RawColumn`) and the column order of bronze and quarantine metadata, as string enums and tuples used instead of literals. The metadata column names themselves (`MetadataColumn`) and the `_change_op` values (`ChangeOp`) are in `pipelines/lake/columns.py`, shared with silver.
+- `tables.py`: the definitions of the bronze and quarantine tables (descriptions and columns from the Avro schemas, partitioned by `_published_at`). Creating the Iceberg tables and updating their descriptions is shared with silver, in `pipelines/lake/tables.py`.
 - `decimals.py` and `content_hash.py`: the decimal decoding and the content hash below, in plain Spark SQL functions (no Python UDFs).
-- `job.py`: the bronze streaming job, which runs `parse_changes` on every landing topic folder and appends the results to Iceberg tables.
+- `job.py`: the bronze streaming job, which runs `parse_changes` on every landing topic folder and appends the results to Iceberg tables. Starting the queries and the fail-fast wait below are shared with silver, in `pipelines/lake/streams.py`.
 
 Run it as a service with `make pipeline PIPELINE=bronze` (see [Running the pipeline](#running-the-pipeline)). It reads what the landing job writes, so run both, or `PIPELINE=all`. Until the landing job has written a topic's first file, the bronze job stops with `PATH_NOT_FOUND` for that topic's folder and Compose restarts it. Don't also start it with `make spark-submit` while the service runs: both would write to the same tables with the same checkpoints.
 
@@ -631,6 +636,25 @@ Kafka coordinates are lineage; the change identity is the entity key, `_commit_s
 
 **Tables created by an earlier version of the job.** A local lake whose bronze tables predate the `_` prefix still has `change_position` and unprefixed metadata columns where the job now writes `_commit_sequence` and the other `_` columns, so appends to it fail. Drop those tables (`DROP TABLE lake.bronze.<entity> PURGE` in `make spark-sql`) together with their checkpoints under `<CHECKPOINT_ROOT>/bronze/`, so the job recreates them and reprocesses the landing zone; `make clean CONFIRM=1` does the same by discarding all local data. Tables with the current columns only need a restart of the job to get their descriptions.
 
+#### Silver layer
+
+Silver is the version history of each source table: one row per bronze change, appended and never updated or removed. Gold reads it as a stream, and an Iceberg stream only accepts append snapshots, so silver must stay append-only. It does not deduplicate. The package `analytics/pipelines/src/pipelines/silver/` holds:
+
+- `versions.py`: `versions(bronze, entity)` turns bronze rows into version rows. It is a pure DataFrame transform (no UDFs), so it works on batch and streaming DataFrames.
+- `columns.py`: the metadata columns silver copies from bronze and the one it adds, in table order.
+- `tables.py`: the definition of the silver table (description and columns from `tables/silver_template.avsc`, partitioned by `_changed_at`).
+- `job.py`: the silver streaming job, which reads each bronze table as an Iceberg stream and appends its version rows to the silver table.
+
+Run it as a service with `make pipeline PIPELINE=silver` (see [Running the pipeline](#running-the-pipeline)). It reads the bronze tables, so bronze must be running too (with landing before it), or use `PIPELINE=all`. Until the bronze job has created an entity's table, the silver job stops at start with `TABLE_OR_VIEW_NOT_FOUND` for that table, before it creates any silver table, and Compose restarts it. Don't also start it with `make spark-submit` while the service runs: both would write to the same tables with the same checkpoints.
+
+- **One streaming query per topic** in `KAFKA_TOPICS`, for the entity the topic names (the same configuration and mapping as bronze): it reads `<ICEBERG_CATALOG>.bronze.<entity>` with Iceberg's streaming source (`spark.readStream.table`) and appends to `<ICEBERG_CATALOG>.silver.<entity>` (checkpoint `<CHECKPOINT_ROOT>/silver/<entity>/`). Locally that is `lake.bronze.customers` into `lake.silver.customers` and so on.
+- **Columns:** the entity key and the business and audit columns, exactly as bronze has them (under their lake names, so `quantity`, and `unity_price` as `decimal(38,10)`); then `_commit_sequence`, `_change_op`, `_changed_at` and `_content_hash`, copied from bronze; then `_is_deleted`, true when `_change_op` is `delete`. Bronze takes a delete's values from Debezium's `before` image, which holds the full row because the source tables use `REPLICA IDENTITY FULL`, so a delete version keeps the row's last known values. The Kafka coordinates, `_published_at` and `_captured_at` stay in bronze.
+- **Tables are created at start** when missing, the same way as bronze (`CREATE NAMESPACE IF NOT EXISTS silver`, then `writeTo(...).create()` from an empty DataFrame with the schema of the version rows), partitioned by `days(_changed_at)`, with `write.distribution-mode` `none` for the same reason as bronze. Every column is nullable. The schema of an existing table is never altered.
+- **Every table and column is described from the Avro schemas,** as in bronze: the table comment is the description in `tables/silver_template.avsc`, the business columns take the `doc` of their source schema and the metadata columns the one in the template, which defines the four copied columns exactly as `bronze_template.avsc` does. On every start the job updates only the stored descriptions that differ (`ALTER TABLE ... SET TBLPROPERTIES ('comment' = ...)`, `ALTER TABLE ... ALTER COLUMN ... COMMENT ...`), and it refuses to start when a column has no definition or a different type. `make schemas` renders the flat result to `target/schemas/silver/`, and `DESCRIBE TABLE EXTENDED lake.silver.customers` shows the stored descriptions.
+- **Restart-safe, exactly once:** each query's checkpoint records the bronze snapshots it has read, and Iceberg's streaming sink skips a batch it has already committed, so a restart neither skips nor repeats bronze rows: each bronze row appears once in its silver table. Bronze is not deduplicated, so neither is silver yet: a change Debezium delivered twice is two rows in both.
+- **Micro-batches** run every `SILVER_TRIGGER_SECONDS` until the job is stopped; `SPARK_APP_ARGS=--available-now` processes the bronze snapshots committed so far and then stops.
+- **Fail fast:** like bronze, when any query stops or fails the job stops the others and exits non-zero if a query failed, so Compose restarts it from its checkpoints.
+
 #### Tests, lint and format
 
 The checks run in a throwaway container from the `app` image, with `analytics/` and `tests/` mounted, so they use the cluster's exact Spark and Python versions and pick up edits without a rebuild. They use their own Compose project, named after the checkout folder (`deel-checks-<folder>`, lowercased, with every character other than letters, digits, `_` and `-` replaced by `-`), with one app image (`<project>-spark-app`), so checks in different checkouts or worktrees never share an image and can run in parallel:
@@ -664,7 +688,8 @@ They start an isolated Compose project named after the checkout folder (`deel-in
 - each application run gets its own driver container, which is removed when the application ends;
 - two applications capped with `spark.cores.max=2` run at the same time, both with executors, in two separate driver containers;
 - the landing example queries (`make spark-sql`) return the expected records from neutral, landing-shaped fixture data (topics `topic-a` and `topic-b`), including an update, a delete, a tombstone and a snapshot read, and inspect only the chosen topic;
-- the bronze job, run with `--available-now` on records landed through the landing job's file sink (topics `test.operations.<table>`), writes typed rows with their change metadata to each entity's Iceberg table, partitioned by publish day; quarantines invalid records while valid ones flow, each with the path of the landing file it was read from, and drops tombstones; after new records land, a second run appends only those, and a third run with nothing new appends nothing, so every Kafka offset is written exactly once; and ignores an Avro file in a landing folder that the commit log does not record.
+- the bronze job, run with `--available-now` on records landed through the landing job's file sink (topics `test.operations.<table>`), writes typed rows with their change metadata to each entity's Iceberg table, partitioned by publish day; quarantines invalid records while valid ones flow, each with the path of the landing file it was read from, and drops tombstones; after new records land, a second run appends only those, and a third run with nothing new appends nothing, so every Kafka offset is written exactly once; and ignores an Avro file in a landing folder that the commit log does not record;
+- the silver job, run with `--available-now` on the bronze tables those runs leave, writes one version row per bronze change to each entity's silver table, with the bronze values and change metadata and `_is_deleted` true only for the delete, which keeps the last known values; partitions the table by change day and describes every table and column; after bronze appends another change, a second run appends only that one, and a third run with nothing new appends nothing; and exits with an error when a bronze table is missing.
 
 #### Pre-commit hooks
 

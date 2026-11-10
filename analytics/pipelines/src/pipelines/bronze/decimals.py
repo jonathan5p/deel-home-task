@@ -1,9 +1,10 @@
 from pyspark.sql import Column
 from pyspark.sql import functions as F
-from pyspark.sql.types import DecimalType
 
-BRONZE_SCALE = 10
-BRONZE_DECIMAL = DecimalType(38, BRONZE_SCALE)
+from pipelines.lake.types import LAKE_DECIMAL
+
+BRONZE_DECIMAL = LAKE_DECIMAL
+BRONZE_SCALE = BRONZE_DECIMAL.scale
 MAX_UNSCALED_BYTES = 8
 
 

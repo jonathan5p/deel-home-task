@@ -34,25 +34,27 @@ from analytics.pipelines.tests.bronze.parse_samples import (
     source_row,
     without,
 )
-from pipelines.bronze.columns import (
-    BRONZE_METADATA_COLUMNS,
-    QUARANTINE_COLUMNS,
-    MetadataColumn,
-    RawColumn,
-)
+from pipelines.bronze.columns import BRONZE_METADATA_COLUMNS, QUARANTINE_COLUMNS, RawColumn
 from pipelines.bronze.entities import CUSTOMERS, ENTITIES, ORDER_ITEMS, ORDERS, PRODUCTS, Entity
 from pipelines.bronze.parse import (
     FailureReason,
     parse_changes,
 )
+from pipelines.lake.columns import ChangeOp, MetadataColumn
 
 
 @pytest.mark.parametrize("entity", ENTITIES, ids=ENTITY_IDS)
 @pytest.mark.parametrize(
-    ("op", "change_op"), [("c", "create"), ("u", "update"), ("r", "snapshot"), ("d", "delete")]
+    ("op", "change_op"),
+    [
+        ("c", ChangeOp.CREATE),
+        ("u", ChangeOp.UPDATE),
+        ("r", ChangeOp.SNAPSHOT),
+        ("d", ChangeOp.DELETE),
+    ],
 )
 def test_every_op_becomes_one_typed_bronze_row(
-    spark: SparkSession, entity: Entity, op: str, change_op: str
+    spark: SparkSession, entity: Entity, op: str, change_op: ChangeOp
 ) -> None:
     parsed = parse(spark, entity, change(entity, op))
 
