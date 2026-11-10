@@ -1,18 +1,33 @@
+from collections.abc import Sequence
 from datetime import datetime
 
+import pytest
 from pyspark.sql import DataFrame, Row, SparkSession
 
 from analytics.pipelines.tests.bronze.job_setup import record
 from analytics.pipelines.tests.bronze.parse_samples import envelope, source_row
 from pipelines.bronze.entities import Entity
 from pipelines.bronze.job import run
-from pipelines.bronze.replay import OffsetRange, ReplayRequest, ReplaySummary, replay
+from pipelines.bronze.replay import (
+    OffsetRange,
+    ReplayRequest,
+    ReplaySummary,
+    parse_request,
+    replay,
+)
 from pipelines.lake.columns import MetadataColumn
 from pipelines.lake.streams import await_queries
 from pipelines.schemas import KAFKA_RECORD_SCHEMA
 from pipelines.settings import BronzeSettings
 
 FIRST_LSN = 500
+
+
+def refusal(argv: Sequence[str], capsys: pytest.CaptureFixture[str]) -> str:
+    """The error the command line prints when it refuses `argv`."""
+    with pytest.raises(SystemExit):
+        parse_request(argv)
+    return capsys.readouterr().err
 
 
 def created(entity: Entity, offset: int, *, lsn: int | None = None) -> Row:

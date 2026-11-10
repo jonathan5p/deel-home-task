@@ -12,6 +12,7 @@ from analytics.pipelines.tests.bronze.replay_setup import (
     kafka_records,
     offsets_of,
     placed,
+    refusal,
     replay_offsets,
     run_bronze,
 )
@@ -27,6 +28,10 @@ from pipelines.bronze.replay import (
 )
 
 PUBLISHED_UTC = PUBLISHED.replace(tzinfo=UTC)
+
+
+def test_the_change_identity_is_the_entity_key_commit_sequence_and_op() -> None:
+    assert change_identity(ORDER_ITEMS) == ("order_item_id", "_commit_sequence", "_change_op")
 
 
 class TestRequest:
@@ -58,48 +63,98 @@ class TestRequest:
             datetime(2026, 11, 8, 14, tzinfo=UTC), datetime(2026, 11, 8, 15, tzinfo=UTC)
         )
 
-    @pytest.mark.parametrize(
-        ("args", "message"),
-        [
-            ([], "give a range"),
-            (["--from-offset", "1"], "give a range"),
-            (["--to-time", "2026-11-08T14:00:00"], "give a range"),
-            (
-                ["--from-offset", "1", "--to-offset", "2", "--from-time", "2026-11-08T14:00:00"],
-                "not both",
-            ),
-            (["--from-offset", "5", "--to-offset", "4"], "must not be after"),
-            (
-                ["--from-time", "2026-11-09T00:00:00", "--to-time", "2026-11-08T00:00:00"],
-                "must not be after",
-            ),
-            (
-                [
-                    "--from-time",
-                    "2026-11-08T00:00:00",
-                    "--to-time",
-                    "2026-11-09T00:00:00",
-                    "--partition",
-                    "0",
-                ],
-                "only applies to an offset range",
-            ),
-            (["--from-time", "yesterday", "--to-time", "today"], "invalid iso_time value"),
-        ],
-    )
-    def test_an_invalid_range_is_refused(
-        self, args: list[str], message: str, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        with pytest.raises(SystemExit):
-            parse_request(["--topic", "t", *args])
+    def test_no_range_is_refused(self, capsys: pytest.CaptureFixture[str]) -> None:
+        error = refusal(["--topic", "t"], capsys)
 
-        assert message in capsys.readouterr().err
+        assert "give a range" in error
+
+    def test_an_offset_range_without_its_last_offset_is_refused(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        error = refusal(["--topic", "t", "--from-offset", "1"], capsys)
+
+        assert "give a range" in error
+
+    def test_a_time_range_without_its_first_time_is_refused(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        error = refusal(["--topic", "t", "--to-time", "2026-11-08T14:00:00"], capsys)
+
+        assert "give a range" in error
+
+    def test_an_offset_range_and_a_time_range_together_are_refused(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        error = refusal(
+            [
+                "--topic",
+                "t",
+                "--from-offset",
+                "1",
+                "--to-offset",
+                "2",
+                "--from-time",
+                "2026-11-08T14:00:00",
+            ],
+            capsys,
+        )
+
+        assert "not both" in error
+
+    def test_a_first_offset_after_the_last_is_refused(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        error = refusal(["--topic", "t", "--from-offset", "5", "--to-offset", "4"], capsys)
+
+        assert "must not be after" in error
+
+    def test_a_first_time_after_the_last_is_refused(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        error = refusal(
+            [
+                "--topic",
+                "t",
+                "--from-time",
+                "2026-11-09T00:00:00",
+                "--to-time",
+                "2026-11-08T00:00:00",
+            ],
+            capsys,
+        )
+
+        assert "must not be after" in error
+
+    def test_a_partition_with_a_time_range_is_refused(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        error = refusal(
+            [
+                "--topic",
+                "t",
+                "--from-time",
+                "2026-11-08T00:00:00",
+                "--to-time",
+                "2026-11-09T00:00:00",
+                "--partition",
+                "0",
+            ],
+            capsys,
+        )
+
+        assert "only applies to an offset range" in error
+
+    def test_a_time_that_is_not_iso_8601_is_refused(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        error = refusal(["--topic", "t", "--from-time", "yesterday", "--to-time", "today"], capsys)
+
+        assert "invalid iso_time value" in error
 
     def test_the_topic_is_required(self, capsys: pytest.CaptureFixture[str]) -> None:
-        with pytest.raises(SystemExit):
-            parse_request(["--from-offset", "0", "--to-offset", "1"])
+        error = refusal(["--from-offset", "0", "--to-offset", "1"], capsys)
 
-        assert "--topic" in capsys.readouterr().err
+        assert "--topic" in error
 
 
 class TestRange:
@@ -131,10 +186,6 @@ class TestRange:
         kept = kafka_records(spark, rows).where(window.contains()).collect()
 
         assert sorted(row.offset for row in kept) == [1, 2]
-
-
-def test_the_change_identity_is_the_entity_key_commit_sequence_and_op() -> None:
-    assert change_identity(ORDER_ITEMS) == ("order_item_id", "_commit_sequence", "_change_op")
 
 
 class TestReplay:

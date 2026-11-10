@@ -60,6 +60,11 @@ class ReplayRequest:
     range: OffsetRange | TimeRange
 
 
+class AppendCount(NamedTuple):
+    appended: int
+    already_present: int
+
+
 class ReplaySummary(NamedTuple):
     topic: str
     in_range: int
@@ -138,15 +143,15 @@ def append_missing(
     definition: TableDefinition,
     identity: Sequence[str],
     create: TableCreator,
-) -> tuple[int, int]:
-    """Append the rows `table` lacks; returns how many were appended and how many it had."""
+) -> AppendCount:
+    """Append the rows `table` lacks, one per identity, and count them and the ones it had."""
     create(spark, table, described_schema(table, rows.schema, definition), definition)
     candidates = rows.dropDuplicates(list(identity)).count()
     new = missing(rows, spark.table(table), identity).localCheckpoint()
     appended = new.count()
     if appended:
         new.writeTo(table).append()
-    return appended, candidates - appended
+    return AppendCount(appended=appended, already_present=candidates - appended)
 
 
 def replay(
@@ -161,7 +166,7 @@ def replay(
     records = read(spark, settings.landing_path(request.topic))
     in_range = records.where(request.range.contains()).localCheckpoint()
     parsed = parse_changes(in_range, entity)
-    appended, present = append_missing(
+    changes = append_missing(
         spark,
         settings.table(entity.name),
         parsed.bronze,
@@ -169,7 +174,7 @@ def replay(
         change_identity(entity),
         create,
     )
-    quarantine, already = append_missing(
+    rejects = append_missing(
         spark,
         settings.table(f"{entity.name}_quarantine"),
         quarantined(parsed.quarantine),
@@ -180,10 +185,10 @@ def replay(
     return ReplaySummary(
         topic=request.topic,
         in_range=in_range.count(),
-        appended=appended,
-        already_in_bronze=present,
-        quarantined=quarantine,
-        already_quarantined=already,
+        appended=changes.appended,
+        already_in_bronze=changes.already_present,
+        quarantined=rejects.appended,
+        already_quarantined=rejects.already_present,
     )
 
 
