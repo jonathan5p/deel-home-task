@@ -299,6 +299,31 @@ sequenceDiagram
 
 **Freshness.** `gold.data_freshness` reports, per entity, how up to date gold is. For now it is computed from the data, as the source commit time of the newest change gold holds, so it ages when the source stops changing even though the pipeline is healthy. Later it will be filled from the pipeline statistics, with the same shape. Those statistics (per micro-batch rows, durations, last `_commit_sequence`, last event time) are planned in a separate `observability` catalog in the lake, apart from the business data (#127).
 
+## Rebuilding from silver
+
+Silver keeps every change, so gold can always be rebuilt from it. `make gold-rebuild CONFIRM=1 [TO_TIME=...]` resets gold (`make gold-reset`) and runs the batch job `pipelines/gold/rebuild.py`:
+
+1. For each load, dimensions first, it reads the silver table in batch and keeps the changes with `_changed_at` at or before `TO_TIME` (all of them without one).
+2. It writes them with the gold job's own sink: the staging load, then one merge transaction under the [gold writer lock](#dimension-keys-of-the-facts). The merges are idempotent and independent of arrival order, so one batch per load gives the same rows as any sequence of micro-batches over the same changes.
+3. It applies [retention](#current-state-and-retention), which first partitions the months the reload put in the default partition.
+
+A rebuild up to a cutoff therefore matches what the stream would have built had it processed exactly the changes committed up to that time, late arrivals included. The generated surrogate keys get new values. The gold job is left stopped; started again on the fresh checkpoints, it re-reads silver from the start, the merges skip what the rebuild stored, and it continues past the cutoff.
+
+```mermaid
+sequenceDiagram
+    participant M as make gold-rebuild
+    participant S as silver tables
+    participant J as rebuild job (driver)
+    participant P as PostgreSQL
+    M->>P: gold-reset: drop and recreate the gold schemas
+    M->>J: spark-submit rebuild.py --to-time
+    loop dim_customer, dim_product, fact_order_history, fact_order_item_history
+        J->>S: read the table, _changed_at <= cutoff
+        J->>P: stage, then merge in one transaction under the writer lock
+    end
+    J->>P: apply_history_retention under the writer lock
+```
+
 ## The four business questions
 
 Each question is a view in `gold`, built on `gold.open_orders` and the `gold` views of the current items and the dimensions, and described like every other view (from its schema in `schemas/gold/<view>.avsc`):

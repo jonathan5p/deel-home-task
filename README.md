@@ -95,6 +95,16 @@ make gold-reset CONFIRM=1   # Stops the gold job, recreates gold and gold_intern
 make pipeline PIPELINE=gold # The gold job reloads everything from silver
 ```
 
+The same reset followed by one batch load from the silver tables, optionally only up to a point in time:
+
+```sh
+make gold-rebuild CONFIRM=1                              # gold-reset, then reload every silver change and apply retention
+make gold-rebuild CONFIRM=1 TO_TIME=2026-11-09T12:00:00  # only the changes committed at or before that time (UTC unless it has an offset)
+make pipeline PIPELINE=gold                              # resume streaming afterwards
+```
+
+See [Rebuilding gold from silver](#rebuilding-gold-from-silver) for how it works.
+
 **Data loss:** all gold data is deleted; gold is rebuilt from silver, which keeps the full history. The gold checkpoints (`<CHECKPOINT_ROOT>/gold/`, deleted through the SeaweedFS filer; set `GOLD_CHECKPOINTS` to its path for another `CHECKPOINT_ROOT`) must go with the data, or the job would resume after the batches the dropped rows came from.
 
 The four business questions are views in `gold`, each with a ready-made query in `analytics/sql/gold/` that reads it with the order the question is reported in:
@@ -407,7 +417,7 @@ analytics/
       gold/                 gold layer: ddl.py and ddl.sql.j2 (the gold DDL from the gold Avro schemas), scd2.py (the SCD2 SQL),
                             facts.py (the history fact and current-state SQL), dimensions.py (the dimensions and facts
                             and their lookups), sink.py, postgres.py, job.py (the gold streaming job) and
-                            retention.py (the gold retention job)
+                            retention.py and rebuild.py (the gold retention and rebuild jobs)
     tests/
   sql/gold/                 the four business questions as SQL on the gold views in PostgreSQL
 tests/infra/                infra tests that drive an isolated copy of the stack
@@ -797,6 +807,14 @@ make spark-submit SPARK_APP=analytics/pipelines/src/pipelines/gold/job.py SPARK_
 
 The details, with the fold rule, the transactions and the dimension keys of the facts, are in [Writing gold](docs/architecture/gold-model.md#writing-gold).
 
+#### Rebuilding gold from silver
+
+`make gold-rebuild CONFIRM=1` runs `make gold-reset CONFIRM=1` (stops the gold job, recreates the gold schemas, deletes the gold checkpoints), then submits `pipelines/gold/rebuild.py` (Spark UI on `localhost:4045`). The job reads each silver table in batch, keeps the changes whose `_changed_at` is at or before `TO_TIME` when it is set, and writes them through the gold job's own sinks: one staging load and one merge transaction per gold load, the dimensions first, each under the gold writer lock. It finishes with the [retention](#gold-retention) step, so the history window is the one the scheduled retention keeps.
+
+- **Same result as streaming:** the merges are the gold job's, so the rebuilt gold equals the gold the stream builds from the same changes, whatever order they arrived in; only the generated surrogate keys (`customer_key`, `product_key`) get new values.
+- **Cutoff:** `TO_TIME` is a source commit time (`_changed_at`), ISO 8601, inclusive, UTC unless it carries an offset. A change committed before it but delivered late is included, so the rebuild shows gold as if every change committed up to that time had been processed.
+- **Afterwards** the gold job stays stopped. `make pipeline PIPELINE=gold` starts it on fresh checkpoints: it reads silver from the start, finds every change up to the cutoff already stored (the merges skip them) and catches up with the rest.
+
 #### Gold retention
 
 PostgreSQL keeps `GOLD_RETENTION_MONTHS` (default 36, three years) of gold history; the lake keeps all of it. The history facts are partitioned by month on `_changed_at`, so retention drops whole partitions. `pipelines/gold/retention.py` runs `gold_internal.apply_history_retention(keep_months, months_ahead, as_of)` in one transaction, after taking the gold writer lock, so it never runs in the middle of a gold job merge:
@@ -906,6 +924,7 @@ They start an isolated Compose project named after the checkout folder (`deel-in
 - the silver job, run with `--available-now` on the bronze tables those runs leave, writes one version row per bronze change to each entity's silver table, with the bronze values and change metadata and `_is_deleted` true only for the delete, which keeps the last known values; partitions the table by change day and describes every table and column; after bronze appends another change, that change delivered again and an already versioned change delivered again, a second run appends only the new change once, and a third run with nothing new appends nothing; keeps its deduplication state in RocksDB (the checkpoint's state folder holds RocksDB files); and exits with an error when a bronze table is missing; the views job, run after each silver run, creates each entity's history and current views in the JDBC catalog, where the history view folds the unchanged update but keeps the delete and the change after it, and the current view holds the live row with the source values; describes every view and column from its template; leaves the views' metadata files untouched when it runs again with nothing changed; serves the views to `make spark-sql`; and fails before creating any view when a silver table is missing.
 - the gold DDL applies again to an existing database, describes every schema, table, column and index, creates the staging tables unlogged, keeps only views without the pipeline-only columns (`_commit_sequence`, `_content_hash`, `_is_deleted`, `_is_folded`) in `gold` and hides deleted rows from its current-state views, seeds the date and status dimensions, routes history rows to the default partition, rejects replayed history rows, orders versions by `_commit_sequence` despite late events, creates the business question views with the columns and types of their schemas and the indexes on `current_orders` behind them, and the four business queries return the expected rows from those views on a fixture with a completed order, a deleted order, an unknown status and ties for third place (each test rolls its rows back).
 - gold retention drops only the monthly history partitions that end before the window (orders and order items alike), first gives every month the default partition holds a partition of its own, creates the months ahead, keeps the current-state row of an open order whose history it dropped, and drops nothing more when it runs again (each test rolls its rows back); `make gold-retention` and the first run of the `gold-retention-job` service drop a committed out-of-window month;
+- the rebuild job, run on the gold facts' fixture silver tables, ends with the same dimensions, history and current state as the gold job streaming the same changes, and with a cutoff the same as the gold job streaming only the changes up to it, late ones included (surrogate keys compared by the version they point at); `make gold-rebuild` refuses without `CONFIRM=1`;
 - `make gold-reset` refuses without `CONFIRM=1`, recreates `gold` and `gold_internal` empty, can run again, deletes the gold checkpoints and keeps the silver checkpoints and the Iceberg catalog;
 - the gold job, run with `--available-now` on silver-shaped fixture tables in a catalog of their own (`gold_fixture`, with its own warehouse), keeps the SCD2 dimensions in PostgreSQL, checked through the versions and public views: a price change closes the previous version and opens a new one, each key has exactly one current version, replaying every batch from a fresh checkpoint changes nothing, a late older version goes into history without becoming current, a re-snapshot or audit-only update is folded and a late differing version between two equal ones unfolds the later one, and a delete leaves no current version that replays or late versions could revive (the test removes its rows afterwards).
 - the bronze replay, in its own Iceberg catalog on the stack, appends nothing for a range the bronze stream already wrote, appends each change of a range the stream never saw exactly once (including a re-sent copy inside the range), and quarantines a failing record once however many times it is replayed.

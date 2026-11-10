@@ -60,17 +60,27 @@ class SilverFixture:
             lines = "".join(json.dumps(row) + "\n" for row in rows)
             stack.put_object(f"{self.lake_key}/silver/{batch}/{entity}.json", lines.encode())
 
-    def run_gold(self, stack: Stack, *batches: str, checkpoints: str = "main") -> None:
-        """Append the batches to the fixture silver tables, then run the gold job once."""
-        for batch in batches:
-            self.upload(stack, batch)
-        env = {
+    def env(self, checkpoints: str) -> dict[str, str]:
+        return {
             "ICEBERG_CATALOG": self.catalog,
             "LAKE_ROOT": f"s3a://lake/{self.lake_key}",
             "CHECKPOINT_ROOT": f"s3a://lake/{self.lake_key}/checkpoints/{checkpoints}",
         }
-        returncode, output = stack.run_app(APP, self.lake_key, *batches, env=env)
+
+    def run_gold(self, stack: Stack, *batches: str, checkpoints: str = "main") -> None:
+        """Append the batches to the fixture silver tables, then run the gold job once."""
+        for batch in batches:
+            self.upload(stack, batch)
+        returncode, output = stack.run_app(APP, self.lake_key, *batches, env=self.env(checkpoints))
         assert returncode == 0, output
+
+    def rebuild_gold(self, stack: Stack, *args: str) -> str:
+        """Run the rebuild job on the fixture silver tables as they are; returns its output."""
+        returncode, output = stack.run_app(
+            APP, self.lake_key, "--rebuild", *args, env=self.env("rebuild")
+        )
+        assert returncode == 0, output
+        return output
 
 
 def keys(values: Sequence[int]) -> str:
