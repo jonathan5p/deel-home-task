@@ -1,0 +1,15 @@
+INSERT INTO {{ relation }} (
+{% for column in staged %}
+    {{ column }},
+{% endfor %}
+    _is_folded,
+    _is_current
+)
+SELECT
+{% for column in staged %}
+    {{ column }},
+{% endfor %}
+    false,
+    false
+FROM {{ staging }}
+ON CONFLICT ({{ key }}, _commit_sequence) DO NOTHING

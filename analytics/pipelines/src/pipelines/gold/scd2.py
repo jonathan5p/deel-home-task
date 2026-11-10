@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import NoReturn
 
+from pipelines.gold.sql import render_sql
 from pipelines.lake.columns import MetadataColumn
 from pipelines.schemas.definitions import ColumnDefinition, EntityDefinition
 from pipelines.schemas.gold_definitions import GoldTable
@@ -32,10 +33,6 @@ SILVER_COLUMNS: Mapping[str, str] = {Scd2Column.VALID_FROM: str(MetadataColumn.C
 class Scd2DefinitionError(ValueError):
     def __init__(self, table: str, problem: str) -> None:
         super().__init__(f"SCD2 dimension {table}: {problem}")
-
-
-def _lines(items: Iterable[str], indent: str = "    ") -> str:
-    return ",\n".join(f"{indent}{item}" for item in items)
 
 
 @dataclass(frozen=True, slots=True)
@@ -141,81 +138,22 @@ class Scd2Dimension:
 
     def insert_statement(self) -> str:
         """Insert the staged versions not stored yet, not current until they are recomputed."""
-        staged = [column.name for column in self.staged_columns]
-        targets = [*staged, Scd2Column.IS_FOLDED, Scd2Column.IS_CURRENT]
-        return (
-            f"INSERT INTO {self.relation} (\n{_lines(targets)}\n)\n"
-            f"SELECT\n{_lines([*staged, 'false', 'false'])}\n"
-            f"FROM {self.staging_relation}\n"
-            f"ON CONFLICT ({self.key}, {Scd2Column.COMMIT_SEQUENCE}) DO NOTHING"
+        return render_sql(
+            "scd2_insert",
+            relation=self.relation,
+            staging=self.staging_relation,
+            staged=[column.name for column in self.staged_columns],
+            key=self.key,
         )
 
-    def _recomputed(self) -> str:
-        """The fold flag, `_valid_to` and `_is_current` of every stored version of each key the
-        staged batch touches, from all of the key's versions in `_commit_sequence` order.
-
-        A version is folded when its content hash and deletion state equal the previous
-        version's; the first version's lag is null and its hash is not, so it never is. Folded
-        versions share the number of the version they repeat, so they end when it ends.
-        """
-        key, surrogate = self.key, self.surrogate_key
-        sequence, content_hash = Scd2Column.COMMIT_SEQUENCE, Scd2Column.CONTENT_HASH
-        valid_from, valid_to = Scd2Column.VALID_FROM, Scd2Column.VALID_TO
-        deleted, folded, current = (
-            Scd2Column.IS_DELETED,
-            Scd2Column.IS_FOLDED,
-            Scd2Column.IS_CURRENT,
-        )
-        by_key = f"PARTITION BY {key} ORDER BY {sequence}"
-        return f"""WITH flagged AS (
-    SELECT
-        {surrogate},
-        {key},
-        {sequence},
-        {valid_from},
-        {deleted},
-        ({content_hash}, {deleted}) IS NOT DISTINCT FROM
-            (lag({content_hash}) OVER by_key, lag({deleted}) OVER by_key) AS {folded}
-    FROM {self.relation}
-    WHERE {key} IN (SELECT {key} FROM {self.staging_relation})
-    WINDOW by_key AS ({by_key})
-),
-numbered AS (
-    SELECT
-        *,
-        count(*) FILTER (WHERE NOT {folded}) OVER by_key AS version_number
-    FROM flagged
-    WINDOW by_key AS ({by_key})
-),
-versions AS (
-    SELECT
-        {key},
-        version_number,
-        lead({valid_from}) OVER by_version AS {valid_to},
-        lead(version_number) OVER by_version IS NULL AND NOT {deleted} AS {current}
-    FROM numbered
-    WHERE NOT {folded}
-    WINDOW by_version AS (PARTITION BY {key} ORDER BY version_number)
-),
-recomputed AS (
-    SELECT
-        numbered.{surrogate},
-        numbered.{folded},
-        versions.{valid_to},
-        versions.{current} AND NOT numbered.{folded} AS {current}
-    FROM numbered
-    JOIN versions USING ({key}, version_number)
-)"""
-
-    def _update(self, condition: str) -> str:
-        assignments = [f"{column} = recomputed.{column}" for column in RECOMPUTED_COLUMNS]
-        return (
-            f"{self._recomputed()}\n"
-            f"UPDATE {self.relation} AS stored\n"
-            f"SET\n{_lines(assignments)}\n"
-            "FROM recomputed\n"
-            f"WHERE stored.{self.surrogate_key} = recomputed.{self.surrogate_key}\n"
-            f"  AND {condition}"
+    def _update(self, *, closing: bool) -> str:
+        return render_sql(
+            "scd2_update",
+            relation=self.relation,
+            staging=self.staging_relation,
+            key=self.key,
+            surrogate_key=self.surrogate_key,
+            closing=closing,
         )
 
     def close_statement(self) -> str:
@@ -224,14 +162,11 @@ recomputed AS (
         It runs before the other updates because the unique index on current versions is
         checked row by row, so a key's old current version must be closed first.
         """
-        current = Scd2Column.IS_CURRENT
-        return self._update(f"stored.{current} AND NOT recomputed.{current}")
+        return self._update(closing=True)
 
     def recompute_statement(self) -> str:
         """Apply the recomputed values to every other version whose values change."""
-        stored = ", ".join(f"stored.{column}" for column in RECOMPUTED_COLUMNS)
-        recomputed = ", ".join(f"recomputed.{column}" for column in RECOMPUTED_COLUMNS)
-        return self._update(f"({stored})\n      IS DISTINCT FROM ({recomputed})")
+        return self._update(closing=False)
 
     def merge_statements(self) -> Sequence[str]:
         """The statements that merge the staged batch, to run in this order in one transaction."""
