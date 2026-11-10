@@ -19,14 +19,18 @@ from analytics.pipelines.tests.maintenance.job_setup import (
     maintenance_settings,
     small_appends,
     snapshot_operations,
+    stale_gold_view,
     stale_silver_views,
     stream_into,
     table_rows,
 )
 from pipelines.bronze.entities import CUSTOMERS
+from pipelines.gold.lake.views import refresh_gold_views
 from pipelines.lake.checkpoints import HadoopCheckpointFiles
 from pipelines.lake.tables import TABLE_TEMPLATES
 from pipelines.maintenance.job import (
+    GOLD_VIEWS,
+    SILVER_VIEWS,
     MaintenanceFailedError,
     TableMaintenance,
     run,
@@ -301,7 +305,7 @@ def test_timestamps_are_written_in_utc() -> None:
     assert sql_timestamp(moment) == "TIMESTAMP '2026-11-10 12:30:00+00:00'"
 
 
-def test_a_run_replaces_a_stale_view_and_reports_it(
+def test_a_run_replaces_a_stale_silver_view_and_reports_it(
     spark: SparkSession, iceberg_view_catalog: str, tmp_path: Path
 ) -> None:
     silver = stale_silver_views(spark, iceberg_view_catalog, f"file://{tmp_path}/lake")
@@ -312,7 +316,7 @@ def test_a_run_replaces_a_stale_view_and_reports_it(
         maintenance_settings(iceberg_view_catalog),
         NO_STREAMS,
         report=reported.append,
-        refresh=lambda: refresh_views(spark, silver),
+        views={SILVER_VIEWS: lambda: refresh_views(spark, silver)},
     )
 
     assert reported == ["silver views: created or replaced 1"]
@@ -322,15 +326,43 @@ def test_a_run_replaces_a_stale_view_and_reports_it(
     )
 
 
+def test_a_run_replaces_a_stale_gold_view_after_the_silver_views(
+    spark: SparkSession, tmp_path: Path
+) -> None:
+    gold, stale_view = stale_gold_view(spark, tmp_path)
+    reported: list[str] = []
+
+    run(
+        FakeSql({}),
+        maintenance_settings(gold.lake.catalog),
+        NO_STREAMS,
+        report=reported.append,
+        views={
+            SILVER_VIEWS: lambda: refresh_views(spark, gold.silver),
+            GOLD_VIEWS: lambda: refresh_gold_views(spark, gold.views),
+        },
+    )
+
+    assert reported == ["silver views: up to date", "gold views: created or replaced 1"]
+    stored = stored_description(spark, stale_view)
+    assert stored.comment == gold.views.definitions()[stale_view].comment
+
+
 def test_views_already_up_to_date_are_reported_as_such() -> None:
     reported: list[str] = []
 
-    run(FakeSql({}), maintenance_settings("lake"), NO_STREAMS, report=reported.append, refresh=list)
+    run(
+        FakeSql({}),
+        maintenance_settings("lake"),
+        NO_STREAMS,
+        report=reported.append,
+        views={SILVER_VIEWS: list, GOLD_VIEWS: list},
+    )
 
-    assert reported == ["silver views: up to date"]
+    assert reported == ["silver views: up to date", "gold views: up to date"]
 
 
-def test_a_failing_view_refresh_fails_the_job_after_every_table_is_maintained() -> None:
+def test_a_failing_view_refresh_fails_the_job_after_every_table_and_view_is_handled() -> None:
     reported: list[str] = []
 
     def unreachable_catalog() -> list[str]:
@@ -342,29 +374,39 @@ def test_a_failing_view_refresh_fails_the_job_after_every_table_is_maintained() 
             maintenance_settings("lake"),
             NO_STREAMS,
             report=reported.append,
-            refresh=unreachable_catalog,
+            views={SILVER_VIEWS: unreachable_catalog, GOLD_VIEWS: list},
         )
 
     assert error.value.tables == ("silver views",)
     assert reported[0].startswith("bronze.orders: rewrote")
-    assert reported[1] == "silver views: refresh failed: catalog unreachable"
+    assert reported[1:] == [
+        "silver views: refresh failed: catalog unreachable",
+        "gold views: up to date",
+    ]
 
 
-def test_views_are_skipped_while_the_silver_tables_do_not_exist_yet() -> None:
+def test_every_view_refresh_is_skipped_while_the_silver_tables_do_not_exist_yet() -> None:
     reported: list[str] = []
+    refreshed: list[str] = []
 
     def missing_tables() -> list[str]:
         raise MissingSilverTablesError(["lake.silver.orders"])
+
+    def gold() -> list[str]:
+        refreshed.append(GOLD_VIEWS)
+        return []
 
     run(
         FakeSql({}),
         maintenance_settings("lake"),
         NO_STREAMS,
         report=reported.append,
-        refresh=missing_tables,
+        views={SILVER_VIEWS: missing_tables, GOLD_VIEWS: gold},
     )
 
-    assert reported == [
-        "silver views: skipped: The silver views read tables that do not exist yet:"
-        " lake.silver.orders. Start the silver job first."
-    ]
+    reason = (
+        "The silver views read tables that do not exist yet: lake.silver.orders."
+        " Start the silver job first."
+    )
+    assert reported == [f"silver views: skipped: {reason}", f"gold views: skipped: {reason}"]
+    assert refreshed == []
