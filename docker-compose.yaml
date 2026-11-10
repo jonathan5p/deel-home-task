@@ -13,8 +13,8 @@ x-spark-worker: &spark-worker
     spark-master:
       condition: service_healthy
   environment:
-    SPARK_WORKER_CORES: "4"
-    SPARK_WORKER_MEMORY: "4g"
+    SPARK_WORKER_CORES: "5"
+    SPARK_WORKER_MEMORY: "5g"
   healthcheck:
     test: ["CMD-SHELL", "curl -fsS http://localhost:8081/ >/dev/null || exit 1"]
     interval: 10s

@@ -278,8 +278,8 @@ bootstrap.servers=localhost:9092
 | Service | UI | Resources |
 |---|---|---|
 | `spark-master` | http://localhost:8080 | Cluster manager; accepts jobs at `SPARK_MASTER_URL` |
-| `spark-worker-1` | http://localhost:8081 | 4 cores, 4 GiB executor memory |
-| `spark-worker-2` | http://localhost:8082 | 4 cores, 4 GiB executor memory |
+| `spark-worker-1` | http://localhost:8081 | 5 cores, 5 GiB executor memory |
+| `spark-worker-2` | http://localhost:8082 | 5 cores, 5 GiB executor memory |
 | `spark-history` (optional) | http://localhost:18080 | History server for finished, crashed and running applications; started with `make spark-history` |
 | `spark-app` (one container per run) | http://localhost:4040 | Driver of an application started by `make spark-submit`; its UI is only available while it runs |
 | `landing-job` (optional) | http://localhost:4040 | Driver of the landing job, a long-running service started by `make pipeline` (see [Running the pipeline](#running-the-pipeline)) |
@@ -289,7 +289,7 @@ bootstrap.servers=localhost:9092
 
 Spark runs PySpark on **Python 3.14** (3.14.10), the newest version PySpark 4.1.4 supports. The official `apache/spark` images ship Python 3.10, so the Dockerfile installs CPython 3.14 with [uv](https://docs.astral.sh/uv/) at build time and points `PYSPARK_PYTHON` at it; every driver and executor uses it.
 
-Worker resources are set with `SPARK_WORKER_CORES` and `SPARK_WORKER_MEMORY` in `docker-compose.yaml`. They cap what executors can claim on each worker; the master, worker and driver JVMs need memory on top of that, so make sure Docker has enough memory for the whole stack.
+Worker resources are set with `SPARK_WORKER_CORES` and `SPARK_WORKER_MEMORY` in `docker-compose.yaml`. They cap what executors can claim on each worker, 10 GiB across both workers; the master, worker and driver JVMs need memory on top of that, so make sure Docker has enough memory for the whole stack.
 
 `SPARK_MASTER_URL` defaults to `spark://spark-master:7077` in `.env`, which Docker Compose loads automatically. Exporting the variable in your shell overrides it; recreate the Spark services (`make up`) after changing it.
 
@@ -607,7 +607,7 @@ Where to look while a job runs:
 
 Each job service submits its application with the same settings as `make spark-submit`, plus `spark.cores.max=2` and the service name as the driver host, so executors on the workers can connect back to it. The services restart unless they were stopped (`restart: unless-stopped`): a job whose driver fails is restarted and resumes from its checkpoints, without skipping or duplicating records. A container stopped with `make pipeline-stop` or `docker stop`/`docker kill` stays stopped until the next `make pipeline`.
 
-The cluster has two workers with 4 cores each, and each job takes at most 2 cores. That leaves room for the three jobs (landing, bronze and silver) plus 2 cores for ad-hoc runs (`make spark-submit`, `make spark-sql`, `make data-quality`); further runs wait for free cores until one ends. Each executor takes Spark's default 1 GiB, within the workers' 4 GiB.
+The cluster has two workers with 5 cores and 5 GiB each, and each job takes at most 2 cores. The four streaming jobs (landing, bronze, silver and gold) use 8 cores and up to 8 GiB of executor memory, which leaves 2 cores and 2 GiB for ad-hoc runs (`make spark-submit`, `make spark-sql`, `make data-quality`); further runs wait for free cores until one ends. Each executor takes Spark's default 1 GiB.
 
 #### Data quality checks
 
