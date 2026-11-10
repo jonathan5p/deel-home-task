@@ -9,7 +9,6 @@ GRAFANA = "grafana"
 API = "http://localhost:3000"
 REQUEST = 'wget -qO- --header "Content-Type: application/json" {post}"{url}$API_PATH"'
 ADMIN = "http://$GF_SECURITY_ADMIN_USER:$GF_SECURITY_ADMIN_PASSWORD@localhost:3000"
-# Over TCP, so the login's password is checked, unlike the trusted local socket.
 AS_GRAFANA_READER = (
     'PGPASSWORD="$GRAFANA_READER_PASSWORD" psql --no-psqlrc --quiet --no-align --tuples-only'
     ' --set=ON_ERROR_STOP=1 --host=localhost --username="$GRAFANA_READER_USER"'
@@ -31,7 +30,7 @@ def start_grafana(stack: Stack) -> None:
 
 
 def request(stack: Stack, path: str, *, body: Json | None = None, admin: bool = True) -> Response:
-    """Call Grafana's HTTP API from inside its container, as the admin or anonymously."""
+    """Grafana's JSON answer, called as the admin or anonymously."""
     post = '--post-data "$BODY" ' if body is not None else ""
     script = REQUEST.format(post=post, url=ADMIN if admin else API)
     run = stack.compose(
