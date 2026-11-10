@@ -1,0 +1,53 @@
+WITH changes AS (
+{% if latest %}
+    SELECT *
+    FROM (
+        SELECT
+            *,
+            row_number() OVER (PARTITION BY {{ key }} ORDER BY _commit_sequence DESC) AS _recency
+        FROM {{ source }}
+    )
+    WHERE _recency = 1 AND NOT _is_deleted
+{% else %}
+    SELECT *
+    FROM {{ source }}
+{% endif %}
+){% for join in as_of_joins %},
+{{ join.name }}_versions AS (
+    SELECT
+        *,
+        _commit_sequence = min(_commit_sequence) OVER (PARTITION BY {{ join.dimension_key }}) AS _is_first
+    FROM {{ join.versions }}
+),
+{{ join.name }} AS (
+    SELECT
+        change.{{ key }},
+        change._commit_sequence,
+{% for column, source in join.columns %}
+        candidate.{{ source }} AS {{ column }},
+{% endfor %}
+        row_number() OVER (
+            PARTITION BY change.{{ key }}, change._commit_sequence
+            ORDER BY candidate._commit_sequence DESC
+        ) AS _match
+    FROM changes AS change
+    JOIN {{ join.name }}_versions AS candidate
+        ON candidate.{{ join.dimension_key }} = change.{{ join.business_key }}
+        AND NOT candidate._is_deleted
+        AND (candidate._valid_from <= change._changed_at OR candidate._is_first)
+        AND (candidate._valid_to IS NULL OR change._changed_at < candidate._valid_to)
+){% endfor %}
+
+SELECT
+    {{ columns | join(",\n    ") }}
+FROM changes AS change
+{% for join in as_of_joins %}
+LEFT JOIN {{ join.name }}
+    ON {{ join.name }}.{{ key }} = change.{{ key }}
+    AND {{ join.name }}._commit_sequence = change._commit_sequence
+    AND {{ join.name }}._match = 1
+{% endfor %}
+{% for join in key_joins %}
+LEFT JOIN {{ join.relation }} AS {{ join.alias }}
+    ON {{ join.alias }}.{{ join.code }} = change.{{ join.source }}
+{% endfor %}

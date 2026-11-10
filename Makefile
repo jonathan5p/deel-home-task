@@ -60,7 +60,7 @@ help:
 		'               silver and all also run lake-views once the silver tables exist.' \
 		'pipeline-logs  Follow the logs of the PIPELINE job (landing, bronze, silver, gold or all).' \
 		'pipeline-stop  Stop and remove the PIPELINE job (landing, bronze, silver, gold or all); the rest of the stack keeps running.' \
-		'lake-views     Create the silver views, or replace those whose query or descriptions changed; fails while a silver table is missing.' \
+		'lake-views     Create the silver and gold views, or replace those whose query or descriptions changed; fails while a silver table is missing.' \
 		'test           Run the unit tests with coverage (fails below 90%) in the app container.' \
 		'lint           Check linting and formatting with ruff in the app container.' \
 		'format         Format the code and apply safe lint fixes with ruff.' \
