@@ -46,7 +46,7 @@ def dimension_stream(
     read: SilverReader,
     sink: SinkFactory,
 ) -> GoldStream:
-    silver = read(spark, settings.silver_table(dimension.entity.name))
+    silver = read(spark, settings.source_table(dimension.entity.name))
     return GoldStream(
         name=f"gold {dimension.name}",
         checkpoint=settings.checkpoint_path(dimension.name),

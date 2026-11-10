@@ -55,8 +55,37 @@ class LakeSettings:
         return f"{self.checkpoint_root}/{layer}/{name}"
 
 
+class LakeLayerNames:
+    """The names of the lake tables and checkpoints of the layer `LAYER`, for the settings of
+    every layer, which hold the `lake` they are named in."""
+
+    __slots__ = ()
+
+    LAYER: ClassVar[str]
+    lake: LakeSettings
+
+    def table(self, name: str) -> str:
+        return self.lake.table(self.LAYER, name)
+
+    def checkpoint_path(self, name: str) -> str:
+        return self.lake.checkpoint_path(self.LAYER, name)
+
+
+class SourcedLakeLayerNames(LakeLayerNames):
+    """The names of a layer that also reads the tables of the layer `SOURCE_LAYER`."""
+
+    __slots__ = ()
+
+    SOURCE_LAYER: ClassVar[str]
+
+    def source_table(self, name: str) -> str:
+        return self.lake.table(self.SOURCE_LAYER, name)
+
+
 @dataclass(frozen=True, slots=True)
 class LandingSettings:
+    LAYER: ClassVar[str] = "landing"
+
     kafka: KafkaSettings
     lake: LakeSettings
     trigger_seconds: int
@@ -76,11 +105,11 @@ class LandingSettings:
         return self.lake.landing_path(topic)
 
     def checkpoint_path(self, topic: str) -> str:
-        return f"{self.lake.checkpoint_root}/landing/{topic}"
+        return self.lake.checkpoint_path(self.LAYER, topic)
 
 
 @dataclass(frozen=True, slots=True)
-class BronzeSettings:
+class BronzeSettings(LakeLayerNames):
     LAYER: ClassVar[str] = "bronze"
 
     topics: tuple[str, ...]
@@ -101,16 +130,11 @@ class BronzeSettings:
     def landing_path(self, topic: str) -> str:
         return self.lake.landing_path(topic)
 
-    def table(self, name: str) -> str:
-        return self.lake.table(self.LAYER, name)
-
-    def checkpoint_path(self, name: str) -> str:
-        return self.lake.checkpoint_path(self.LAYER, name)
-
 
 @dataclass(frozen=True, slots=True)
-class SilverSettings:
+class SilverSettings(SourcedLakeLayerNames):
     LAYER: ClassVar[str] = "silver"
+    SOURCE_LAYER: ClassVar[str] = BronzeSettings.LAYER
 
     topics: tuple[str, ...]
     lake: LakeSettings
@@ -127,19 +151,11 @@ class SilverSettings:
             ),
         )
 
-    def bronze_table(self, name: str) -> str:
-        return self.lake.table(BronzeSettings.LAYER, name)
-
-    def table(self, name: str) -> str:
-        return self.lake.table(self.LAYER, name)
-
-    def checkpoint_path(self, name: str) -> str:
-        return self.lake.checkpoint_path(self.LAYER, name)
-
 
 @dataclass(frozen=True, slots=True)
-class GoldSettings:
+class GoldSettings(SourcedLakeLayerNames):
     LAYER: ClassVar[str] = "gold"
+    SOURCE_LAYER: ClassVar[str] = SilverSettings.LAYER
 
     lake: LakeSettings
     analytics_db: AnalyticsDbSettings
@@ -153,12 +169,6 @@ class GoldSettings:
             analytics_db=AnalyticsDbSettings.from_env(env),
             trigger_seconds=positive_int(env, "GOLD_TRIGGER_SECONDS", DEFAULT_GOLD_TRIGGER_SECONDS),
         )
-
-    def silver_table(self, entity: str) -> str:
-        return self.lake.table(SilverSettings.LAYER, entity)
-
-    def checkpoint_path(self, table: str) -> str:
-        return self.lake.checkpoint_path(self.LAYER, table)
 
 
 @dataclass(frozen=True, slots=True)

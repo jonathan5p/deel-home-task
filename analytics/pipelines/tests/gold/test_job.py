@@ -163,7 +163,7 @@ def test_silver_is_streamed_from_its_iceberg_table(
     }
     for dimension, version in versions.items():
         rows = spark.createDataFrame([version], silver_schema(dimension.entity))
-        rows.writeTo(iceberg_settings.silver_table(dimension.entity.name)).create()
+        rows.writeTo(iceberg_settings.source_table(dimension.entity.name)).create()
     sinks = RecordingSinks()
 
     queries = run(spark, iceberg_settings, sink=sinks, available_now=True)

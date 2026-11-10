@@ -164,7 +164,7 @@ def test_silver_settings_report_every_missing_variable_at_once() -> None:
 def test_silver_reads_the_bronze_tables_and_writes_its_own_namespace() -> None:
     settings = SilverSettings.from_env(KAFKA | LAKE)
 
-    assert settings.bronze_table("customers") == BronzeSettings.from_env(KAFKA | LAKE).table(
+    assert settings.source_table("customers") == BronzeSettings.from_env(KAFKA | LAKE).table(
         "customers"
     )
     assert settings.table("customers") == "catalog.silver.customers"
@@ -230,5 +230,5 @@ def test_gold_settings_reject_a_trigger_that_is_not_a_positive_integer() -> None
 def test_gold_reads_silver_tables_and_keeps_checkpoints_per_gold_table() -> None:
     settings = GoldSettings.from_env(LAKE | DATABASE)
 
-    assert settings.silver_table("customers") == "catalog.silver.customers"
+    assert settings.source_table("customers") == "catalog.silver.customers"
     assert settings.checkpoint_path("dim_customer") == "s3a://bucket/checkpoints/gold/dim_customer"

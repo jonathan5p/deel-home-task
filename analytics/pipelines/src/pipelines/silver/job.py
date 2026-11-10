@@ -39,7 +39,7 @@ def entity_stream(
     spark: SparkSession, settings: SilverSettings, topic: str, read: BronzeReader
 ) -> TableStream:
     entity = entity_for_topic(topic)
-    bronze = read(spark, settings.bronze_table(entity.name))
+    bronze = read(spark, settings.source_table(entity.name))
     rows = drop_duplicate_changes(versions(bronze, entity), entity)
     definition = table_definition(SILVER, entity.definition)
     return TableStream.for_table(settings, entity.name, rows, definition)
