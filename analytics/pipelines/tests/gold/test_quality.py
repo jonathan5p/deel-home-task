@@ -24,24 +24,31 @@ from analytics.pipelines.tests.gold.quality_setup import (
     successive,
     unread_gold,
 )
-from analytics.pipelines.tests.gold.silver_setup import silver_schema, silver_version
+from analytics.pipelines.tests.gold.silver_setup import silver_version
+from analytics.pipelines.tests.lake.checkpoints_setup import (
+    CHECKPOINT,
+    FakeCheckpoints,
+    checkpoint,
+    offsets,
+    snapshot_offset,
+)
 from common.settings import AnalyticsDbSettings
 from pipelines.gold.quality import (
     COMPARISONS,
     GOLD_MATCHES_SILVER,
     NOT_CHECKED,
-    CommittedBatch,
     GoldComparison,
     GoldReaders,
     GoldShape,
     UnexpectedSourcesError,
     check_gold,
     check_view,
+    checkpoint_readers,
     gold_read_options,
-    read_silver_snapshot,
     run_gold_checks,
     snapshot_bounds,
 )
+from pipelines.lake.checkpoints import CommittedBatch
 
 BY_VIEW = {comparison.view: comparison for comparison in COMPARISONS}
 
@@ -159,7 +166,7 @@ def test_a_view_matching_silver_at_the_committed_snapshot_passes_with_repeats_fo
 
     checked = check_view(spark, SETTINGS, BY_VIEW["dim_customer"], sources)
 
-    assert checked.result == GOLD_MATCHES_SILVER.result(
+    assert checked == GOLD_MATCHES_SILVER.result(
         "gold.dim_customer",
         passed=True,
         metrics={
@@ -170,8 +177,8 @@ def test_a_view_matching_silver_at_the_committed_snapshot_passes_with_repeats_fo
             "different": 0,
             "snapshot_id": 1,
         },
+        details={"missing": (), "extra": (), "different": ()},
     )
-    assert checked.samples == {"missing": (), "extra": (), "different": ()}
 
 
 def test_a_view_one_batch_ahead_passes_at_the_planned_snapshot(spark: SparkSession) -> None:
@@ -181,8 +188,8 @@ def test_a_view_one_batch_ahead_passes_at_the_planned_snapshot(spark: SparkSessi
 
     checked = check_view(spark, SETTINGS, BY_VIEW["dim_customer"], sources)
 
-    assert checked.result.passed
-    assert checked.result.metrics["snapshot_id"] == 2
+    assert checked.passed
+    assert checked.metrics["snapshot_id"] == 2
 
 
 def test_a_batch_committed_while_gold_is_read_is_a_bound_too(spark: SparkSession) -> None:
@@ -198,8 +205,8 @@ def test_a_batch_committed_while_gold_is_read_is_a_bound_too(spark: SparkSession
 
     checked = check_view(spark, SETTINGS, BY_VIEW["dim_customer"], moving)
 
-    assert checked.result.passed
-    assert checked.result.metrics["snapshot_id"] == 2
+    assert checked.passed
+    assert checked.metrics["snapshot_id"] == 2
 
 
 def test_a_view_matching_neither_bound_fails_against_the_committed_one(
@@ -212,8 +219,8 @@ def test_a_view_matching_neither_bound_fails_against_the_committed_one(
 
     checked = check_view(spark, SETTINGS, BY_VIEW["dim_customer"], sources)
 
-    assert not checked.result.passed
-    assert checked.result.metrics == {
+    assert not checked.passed
+    assert checked.metrics == {
         "silver_rows": 2,
         "gold_rows": 1,
         "missing": 1,
@@ -250,7 +257,7 @@ def test_missing_extra_and_different_rows_are_counted_with_sample_keys(
 
     checked = check_view(spark, SETTINGS, BY_VIEW["dim_product"], sources)
 
-    assert checked.result.metrics == {
+    assert checked.metrics == {
         "silver_rows": 3,
         "gold_rows": 3,
         "missing": 1,
@@ -258,7 +265,7 @@ def test_missing_extra_and_different_rows_are_counted_with_sample_keys(
         "different": 1,
         "snapshot_id": 1,
     }
-    assert checked.samples == {
+    assert checked.details == {
         "missing": ({"product_id": 4, "_valid_from": at(2).isoformat()},),
         "extra": ({"product_id": 6, "_valid_from": at(4).isoformat()},),
         "different": ({"product_id": 3, "_valid_from": at(1).isoformat()},),
@@ -274,8 +281,10 @@ def test_samples_keep_at_most_the_sample_size_in_key_order(spark: SparkSession) 
 
     checked = check_view(spark, SETTINGS, BY_VIEW["dim_customer"], sources, sample_size=2)
 
-    assert checked.result.metrics["missing"] == 3
-    assert [sample["customer_id"] for sample in checked.samples["missing"]] == [3, 4]
+    assert checked.metrics["missing"] == 3
+    missing = checked.details["missing"]
+    assert isinstance(missing, tuple)
+    assert [sample["customer_id"] for sample in missing] == [3, 4]
 
 
 def test_a_history_view_shows_a_delete_as_the_last_change_never_current(
@@ -295,8 +304,8 @@ def test_a_history_view_shows_a_delete_as_the_last_change_never_current(
 
     checked = check_view(spark, SETTINGS, BY_VIEW["fact_order_history"], sources)
 
-    assert checked.result.passed, checked.samples
-    assert checked.result.metrics["silver_rows"] == 3
+    assert checked.passed, checked.details
+    assert checked.metrics["silver_rows"] == 3
 
 
 def test_a_current_view_hides_deleted_rows_and_keeps_the_latest_change_time(
@@ -309,8 +318,8 @@ def test_a_current_view_hides_deleted_rows_and_keeps_the_latest_change_time(
 
     checked = check_view(spark, SETTINGS, BY_VIEW["current_orders"], sources)
 
-    assert checked.result.passed, checked.samples
-    assert checked.result.metrics["silver_rows"] == 1
+    assert checked.passed, checked.details
+    assert checked.metrics["silver_rows"] == 1
 
 
 def test_a_stream_without_a_committed_batch_is_reported_as_not_checked(
@@ -325,14 +334,14 @@ def test_a_stream_without_a_committed_batch_is_reported_as_not_checked(
 
     checked = check_view(spark, SETTINGS, BY_VIEW["dim_customer"], sources)
 
-    assert checked.result == NOT_CHECKED.result(
+    assert checked == NOT_CHECKED.result(
         "gold.dim_customer",
         passed=False,
         metrics=dict.fromkeys(
             ["silver_rows", "gold_rows", "missing", "extra", "different", "snapshot_id"]
         ),
     )
-    assert checked.samples == {}
+    assert checked.details == {}
 
 
 def test_check_gold_checks_every_view_it_is_given(spark: SparkSession) -> None:
@@ -349,19 +358,29 @@ def test_check_gold_checks_every_view_it_is_given(spark: SparkSession) -> None:
 
     checks = check_gold(spark, SETTINGS, unchecked, comparisons)
 
-    assert [(check.result.subject, check.result.passed) for check in checks] == [
+    assert [(check.subject, check.passed) for check in checks] == [
         ("gold.dim_customer", True),
         ("gold.dim_product", False),
     ]
-    assert checks[1].result.description == NOT_CHECKED.description
+    assert checks[1].description == NOT_CHECKED.description
+
+
+def test_the_checkpoint_readers_give_the_committed_and_the_planned_batch() -> None:
+    files = FakeCheckpoints(
+        checkpoint(offsets(snapshot_offset(1)), offsets(snapshot_offset(2)), committed=0)
+    )
+    committed, planned = checkpoint_readers(files)
+
+    batches = [committed(CHECKPOINT), planned(CHECKPOINT)]
+
+    assert [batch.batch for batch in batches if batch] == [0, 1]
 
 
 def test_run_gold_checks_reports_every_view_from_the_environment(spark: SparkSession) -> None:
     results = run_gold_checks(
         spark,
         ENV,
-        committed=checkpoints({}),
-        planned=checkpoints({}),
+        files=FakeCheckpoints(),
         read_gold=unread_gold,
         read_snapshot=snapshots({}),
     )
@@ -370,25 +389,3 @@ def test_run_gold_checks_reports_every_view_from_the_environment(spark: SparkSes
         f"gold.{comparison.view}" for comparison in COMPARISONS
     ]
     assert not any(result.passed for result in results)
-
-
-def test_run_gold_checks_needs_the_checkpoint_readers_wired(spark: SparkSession) -> None:
-    with pytest.raises(NotImplementedError, match="shared quality job"):
-        run_gold_checks(spark, ENV)
-
-
-def test_a_silver_snapshot_is_read_as_of_its_snapshot_id(
-    spark: SparkSession, iceberg_catalog: str
-) -> None:
-    table = f"{iceberg_catalog}.silver.customers"
-    first, second = customer_versions()[:1], customer_versions()[1:2]
-    spark.createDataFrame(first, silver_schema(CUSTOMERS)).writeTo(table).create()
-    spark.createDataFrame(second, silver_schema(CUSTOMERS)).writeTo(table).append()
-    ids = [
-        row.snapshot_id
-        for row in spark.table(f"{table}.snapshots").orderBy("committed_at").collect()
-    ]
-
-    rows = read_silver_snapshot(spark, table, ids[0]).collect()
-
-    assert [row["_commit_sequence"] for row in rows] == [10]

@@ -2,7 +2,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from enum import StrEnum
-from typing import Any, NamedTuple
+from typing import NamedTuple
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
@@ -15,7 +15,15 @@ from pipelines.gold.dimensions import DIMENSIONS, FACTS
 from pipelines.gold.facts import ChangeFact, FactColumn
 from pipelines.gold.scd2 import Scd2Column, Scd2Dimension
 from pipelines.gold.sink import POSTGRES_DRIVER
+from pipelines.lake.checkpoints import (
+    CheckpointFiles,
+    CommittedBatch,
+    HadoopCheckpointFiles,
+    committed_batch,
+    planned_batch,
+)
 from pipelines.lake.columns import MetadataColumn
+from pipelines.lake.snapshots import read_snapshot
 from pipelines.quality.checks import Check, CheckResult
 from pipelines.settings import GoldQualitySettings
 from pipelines.silver.views import current_query, history_query
@@ -35,14 +43,6 @@ NOT_CHECKED = Check(
     "Not checked: the gold stream has committed no micro-batch, so no silver snapshot is known"
     " to compare with.",
 )
-
-
-class CommittedBatch(NamedTuple):
-    """A streaming query's micro-batch and the end offset of each of its sources."""
-
-    query_id: str
-    batch: int
-    sources: tuple[dict[str, Any], ...]
 
 
 type BatchReader = Callable[[str], CommittedBatch | None]
@@ -148,13 +148,6 @@ class GoldReaders:
     read_snapshot: SnapshotReader
 
 
-class GoldCheck(NamedTuple):
-    """A result and the sample keys of each kind of difference."""
-
-    result: CheckResult
-    samples: Samples
-
-
 class Diff(NamedTuple):
     silver_rows: int
     gold_rows: int
@@ -166,10 +159,6 @@ class Diff(NamedTuple):
     @property
     def passed(self) -> bool:
         return self.missing == self.extra == self.different == 0
-
-
-def read_silver_snapshot(spark: SparkSession, table: str, snapshot_id: int) -> DataFrame:
-    return spark.read.option("versionAsOf", snapshot_id).table(table)
 
 
 def gold_read_options(settings: AnalyticsDbSettings, relation: str) -> Mapping[str, str]:
@@ -189,8 +178,12 @@ def jdbc_gold_reader(settings: AnalyticsDbSettings) -> GoldReader:
     return read
 
 
-def unwired_batches(checkpoint: str) -> CommittedBatch | None:
-    raise NotImplementedError("wired when the shared quality job lands")
+def checkpoint_readers(files: CheckpointFiles) -> tuple[BatchReader, BatchReader]:
+    """The committed and the planned batch of a checkpoint, read from `files`."""
+    return (
+        lambda checkpoint: committed_batch(files, checkpoint),
+        lambda checkpoint: planned_batch(files, checkpoint),
+    )
 
 
 def snapshot_id(batch: CommittedBatch) -> int:
@@ -266,7 +259,7 @@ def diff(silver: DataFrame, gold: DataFrame, key: Sequence[str], sample_size: in
     )
 
 
-def _result(comparison: GoldComparison, found: Diff, snapshot: int) -> GoldCheck:
+def _result(comparison: GoldComparison, found: Diff, snapshot: int) -> CheckResult:
     metrics = {
         "silver_rows": found.silver_rows,
         "gold_rows": found.gold_rows,
@@ -275,8 +268,9 @@ def _result(comparison: GoldComparison, found: Diff, snapshot: int) -> GoldCheck
         "different": found.different,
         "snapshot_id": snapshot,
     }
-    result = GOLD_MATCHES_SILVER.result(comparison.relation, passed=found.passed, metrics=metrics)
-    return GoldCheck(result, found.samples)
+    return GOLD_MATCHES_SILVER.result(
+        comparison.relation, passed=found.passed, metrics=metrics, details=found.samples
+    )
 
 
 def check_view(
@@ -285,13 +279,13 @@ def check_view(
     comparison: GoldComparison,
     readers: GoldReaders,
     sample_size: int = SAMPLE_SIZE,
-) -> GoldCheck:
+) -> CheckResult:
     """Compare a gold view with silver at the snapshots gold may be at."""
     checkpoint = settings.checkpoint_path(comparison.stream)
     committed = readers.committed(checkpoint)
     if committed is None:
         metrics = dict.fromkeys(METRICS)
-        return GoldCheck(NOT_CHECKED.result(comparison.relation, passed=False, metrics=metrics), {})
+        return NOT_CHECKED.result(comparison.relation, passed=False, metrics=metrics)
     gold = (
         readers.read_gold(spark, comparison.relation)
         .select(*comparison.columns)
@@ -300,16 +294,16 @@ def check_view(
     newest = readers.planned(checkpoint) or readers.committed(checkpoint)
     table = settings.source_table(comparison.entity.name)
 
-    def at(snapshot: int) -> GoldCheck:
+    def at(snapshot: int) -> CheckResult:
         silver = silver_rows(spark, comparison, readers.read_snapshot(spark, table, snapshot))
         found = diff(silver, aligned(gold, silver.schema), comparison.key, sample_size)
         return _result(comparison, found, snapshot)
 
     checks = (at(snapshot) for snapshot in snapshot_bounds(committed, newest))
     first = next(checks)
-    if first.result.passed:
+    if first.passed:
         return first
-    return next((check for check in checks if check.result.passed), first)
+    return next((check for check in checks if check.passed), first)
 
 
 def check_gold(
@@ -317,7 +311,7 @@ def check_gold(
     settings: GoldQualitySettings,
     readers: GoldReaders,
     comparisons: Iterable[GoldComparison] = COMPARISONS,
-) -> list[GoldCheck]:
+) -> list[CheckResult]:
     return [check_view(spark, settings, comparison, readers) for comparison in comparisons]
 
 
@@ -325,17 +319,17 @@ def run_gold_checks(
     spark: SparkSession,
     env: Mapping[str, str],
     *,
-    committed: BatchReader = unwired_batches,
-    planned: BatchReader = unwired_batches,
+    files: CheckpointFiles | None = None,
     read_gold: GoldReader | None = None,
-    read_snapshot: SnapshotReader = read_silver_snapshot,
+    read_snapshot: SnapshotReader = read_snapshot,
 ) -> list[CheckResult]:
     """Check every public gold view against silver at what the gold job has committed."""
     settings = GoldQualitySettings.from_env(env)
+    committed, planned = checkpoint_readers(files or HadoopCheckpointFiles(spark))
     readers = GoldReaders(
         committed=committed,
         planned=planned,
         read_gold=read_gold or jdbc_gold_reader(settings.analytics_db),
         read_snapshot=read_snapshot,
     )
-    return [check.result for check in check_gold(spark, settings, readers)]
+    return check_gold(spark, settings, readers)

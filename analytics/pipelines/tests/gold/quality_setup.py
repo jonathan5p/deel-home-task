@@ -10,11 +10,11 @@ from pipelines.gold.dimensions import load_dimensions, load_facts
 from pipelines.gold.quality import (
     COMPARISONS,
     BatchReader,
-    CommittedBatch,
     GoldReader,
     GoldReaders,
     SnapshotReader,
 )
+from pipelines.lake.checkpoints import CommittedBatch
 from pipelines.lake.types import SPARK_TYPES
 from pipelines.schemas.definitions import ColumnType, EntityDefinition
 from pipelines.schemas.gold_definitions import load_gold_tables

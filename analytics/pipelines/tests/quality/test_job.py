@@ -9,6 +9,7 @@ pytest.importorskip("pyspark")
 from pyspark.sql import SparkSession
 
 from analytics.pipelines.tests.quality.report_setup import LAKE_ENV, result
+from pipelines.gold.quality import COMPARISONS, NOT_CHECKED
 from pipelines.quality.checks import CheckResult
 from pipelines.quality.job import CHECKS, run, selected_checks
 from pipelines.quality.report import Results
@@ -16,15 +17,15 @@ from pipelines.settings import LakeSettings
 
 
 def test_all_or_no_name_selects_every_check_in_registry_order() -> None:
-    assert selected_checks([], CHECKS) == ["landing", "bronze"]
-    assert selected_checks(["all"], CHECKS) == ["landing", "bronze"]
-    assert selected_checks(["bronze", "landing"], CHECKS) == ["landing", "bronze"]
+    assert selected_checks([], CHECKS) == ["landing", "bronze", "gold"]
+    assert selected_checks(["all"], CHECKS) == ["landing", "bronze", "gold"]
+    assert selected_checks(["gold", "landing"], CHECKS) == ["landing", "gold"]
     assert selected_checks(["bronze"], CHECKS) == ["bronze"]
 
 
 def test_an_unknown_check_is_refused() -> None:
     with pytest.raises(SystemExit):
-        selected_checks(["gold"], CHECKS)
+        selected_checks(["silver"], CHECKS)
 
 
 def test_a_run_prints_each_check_then_the_run_summary_and_writes_one_report(
@@ -84,3 +85,22 @@ def test_the_bronze_check_builds_its_settings_from_the_environment(
     results = CHECKS["bronze"](spark, env)
 
     assert {result.subject for result in results} == {"test.operations.customers"}
+
+
+def test_the_gold_check_reads_the_gold_job_checkpoints_under_the_lake(
+    spark: SparkSession, tmp_path: Path
+) -> None:
+    env = {
+        "LAKE_ROOT": f"file://{tmp_path}/lake",
+        "ICEBERG_CATALOG": "lake",
+        "ANALYTICS_DB_URL": "jdbc:postgresql://db:5432/gold",
+        "ANALYTICS_DB_USER": "user",
+        "ANALYTICS_DB_PASSWORD": "secret",
+    }
+
+    results = CHECKS["gold"](spark, env)
+
+    assert {result.subject for result in results} == {
+        f"gold.{comparison.view}" for comparison in COMPARISONS
+    }
+    assert {result.description for result in results} == {NOT_CHECKED.description}

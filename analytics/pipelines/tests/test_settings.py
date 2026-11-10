@@ -3,8 +3,8 @@ import pytest
 from common.settings import AnalyticsDbSettings, InvalidSettingError, MissingSettingsError
 from pipelines.settings import (
     BronzeSettings,
-    GoldRetentionSettings,
     GoldQualitySettings,
+    GoldRetentionSettings,
     GoldSettings,
     KafkaSettings,
     LakeSettings,

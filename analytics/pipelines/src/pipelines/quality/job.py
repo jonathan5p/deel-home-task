@@ -7,6 +7,7 @@ from collections.abc import Callable, Mapping, Sequence
 from pyspark.sql import SparkSession
 
 from pipelines.bronze import quality as bronze
+from pipelines.gold import quality as gold
 from pipelines.landing import quality as landing
 from pipelines.quality.checks import CheckResult, all_passed, report_lines, summary_object
 from pipelines.quality.report import Results, write_report
@@ -28,7 +29,15 @@ def bronze_checks(spark: SparkSession, env: Env) -> list[CheckResult]:
     return bronze.run_checks(spark, BronzeSettings.from_env(env))
 
 
-CHECKS: Mapping[str, QualityCheck] = {"landing": landing_checks, "bronze": bronze_checks}
+def gold_checks(spark: SparkSession, env: Env) -> list[CheckResult]:
+    return gold.run_gold_checks(spark, env)
+
+
+CHECKS: Mapping[str, QualityCheck] = {
+    "landing": landing_checks,
+    "bronze": bronze_checks,
+    "gold": gold_checks,
+}
 
 
 def selected_checks(argv: Sequence[str], checks: Mapping[str, QualityCheck]) -> list[str]:
