@@ -216,7 +216,7 @@ The alternatives were rejected:
 - A materialized view recomputes everything on every refresh, too slow for one refresh per micro-batch.
 - Both would lose orders that are still open but whose last change is older than the retention window.
 
-**Retention:** the history facts keep 3 years by default in PostgreSQL. They are range-partitioned by month on `_changed_at`, so retention drops whole partitions instead of deleting rows; a default partition catches rows outside the created range. Current-state tables and the dimensions are never trimmed, so an order that is still open keeps its current row however old it is. The lake gold tables keep the full history.
+**Retention:** the history facts keep 3 years by default in PostgreSQL. They are range-partitioned by month on `_changed_at`, so retention drops whole partitions instead of deleting rows. The retention job creates the monthly partitions ahead and drops the expired ones; the DDL creates only each history table's default partition, which catches every row outside the monthly partitions. Current-state tables and the dimensions are never trimmed, so an order that is still open keeps its current row however old it is. The lake gold tables keep the full history.
 
 ## Writing gold
 

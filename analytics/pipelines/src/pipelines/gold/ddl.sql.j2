@@ -126,54 +126,6 @@ CREATE TABLE IF NOT EXISTS gold_internal.fact_order_item_history_default
 COMMENT ON TABLE gold_internal.fact_order_item_history_default IS
     'Order item history rows outside every monthly partition.';
 
--- Rows the default partition already holds for a new month are moved into it, because a
--- partition cannot be added while the default partition holds rows in its range.
-CREATE OR REPLACE FUNCTION gold_internal.ensure_history_partitions(months_ahead int DEFAULT 2)
-RETURNS void
-LANGUAGE plpgsql
-AS $$
-DECLARE
-    fact text;
-    month_start date;
-    month_end date;
-    partition_name text;
-BEGIN
-    FOREACH fact IN ARRAY ARRAY['fact_order_history', 'fact_order_item_history'] LOOP
-        FOR offset_months IN 0..months_ahead LOOP
-            month_start := date_trunc('month', localtimestamp)::date
-                + make_interval(months => offset_months);
-            month_end := month_start + interval '1 month';
-            partition_name := format('%s_%s', fact, to_char(month_start, 'YYYY_MM'));
-            CONTINUE WHEN to_regclass(format('gold_internal.%I', partition_name)) IS NOT NULL;
-
-            EXECUTE format(
-                'CREATE TABLE gold_internal.%I (LIKE gold_internal.%I INCLUDING DEFAULTS INCLUDING CONSTRAINTS)',
-                partition_name, fact
-            );
-            EXECUTE format(
-                'WITH moved AS (DELETE FROM gold_internal.%I WHERE _changed_at >= $1 AND _changed_at < $2'
-                ' RETURNING *) INSERT INTO gold_internal.%I SELECT * FROM moved',
-                fact || '_default', partition_name
-            ) USING month_start, month_end;
-            EXECUTE format(
-                'ALTER TABLE gold_internal.%I ATTACH PARTITION gold_internal.%I FOR VALUES FROM (%L) TO (%L)',
-                fact, partition_name, month_start, month_end
-            );
-            EXECUTE format(
-                'COMMENT ON TABLE gold_internal.%I IS %L',
-                partition_name,
-                format('Partition of %s for %s.', fact, to_char(month_start, 'YYYY-MM'))
-            );
-        END LOOP;
-    END LOOP;
-END;
-$$;
-
-COMMENT ON FUNCTION gold_internal.ensure_history_partitions(int) IS
-    'Creates the monthly history partitions from the current month to months_ahead months ahead.';
-
-SELECT gold_internal.ensure_history_partitions(2);
-
 CREATE TABLE IF NOT EXISTS gold_internal.current_orders (
 {{ column_lines(tables.current_orders, {
     "status_key": "REFERENCES gold_internal.dim_order_status (status_key)",

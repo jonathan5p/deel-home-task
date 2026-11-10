@@ -75,16 +75,6 @@ WHERE n.nspname = 'gold'
 ORDER BY 1;
 """
 
-HISTORY_PARTITIONS = """
-SELECT parent.relname, child.relname
-FROM pg_inherits AS i
-JOIN pg_class AS parent ON parent.oid = i.inhparent
-JOIN pg_class AS child ON child.oid = i.inhrelid
-JOIN pg_namespace AS n ON n.oid = parent.relnamespace
-WHERE n.nspname = 'gold_internal' AND parent.relkind = 'p'
-ORDER BY 1, 2;
-"""
-
 # Each case is load-bearing for the expected query results: a COMPLETED order (108), a
 # deleted order (110), an UNKNOWN status (103), a customer with two versions (1), a customer
 # missing from dim_customer (4), and ties for third place in the top-3 questions.
