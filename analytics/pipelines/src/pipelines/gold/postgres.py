@@ -62,5 +62,4 @@ def run_in_transaction(connect: ConnectionFactory, statements: Iterable[str]) ->
     """Run the statements in order in one transaction on a new connection: all or none."""
     with transaction(connect) as connection:
         for statement in statements:
-            # Built from schema identifiers, never from data, so nothing needs a parameter.
             connection.execute(cast("LiteralString", statement))

@@ -61,7 +61,7 @@ def make_gold_retention(stack: Stack) -> subprocess.CompletedProcess[str]:
 
 
 def first_service_loop(stack: Stack) -> str:
-    """Start the scheduled retention service, wait for its first run, stop it and return its log."""
+    """The log of the scheduled retention service's first run."""
 
     def log() -> str:
         return stack.compose("logs", "--no-log-prefix", RETENTION_SERVICE).stdout
@@ -78,7 +78,6 @@ def first_service_loop(stack: Stack) -> str:
         stack.compose("--profile", "maintenance", "rm", "-sf", RETENTION_SERVICE, check=False)
 
 
-# Applying the DDL creates no monthly partitions, and the other gold tests expect none.
 DROP_EMPTY_MONTHS = """
 DO $$
 DECLARE

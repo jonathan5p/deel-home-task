@@ -148,9 +148,6 @@ CREATE UNLOGGED TABLE IF NOT EXISTS gold_internal.stage_fact_order_item_history 
 
 {{ describe_table(facts.fact_order_item_history.staging_table) }}
 
--- Rows the default partition already holds for a new month are moved into it, because a
--- partition cannot be added while the default partition holds rows in its range. Every month
--- the default partition holds gets its own partition too, so retention can drop it whole.
 CREATE OR REPLACE FUNCTION gold_internal.ensure_history_partitions(
     months_ahead int DEFAULT 2,
     as_of date DEFAULT current_date
@@ -203,8 +200,6 @@ $$;
 COMMENT ON FUNCTION gold_internal.ensure_history_partitions(int, date) IS
     'Creates the monthly history partitions from the month of as_of to months_ahead months ahead, and one for every month the default partition holds rows of.';
 
--- A month is dropped only when it ends before the window starts, so the window always keeps at
--- least keep_months full months. The upper bound is read from the partition itself, not its name.
 CREATE OR REPLACE FUNCTION gold_internal.apply_history_retention(
     keep_months int DEFAULT 36,
     months_ahead int DEFAULT 2,

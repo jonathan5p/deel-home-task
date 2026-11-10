@@ -25,11 +25,9 @@ def retention_query(settings: GoldRetentionSettings, as_of: date) -> str:
 def apply_retention(
     connect: ConnectionFactory, settings: GoldRetentionSettings, as_of: date
 ) -> list[str]:
-    """Partition the history months the default partition holds and the months ahead, then drop
-    the partitions that end before the window; returns the dropped partitions."""
+    """The history partitions this run dropped."""
     with transaction(connect) as connection:
         connection.execute(WRITER_LOCK)
-        # Built from validated integers and a date, never from free text.
         dropped = connection.execute(
             cast("LiteralString", retention_query(settings, as_of))
         ).fetchall()

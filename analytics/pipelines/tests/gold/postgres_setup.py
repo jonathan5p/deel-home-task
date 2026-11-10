@@ -17,9 +17,6 @@ class FakeCursor:
 
 @dataclass
 class FakeConnection:
-    """Records what the writer does with a connection; `fail_on` makes that statement fail and
-    `results` gives the rows a statement returns."""
-
     fail_on: str | None = None
     results: Mapping[str, list[tuple[object, ...]]] = field(default_factory=dict)
     log: list[str] = field(default_factory=list)
