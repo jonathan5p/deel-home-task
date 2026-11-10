@@ -27,8 +27,6 @@ def panel_sql(title: str) -> str:
 
 
 def add_current_state(stack: Stack) -> None:
-    """Commit the business-question fixture: Grafana queries in its own session, so rows a test
-    rolls back would never reach it."""
     rows(stack, REMOVE_CURRENT_STATE + CURRENT_STATE)
 
 
