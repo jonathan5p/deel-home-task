@@ -17,7 +17,12 @@ def project_name(prefix: str, folder: str) -> str:
 
 
 PROJECT = project_name("deel-infra-tests-", REPO_ROOT.name)
-IMAGES = (f"{PROJECT}-spark", f"{PROJECT}-spark-app", f"{PROJECT}-api-dev")
+IMAGES = (
+    f"{PROJECT}-spark",
+    f"{PROJECT}-spark-app",
+    f"{PROJECT}-api-dev",
+    f"{PROJECT}-api",
+)
 COMPOSE_FILES = ("docker-compose.yaml", "tests/infra/compose.override.yaml")
 CLUSTER_SERVICES = (
     "analytics-db",

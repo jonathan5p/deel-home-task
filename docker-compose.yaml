@@ -115,6 +115,29 @@ services:
       timeout: 5s
       retries: 5
 
+  api:
+    build:
+      context: .
+      dockerfile: docker/api/Dockerfile
+      target: runtime
+    image: ${COMPOSE_PROJECT_NAME}-api
+    environment:
+      ANALYTICS_DB_URL: ${ANALYTICS_DB_URL}
+      ANALYTICS_DB_USER: ${API_READER_USER}
+      ANALYTICS_DB_PASSWORD: ${API_READER_PASSWORD}
+    ports:
+      - "8000:8000"
+    depends_on:
+      analytics-db:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
   seaweedfs:
     image: chrislusf/seaweedfs:4.52
     command: ["mini", "-dir=/data", "-bucket=lake"]
