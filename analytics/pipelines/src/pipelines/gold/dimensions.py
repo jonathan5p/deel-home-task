@@ -69,8 +69,6 @@ def change_facts(
             by_name["orders"],
             lookups=(
                 status("status_key"),
-                # Stored with the current state so the partial indexes of the business views can
-                # filter on it; the planner cannot see through a join how few orders are open.
                 status("is_open"),
                 day("order_date_key", "order_date"),
                 day("delivery_date_key", "delivery_date"),
