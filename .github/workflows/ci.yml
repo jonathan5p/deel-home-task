@@ -29,6 +29,8 @@ jobs:
         run: uv run --frozen ruff check
       - name: ruff format --check
         run: uv run --frozen ruff format --check
+      - name: table reference up to date
+        run: uv run --frozen python -m pipelines.schemas.reference --check docs/reference/tables
 
   container-checks:
     name: ${{ matrix.check }}

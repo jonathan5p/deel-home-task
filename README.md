@@ -504,6 +504,8 @@ Outside Docker the Spark tests are skipped, so coverage is only meaningful with 
 
 #### Table and column definitions
 
+The [table reference](docs/reference/tables/) lists every bronze, silver and gold table and column with its type, nullability and description. It is rendered from these schemas: `make docs-tables` updates it, and a pre-commit hook and CI fail when it is out of date.
+
 The pipelines name and describe their tables and columns from one set of [Avro schemas](https://avro.apache.org/docs/1.12.0/specification/) (`.avsc`, JSON) in `analytics/pipelines/src/pipelines/schemas/`, shipped as package data of `pipelines` (in the wheel and in the executors' `packages.zip`):
 
 ```text

@@ -25,6 +25,13 @@ repos:
         pass_filenames: false
         files: (\.py|pyproject\.toml)$
 
+      - id: table-reference
+        name: table reference up to date
+        entry: uv run --frozen python -m pipelines.schemas.reference --check docs/reference/tables
+        language: system
+        pass_filenames: false
+        files: ^(analytics/pipelines/src/pipelines/schemas/|docs/reference/tables/)
+
       - id: ty
         name: ty (app container)
         entry: make --no-print-directory typecheck

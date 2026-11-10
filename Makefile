@@ -48,7 +48,7 @@ PIPELINE_JOBS = $(addsuffix -job,$(if $(filter all,$(PIPELINE)),$(PIPELINES),$(f
 PIPELINE_SERVICES = $(PIPELINE_JOBS) $(if $(filter silver all,$(PIPELINE)),lake-views)
 CHECK_PIPELINE = $(if $(and $(PIPELINE_JOBS),$(filter 1,$(words $(PIPELINE)))),,$(error Set PIPELINE to one of: $(PIPELINES) all (got "$(PIPELINE)"), e.g. make $@ PIPELINE=landing))
 
-.PHONY: help up down clean gold-reset db-logins gold-rebuild gold-retention spark-submit bronze-replay spark-sql spark-history data-quality lake-maintenance pipeline pipeline-logs pipeline-stop lake-views test lint format typecheck schemas test-infra hooks
+.PHONY: help up down clean gold-reset db-logins gold-rebuild gold-retention spark-submit bronze-replay spark-sql spark-history data-quality lake-maintenance pipeline pipeline-logs pipeline-stop lake-views test lint format typecheck schemas docs-tables test-infra hooks
 
 help:
 	@printf '%s\n' \
@@ -76,6 +76,7 @@ help:
 		'typecheck      Check types with ty in the app image and the API dev image; any diagnostic fails.' \
 		'schemas        Render the full flat Avro schema of every lake table and view to target/schemas/<layer>/<table>.avsc, for reading.' \
 		'               Build output: git-ignored, regenerated each run; edit analytics/pipelines/src/pipelines/schemas/ instead.' \
+		'docs-tables    Render the Markdown table reference of every layer to docs/reference/tables/<layer>.md from the schemas; commit the result.' \
 		'test-infra     Run the infra tests against an isolated copy of the stack (local only, a few minutes).' \
 		'hooks          Install the pre-commit hooks in this clone (once).' \
 		'Optional profiles: monitoring (Conduktor), history (Spark History Server), maintenance (lake maintenance and gold retention every 24 hours). See README.md.'
@@ -162,6 +163,9 @@ typecheck:
 
 schemas:
 	@uv run --frozen python -m pipelines.schemas.render target/schemas
+
+docs-tables:
+	@uv run --frozen python -m pipelines.schemas.reference docs/reference/tables
 
 test-infra:
 	@$(RENDER_GOLD_DDL)
