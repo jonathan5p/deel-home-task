@@ -64,11 +64,7 @@ def run(
     read: SilverReader = read_silver_table,
     sink: SinkFactory | None = None,
 ) -> list[str]:
-    """Load every silver change up to `to_time` into gold, one batch per load through the gold
-    job's own sinks, then apply retention; returns the partitions retention dropped.
-
-    The dimensions go first, so every fact resolves its dimension keys against complete
-    dimensions; the merges re-resolve each other, so the order changes no result."""
+    """The partitions retention dropped after loading every silver change up to `to_time`."""
     facts = tuple(facts)
     sinks = sink or merge_sinks(settings.analytics_db, facts)
     loads: list[GoldLoad] = [*dimensions, *facts]

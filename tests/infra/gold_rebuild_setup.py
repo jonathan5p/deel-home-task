@@ -18,7 +18,6 @@ CUTOFF_SEQUENCE = 250
 CUTOFF = changed_at(CUTOFF_SEQUENCE)
 STREAMED_BATCHES = ("batch-1", "batch-2", "batch-late")
 
-# Surrogate keys are generated, so the versions are compared by their business key and position.
 CUSTOMER_VERSIONS = """
 SELECT customer_id, _commit_sequence, customer_name, _is_folded, _is_deleted, _valid_from,
     _valid_to, _is_current
@@ -87,8 +86,6 @@ def taken(stack: Stack) -> GoldState:
 
 
 def run_rebuild_scenario(stack: Stack) -> RebuildRuns:
-    """Stream every change, and separately only the changes up to the cutoff, into gold; then
-    rebuild gold from the silver tables holding every change, with and without the cutoff."""
     remove_fact_rows(stack)
     EVERY_CHANGE.run_gold(stack, *STREAMED_BATCHES)
     streamed = taken(stack)
