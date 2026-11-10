@@ -13,8 +13,8 @@ x-spark-worker: &spark-worker
     spark-master:
       condition: service_healthy
   environment:
-    SPARK_WORKER_CORES: "2"
-    SPARK_WORKER_MEMORY: "2g"
+    SPARK_WORKER_CORES: "4"
+    SPARK_WORKER_MEMORY: "4g"
   healthcheck:
     test: ["CMD-SHELL", "curl -fsS http://localhost:8081/ >/dev/null || exit 1"]
     interval: 10s
@@ -225,6 +225,13 @@ services:
     command: [sh, -c, *pipeline-submit, spark-submit, /opt/app/analytics/pipelines/src/pipelines/landing/job.py]
     ports:
       - "4040:4040"
+
+  bronze-job:
+    <<: *pipeline-job
+    hostname: bronze-job
+    command: [sh, -c, *pipeline-submit, spark-submit, /opt/app/analytics/pipelines/src/pipelines/bronze/job.py]
+    ports:
+      - "4041:4040"
 
   # Optional: Spark history server
   spark-history:
