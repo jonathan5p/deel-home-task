@@ -12,18 +12,13 @@ COMMENT ON SCHEMA gold_internal IS
 COMMENT ON SCHEMA gold IS
     'Gold star schema for consumers: views over gold_internal without the pipeline-only metadata.';
 
--- The writer inserts new versions as not current and recomputes the flags of every key it
--- touched in the same transaction, so the check only requires a current version to be open,
--- not deleted and not folded; the unique index keeps one current version per key.
+-- The dimensions are only ever appended to; their *_versions views derive the fold flag, the
+-- validity and the current version, and the (key, _commit_sequence) index serves their windows.
 CREATE TABLE IF NOT EXISTS gold_internal.dim_customer (
 {{ column_lines(tables.dim_customer, {"customer_key": "GENERATED ALWAYS AS IDENTITY"}) }}
     PRIMARY KEY (customer_key),
-    UNIQUE (customer_id, _commit_sequence),
-    CHECK (NOT _is_current OR (_valid_to IS NULL AND NOT _is_deleted AND NOT _is_folded))
+    UNIQUE (customer_id, _commit_sequence)
 );
-
-CREATE UNIQUE INDEX IF NOT EXISTS dim_customer_current_idx
-    ON gold_internal.dim_customer (customer_id) WHERE _is_current;
 
 {{ describe_table(tables.dim_customer) }}
 
@@ -33,15 +28,16 @@ CREATE UNLOGGED TABLE IF NOT EXISTS gold_internal.stage_dim_customer (
 
 {{ describe_table(dimensions.dim_customer.staging_table) }}
 
+CREATE OR REPLACE VIEW {{ dimensions.dim_customer.versions_relation }} AS
+{{ dimensions.dim_customer.versions_query() }};
+
+{{ describe_table(tables.dim_customer_versions, "VIEW") }}
+
 CREATE TABLE IF NOT EXISTS gold_internal.dim_product (
 {{ column_lines(tables.dim_product, {"product_key": "GENERATED ALWAYS AS IDENTITY"}) }}
     PRIMARY KEY (product_key),
-    UNIQUE (product_id, _commit_sequence),
-    CHECK (NOT _is_current OR (_valid_to IS NULL AND NOT _is_deleted AND NOT _is_folded))
+    UNIQUE (product_id, _commit_sequence)
 );
-
-CREATE UNIQUE INDEX IF NOT EXISTS dim_product_current_idx
-    ON gold_internal.dim_product (product_id) WHERE _is_current;
 
 {{ describe_table(tables.dim_product) }}
 
@@ -50,6 +46,11 @@ CREATE UNLOGGED TABLE IF NOT EXISTS gold_internal.stage_dim_product (
 );
 
 {{ describe_table(dimensions.dim_product.staging_table) }}
+
+CREATE OR REPLACE VIEW {{ dimensions.dim_product.versions_relation }} AS
+{{ dimensions.dim_product.versions_query() }};
+
+{{ describe_table(tables.dim_product_versions, "VIEW") }}
 
 CREATE TABLE IF NOT EXISTS gold_internal.dim_date (
 {{ column_lines(tables.dim_date, {"calendar_date": "UNIQUE"}) }}
@@ -213,10 +214,14 @@ SELECT
     _valid_from,
     _valid_to,
     _is_current
-FROM gold_internal.dim_customer
+FROM {{ dimensions.dim_customer.versions_relation }}
 WHERE NOT _is_folded AND NOT _is_deleted;
 
-{{ describe_view(tables.dim_customer) }}
+{{ describe_view(
+    tables.dim_customer,
+    tables.dim_customer_versions.column("_valid_to"),
+    tables.dim_customer_versions.column("_is_current"),
+) }}
 
 CREATE OR REPLACE VIEW gold.dim_product AS
 SELECT
@@ -229,10 +234,14 @@ SELECT
     _valid_from,
     _valid_to,
     _is_current
-FROM gold_internal.dim_product
+FROM {{ dimensions.dim_product.versions_relation }}
 WHERE NOT _is_folded AND NOT _is_deleted;
 
-{{ describe_view(tables.dim_product) }}
+{{ describe_view(
+    tables.dim_product,
+    tables.dim_product_versions.column("_valid_to"),
+    tables.dim_product_versions.column("_is_current"),
+) }}
 
 CREATE OR REPLACE VIEW gold.dim_date AS
 SELECT
@@ -271,8 +280,8 @@ WINDOW versions AS (PARTITION BY order_id ORDER BY _commit_sequence);
 
 {{ describe_view(
     tables.fact_order_history,
-    tables.dim_customer.column("_valid_to"),
-    tables.dim_customer.column("_is_current"),
+    tables.dim_customer_versions.column("_valid_to"),
+    tables.dim_customer_versions.column("_is_current"),
 ) }}
 
 CREATE OR REPLACE VIEW gold.fact_order_item_history AS
@@ -293,8 +302,8 @@ WINDOW versions AS (PARTITION BY order_item_id ORDER BY _commit_sequence);
 
 {{ describe_view(
     tables.fact_order_item_history,
-    tables.dim_customer.column("_valid_to"),
-    tables.dim_customer.column("_is_current"),
+    tables.dim_customer_versions.column("_valid_to"),
+    tables.dim_customer_versions.column("_is_current"),
 ) }}
 
 CREATE OR REPLACE VIEW gold.current_orders AS

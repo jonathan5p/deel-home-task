@@ -10,6 +10,7 @@ from pipelines.schemas.gold_definitions import GoldTable
 
 INTERNAL_SCHEMA = "gold_internal"
 STAGING_PREFIX = "stage_"
+VERSIONS_SUFFIX = "_versions"
 STAGING_DESCRIPTION = (
     "Versions of the micro-batch being written to {table}, loaded by Spark and replaced by"
     " every batch; unlogged, so it may be empty after a crash"
@@ -20,13 +21,9 @@ class Scd2Column(StrEnum):
     COMMIT_SEQUENCE = "_commit_sequence"
     CONTENT_HASH = "_content_hash"
     IS_DELETED = "_is_deleted"
-    IS_FOLDED = "_is_folded"
     VALID_FROM = "_valid_from"
-    VALID_TO = "_valid_to"
-    IS_CURRENT = "_is_current"
 
 
-RECOMPUTED_COLUMNS = (Scd2Column.IS_FOLDED, Scd2Column.VALID_TO, Scd2Column.IS_CURRENT)
 SILVER_COLUMNS: Mapping[str, str] = {Scd2Column.VALID_FROM: str(MetadataColumn.CHANGED_AT)}
 
 
@@ -69,14 +66,18 @@ class Scd2Dimension:
         return f"{INTERNAL_SCHEMA}.{self.name}"
 
     @property
+    def versions_relation(self) -> str:
+        """The view of every stored version with its fold flag and validity."""
+        return f"{INTERNAL_SCHEMA}.{self.name}{VERSIONS_SUFFIX}"
+
+    @property
     def staging_relation(self) -> str:
         return f"{INTERNAL_SCHEMA}.{self.staging_table.name}"
 
     @property
     def staged_columns(self) -> tuple[ColumnDefinition, ...]:
-        """The columns loaded from silver: all but the surrogate key and the recomputed ones."""
-        derived = {self.surrogate_key, *RECOMPUTED_COLUMNS}
-        return tuple(column for column in self.table.columns if column.name not in derived)
+        """The columns loaded from silver: all but the surrogate key."""
+        return tuple(column for column in self.table.columns if column.name != self.surrogate_key)
 
     @property
     def staging_table(self) -> GoldTable:
@@ -137,7 +138,7 @@ class Scd2Dimension:
             self._fail(f"the silver input has no columns named {', '.join(missing)}")
 
     def insert_statement(self) -> str:
-        """Insert the staged versions not stored yet, not current until they are recomputed."""
+        """Insert the staged versions not stored yet; the table is only ever appended to."""
         return render_sql(
             "scd2_insert",
             relation=self.relation,
@@ -146,28 +147,16 @@ class Scd2Dimension:
             key=self.key,
         )
 
-    def _update(self, *, closing: bool) -> str:
+    def versions_query(self) -> str:
+        """The query of the view at `versions_relation`: every stored version with whether it
+        is folded, its `_valid_to` and whether it is current."""
         return render_sql(
-            "scd2_update",
+            "scd2_versions",
             relation=self.relation,
-            staging=self.staging_relation,
+            columns=[column.name for column in self.table.columns],
             key=self.key,
-            surrogate_key=self.surrogate_key,
-            closing=closing,
         )
-
-    def close_statement(self) -> str:
-        """Apply the recomputed values to the current versions that stop being current.
-
-        It runs before the other updates because the unique index on current versions is
-        checked row by row, so a key's old current version must be closed first.
-        """
-        return self._update(closing=True)
-
-    def recompute_statement(self) -> str:
-        """Apply the recomputed values to every other version whose values change."""
-        return self._update(closing=False)
 
     def merge_statements(self) -> Sequence[str]:
         """The statements that merge the staged batch, to run in this order in one transaction."""
-        return (self.insert_statement(), self.close_statement(), self.recompute_statement())
+        return (self.insert_statement(),)

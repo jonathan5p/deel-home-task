@@ -16,6 +16,7 @@ INTERNAL_TABLES = {
     "current_order_items",
 }
 STAGING_TABLES = {"stage_dim_customer", "stage_dim_product"}
+VERSIONS_VIEWS = {"dim_customer_versions", "dim_product_versions"}
 PUBLIC_VIEWS = INTERNAL_TABLES | {"data_freshness"}
 
 UNDESCRIBED_RELATIONS = """
@@ -90,17 +91,13 @@ ORDER BY 1, 2;
 CURRENT_STATE = """
 INSERT INTO gold_internal.dim_customer (
     customer_id, customer_name, customer_address, is_active, _commit_sequence,
-    _content_hash, _is_deleted, _is_folded, _valid_from, _valid_to, _is_current
+    _content_hash, _is_deleted, _valid_from
 )
 VALUES
-    (1, 'Ada', 'Old Street 1', true, 100, 'a1', false, false,
-        '2026-11-01 08:00', '2026-11-05 08:00', false),
-    (1, 'Ada Lovelace', 'New Street 2', true, 300, 'a2', false, false,
-        '2026-11-05 08:00', null, true),
-    (2, 'Grace Hopper', 'Main Street 3', true, 110, 'g1', false, false,
-        '2026-11-01 08:00', null, true),
-    (3, 'Alan Turing', 'Side Street 4', true, 120, 't1', false, false,
-        '2026-11-01 08:00', null, true);
+    (1, 'Ada', 'Old Street 1', true, 100, 'a1', false, '2026-11-01 08:00'),
+    (1, 'Ada Lovelace', 'New Street 2', true, 300, 'a2', false, '2026-11-05 08:00'),
+    (2, 'Grace Hopper', 'Main Street 3', true, 110, 'g1', false, '2026-11-01 08:00'),
+    (3, 'Alan Turing', 'Side Street 4', true, 120, 't1', false, '2026-11-01 08:00');
 
 INSERT INTO gold_internal.current_orders (
     order_id, status_key, customer_id, order_date, delivery_date,
@@ -243,12 +240,11 @@ def answer(stack: Stack, query_file: str, fixture: str = CURRENT_STATE) -> list[
 
 FRESHNESS_FIXTURE = """
 INSERT INTO gold_internal.dim_customer (
-    customer_id, _commit_sequence, _content_hash, _is_deleted, _is_folded,
-    _valid_from, _valid_to, _is_current
+    customer_id, _commit_sequence, _content_hash, _is_deleted, _valid_from
 )
 VALUES
-    (1, 10, 'a1', false, false, timestamp '2026-11-08 10:00', timestamp '2026-11-09 08:00', false),
-    (1, 20, 'a2', false, false, timestamp '2026-11-09 08:00', NULL, true);
+    (1, 10, 'a1', false, timestamp '2026-11-08 10:00'),
+    (1, 20, 'a2', false, timestamp '2026-11-09 08:00');
 INSERT INTO gold_internal.current_orders (order_id, status_key, _commit_sequence, _changed_at)
 VALUES (1, 1, 30, timestamp '2026-11-09 09:00'), (2, 1, 40, timestamp '2026-11-09 09:30');
 """

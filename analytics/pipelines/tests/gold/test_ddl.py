@@ -17,6 +17,7 @@ from pipelines.gold.ddl import (
     postgres_string,
     render,
 )
+from pipelines.gold.dimensions import DIMENSIONS
 
 
 def test_a_text_becomes_a_postgres_string_with_its_quotes_doubled() -> None:
@@ -122,5 +123,27 @@ def test_the_public_dimension_views_leave_out_folded_and_deleted_versions(dimens
     view = render().split(f"CREATE OR REPLACE VIEW gold.{dimension} AS", 1)[1]
 
     assert view.split(";", 1)[0].endswith(
-        f"FROM gold_internal.{dimension}\nWHERE NOT _is_folded AND NOT _is_deleted"
+        f"FROM gold_internal.{dimension}_versions\nWHERE NOT _is_folded AND NOT _is_deleted"
     )
+
+
+@pytest.mark.parametrize("dimension", ["dim_customer", "dim_product"])
+def test_each_scd2_dimension_has_a_described_versions_view_with_its_query(dimension: str) -> None:
+    ddl = render()
+    (scd2,) = (d for d in DIMENSIONS if d.name == dimension)
+
+    assert f"CREATE OR REPLACE VIEW gold_internal.{dimension}_versions AS\n" in ddl
+    assert f"{scd2.versions_query()};\n" in ddl
+    assert f"COMMENT ON VIEW gold_internal.{dimension}_versions IS" in ddl
+    assert f"COMMENT ON COLUMN gold_internal.{dimension}_versions._is_folded IS" in ddl
+
+
+@pytest.mark.parametrize("dimension", ["dim_customer", "dim_product"])
+def test_the_dimension_tables_store_no_derived_flags_or_current_constraint(dimension: str) -> None:
+    table = render().split(f"CREATE TABLE IF NOT EXISTS gold_internal.{dimension} (", 1)[1]
+    definition = table.split(");", 1)[0]
+
+    assert "_is_folded" not in definition
+    assert "_is_current" not in definition
+    assert "CHECK" not in definition
+    assert f"{dimension}_current_idx" not in render()

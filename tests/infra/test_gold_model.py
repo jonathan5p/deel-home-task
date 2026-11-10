@@ -17,6 +17,7 @@ from tests.infra.gold_fixtures import (
     UNDESCRIBED_COLUMNS,
     UNDESCRIBED_RELATIONS,
     UNDESCRIBED_SCHEMAS,
+    VERSIONS_VIEWS,
     answer,
     item_change,
     order_change,
@@ -54,11 +55,14 @@ def test_ddl_applies_again_to_an_existing_database(
         assert "ERROR" not in run.stderr
 
 
-def test_internal_schema_holds_the_model_tables(gold: Stack) -> None:
-    relations = rows(gold, top_level_relations("gold_internal"))
+def test_internal_schema_holds_the_model_tables_and_the_dimension_versions_views(
+    gold: Stack,
+) -> None:
+    relations = dict(rows(gold, top_level_relations("gold_internal")))
 
-    assert {name for name, _ in relations} == INTERNAL_TABLES | STAGING_TABLES
-    assert {kind for _, kind in relations} <= {"r", "p"}
+    assert set(relations) == INTERNAL_TABLES | STAGING_TABLES | VERSIONS_VIEWS
+    assert {relations[name] for name in INTERNAL_TABLES | STAGING_TABLES} <= {"r", "p"}
+    assert {relations[name] for name in VERSIONS_VIEWS} == {"v"}
 
 
 def test_staging_tables_are_unlogged(gold: Stack) -> None:

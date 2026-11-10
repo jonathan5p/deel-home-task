@@ -72,8 +72,9 @@ def comments(
     return "\n".join(statements)
 
 
-def describe_table(table: GoldTable) -> str:
-    return comments("TABLE", f"{INTERNAL_SCHEMA}.{table.name}", table.description, table.columns)
+def describe_table(table: GoldTable, kind: str = "TABLE") -> str:
+    """The comments of a table in gold_internal, or of a view there with `kind` VIEW."""
+    return comments(kind, f"{INTERNAL_SCHEMA}.{table.name}", table.description, table.columns)
 
 
 def describe_view(table: GoldTable, *added: ColumnDefinition) -> str:

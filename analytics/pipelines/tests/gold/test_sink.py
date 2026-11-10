@@ -78,7 +78,7 @@ def test_a_batch_is_staged_then_merged_in_one_transaction(spark: SparkSession) -
 
 
 def test_a_failed_merge_fails_the_batch(spark: SparkSession) -> None:
-    failing = PRODUCTS.close_statement()
+    failing = PRODUCTS.insert_statement()
     connection = FakeConnection(fail_on=failing)
     batch = spark.createDataFrame([], silver_schema(PRODUCTS.entity))
 

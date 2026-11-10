@@ -16,9 +16,11 @@ GOLD_TABLES = {
     "current_orders",
     "data_freshness",
     "dim_customer",
+    "dim_customer_versions",
     "dim_date",
     "dim_order_status",
     "dim_product",
+    "dim_product_versions",
     "fact_order_history",
     "fact_order_item_history",
 }

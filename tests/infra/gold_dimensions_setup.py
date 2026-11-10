@@ -128,7 +128,7 @@ def keys(values: tuple[int, ...]) -> str:
 STORED = """
 SELECT {key}, _commit_sequence, {surrogate}, {value}, _valid_from, coalesce(_valid_to::text, ''),
     _is_current, _is_folded, _is_deleted
-FROM gold_internal.{table}
+FROM gold_internal.{table}_versions
 WHERE {key} IN ({keys})
 ORDER BY 1, 2;
 """
