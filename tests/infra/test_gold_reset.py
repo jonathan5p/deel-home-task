@@ -2,6 +2,7 @@ from collections.abc import Iterator
 
 import pytest
 
+from tests.infra.gold_reader_setup import as_api_reader
 from tests.infra.gold_reset_setup import (
     CATALOG_TABLE,
     EXTRA_STATUS,
@@ -53,3 +54,11 @@ def test_gold_reset_keeps_the_iceberg_catalog(stack: Stack, reset: GoldReset) ->
     )
 
     assert tables == "1"
+
+
+def test_gold_reset_keeps_the_api_login_reading_the_gold_views(
+    stack: Stack, reset: GoldReset
+) -> None:
+    run = as_api_reader(stack, "SELECT count(*) FROM gold.top_customers_by_pending_orders;")
+
+    assert run.returncode == 0, run.stderr

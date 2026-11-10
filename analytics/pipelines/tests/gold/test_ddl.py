@@ -290,3 +290,24 @@ def test_a_view_leaves_out_the_columns_it_hides() -> None:
 
     assert "COMMENT ON COLUMN gold.things.label IS" not in lines
     assert "COMMENT ON COLUMN gold.things.thing_id IS" in lines
+
+
+def test_the_gold_reader_role_is_created_only_when_missing() -> None:
+    ddl = render()
+
+    assert "IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'gold_reader') THEN" in ddl
+    assert "CREATE ROLE gold_reader NOLOGIN;" in ddl
+    assert "COMMENT ON ROLE gold_reader IS" in ddl
+
+
+def test_the_gold_reader_role_reads_every_public_view_after_they_are_created() -> None:
+    ddl = render()
+    grants = ddl.index("GRANT SELECT ON ALL TABLES IN SCHEMA gold TO gold_reader;")
+
+    assert "GRANT USAGE ON SCHEMA gold TO gold_reader;" in ddl
+    assert grants > ddl.rindex("CREATE OR REPLACE VIEW gold.")
+    assert grants < ddl.rindex("COMMIT;")
+
+
+def test_the_gold_reader_role_gets_nothing_in_the_internal_schema() -> None:
+    assert not re.search(r"GRANT [^;]*gold_internal", render())

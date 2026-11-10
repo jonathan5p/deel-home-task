@@ -41,7 +41,7 @@ PIPELINE_JOBS = $(addsuffix -job,$(if $(filter all,$(PIPELINE)),$(PIPELINES),$(f
 PIPELINE_SERVICES = $(PIPELINE_JOBS) $(if $(filter silver all,$(PIPELINE)),lake-views)
 CHECK_PIPELINE = $(if $(and $(PIPELINE_JOBS),$(filter 1,$(words $(PIPELINE)))),,$(error Set PIPELINE to one of: $(PIPELINES) all (got "$(PIPELINE)"), e.g. make $@ PIPELINE=landing))
 
-.PHONY: help up down clean gold-reset gold-rebuild gold-retention spark-submit bronze-replay spark-sql spark-history data-quality lake-maintenance pipeline pipeline-logs pipeline-stop lake-views test lint format typecheck schemas test-infra hooks
+.PHONY: help up down clean gold-reset db-logins gold-rebuild gold-retention spark-submit bronze-replay spark-sql spark-history data-quality lake-maintenance pipeline pipeline-logs pipeline-stop lake-views test lint format typecheck schemas test-infra hooks
 
 help:
 	@printf '%s\n' \
@@ -49,6 +49,7 @@ help:
 		'down           Stop all project services, including optional profiles; keep volumes.' \
 		'clean          Delete project containers and volumes (DATA LOSS); requires CONFIRM=1.' \
 		'gold-reset     Stop the gold job, recreate the gold schemas from the rendered DDL and delete the gold checkpoints (gold DATA LOSS; the lake is kept); requires CONFIRM=1.' \
+		'db-logins      Create or update the service logins of the analytics database (members of gold_reader) from .env; safe to repeat.' \
 		'gold-rebuild   Run gold-reset, then reload gold from the silver tables in one batch up to TO_TIME (ISO 8601 source commit time, inclusive; default: everything) and apply retention; the gold job stays stopped; requires CONFIRM=1.' \
 		'gold-retention Drop the gold history months outside GOLD_RETENTION_MONTHS (default 36) and create the months ahead; the maintenance profile runs it every GOLD_RETENTION_INTERVAL_HOURS (default 24).' \
 		'spark-submit   Run SPARK_APP (repo path; default: UI check job) in its own driver container; options SPARK_APP_ARGS, SPARK_CONF, SPARK_UI_PORT.' \
@@ -186,6 +187,9 @@ endif
 
 gold-retention:
 	@$(COMPOSE) run --rm --build --no-deps spark-app python -m pipelines.gold.retention
+
+db-logins:
+	@$(COMPOSE) exec -T analytics-db sh /docker-entrypoint-initdb.d/03-service-logins.sh
 
 clean:
 ifeq ($(CONFIRM),1)

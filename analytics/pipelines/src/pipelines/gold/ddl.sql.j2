@@ -503,4 +503,17 @@ WHERE top_customers.place <= 3;
 
 {{ describe_view(tables.top_customers_by_pending_orders) }}
 
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'gold_reader') THEN
+        CREATE ROLE gold_reader NOLOGIN;
+    END IF;
+END;
+$$;
+
+COMMENT ON ROLE gold_reader IS
+    'Read-only access to the gold views; granted to the service logins of the gold consumers.';
+GRANT USAGE ON SCHEMA gold TO gold_reader;
+GRANT SELECT ON ALL TABLES IN SCHEMA gold TO gold_reader;
+
 COMMIT;
