@@ -1,5 +1,5 @@
 LEFT JOIN LATERAL (
-    SELECT {{ columns | qualify("version") | join(", ") }}
+    SELECT {{ columns | prefixed("version") | join(", ") }}
     FROM {{ versions }} AS version
     WHERE version.{{ key }} = {{ row }}.{{ business_key }}
       AND NOT version._is_folded

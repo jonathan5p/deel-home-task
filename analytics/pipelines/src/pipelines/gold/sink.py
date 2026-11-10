@@ -11,10 +11,6 @@ from pipelines.gold.postgres import ConnectionFactory, run_in_transaction
 from pipelines.schemas.definitions import EntityDefinition
 
 POSTGRES_DRIVER = "org.postgresql.Driver"
-# Every gold merge takes this lock first, so gold writers commit one at a time. A fact merge
-# resolves its dimension keys from the committed dimension rows and a dimension merge
-# re-resolves the committed fact rows; run side by side, each would miss the other's
-# uncommitted rows and leave a fact pointing at the wrong dimension version for good.
 WRITER_LOCK = "SELECT pg_advisory_xact_lock(hashtextextended('gold_internal', 0))"
 
 type StageWriter = Callable[[DataFrame, str], None]

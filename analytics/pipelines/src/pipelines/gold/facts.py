@@ -115,7 +115,7 @@ class AsOfLookup:
         at most one row."""
         dimension = self.dimension
         return render_sql(
-            "fact_as_of_join",
+            "fact_dimension_version_lookup",
             columns=[column for _, column in self.columns],
             versions=dimension.versions_relation,
             relation=dimension.relation,
