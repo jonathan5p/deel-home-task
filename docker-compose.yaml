@@ -50,6 +50,7 @@ x-spark-app: &spark-app
     MAINTENANCE_ORPHAN_AGE_HOURS: ${MAINTENANCE_ORPHAN_AGE_HOURS:-}
     MAINTENANCE_DOWNSTREAM_CHECKPOINTS: ${MAINTENANCE_DOWNSTREAM_CHECKPOINTS:-}
     MAINTENANCE_INTERVAL_HOURS: ${MAINTENANCE_INTERVAL_HOURS:-}
+    DATA_QUALITY_INTERVAL_HOURS: ${DATA_QUALITY_INTERVAL_HOURS:-}
   volumes:
     - spark-events:/opt/spark/spark-events
 
@@ -359,6 +360,45 @@ services:
         while true; do
           python -m pipelines.gold.retention \
             || echo "Gold retention failed; the next run starts in $$hours hours" >&2
+          sleep "$$((hours * 3600))"
+        done
+
+  data-quality-job:
+    <<: *spark-app
+    profiles: [maintenance]
+    hostname: data-quality-job
+    restart: unless-stopped
+    depends_on:
+      spark-master:
+        condition: service_healthy
+      spark-worker-1:
+        condition: service_healthy
+      spark-worker-2:
+        condition: service_healthy
+      seaweedfs:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      analytics-db:
+        condition: service_healthy
+    command:
+      - sh
+      - -c
+      - |
+        hours="$${DATA_QUALITY_INTERVAL_HOURS:-24}"
+        case "$$hours" in
+          ''|*[!0-9]*|0) echo "DATA_QUALITY_INTERVAL_HOURS=$$hours is not a positive integer" >&2; exit 1 ;;
+        esac
+        while true; do
+          /opt/spark/bin/spark-submit \
+            --master "$$SPARK_MASTER_URL" \
+            --conf spark.driver.host="$$(hostname)" \
+            --conf spark.cores.max=2 \
+            --conf spark.hadoop.fs.s3a.access.key="$$LAKE_S3_ACCESS_KEY" \
+            --conf spark.hadoop.fs.s3a.secret.key="$$LAKE_S3_SECRET_KEY" \
+            --py-files /opt/app/packages.zip \
+            /opt/app/analytics/pipelines/src/pipelines/quality/job.py all \
+            || echo "Data quality checks failed; the next run starts in $$hours hours" >&2
           sleep "$$((hours * 3600))"
         done
 
