@@ -6,3 +6,4 @@ services:
   spark-master: { ports: !reset [] }
   spark-worker-1: { ports: !reset [] }
   spark-worker-2: { ports: !reset [] }
+  maintenance-job: { ports: !reset [] }

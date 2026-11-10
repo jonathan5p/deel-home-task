@@ -1,20 +1,28 @@
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import ClassVar, Self
 
 from common.settings import (
     AnalyticsDbSettings,
+    InvalidSettingError,
     optional,
     optional_positive_int,
     positive_int,
     require,
     split_list,
 )
+from pipelines.gold.dimensions import DIMENSIONS, FACTS
+from pipelines.schemas.definitions import load_entities
 
 DEFAULT_LANDING_TRIGGER_SECONDS = 10
 DEFAULT_BRONZE_TRIGGER_SECONDS = 10
 DEFAULT_SILVER_TRIGGER_SECONDS = 10
 DEFAULT_GOLD_TRIGGER_SECONDS = 10
+DEFAULT_MAINTENANCE_NAMESPACES = ("bronze", "silver")
+DEFAULT_SNAPSHOT_RETENTION_HOURS = 168
+DEFAULT_RETAIN_LAST = 10
+DEFAULT_ORPHAN_AGE_HOURS = 72
+MIN_ORPHAN_AGE_HOURS = 24
 
 
 @dataclass(frozen=True, slots=True)
@@ -169,6 +177,85 @@ class GoldSettings(SourcedLakeLayerNames):
             analytics_db=AnalyticsDbSettings.from_env(env),
             trigger_seconds=positive_int(env, "GOLD_TRIGGER_SECONDS", DEFAULT_GOLD_TRIGGER_SECONDS),
         )
+
+
+def downstream_checkpoints(value: str) -> dict[str, tuple[str, ...]]:
+    """Parse `<namespace>.<table>=<checkpoint>[|<checkpoint>...]` entries separated by commas."""
+    streams: dict[str, tuple[str, ...]] = {}
+    for entry in split_list("MAINTENANCE_DOWNSTREAM_CHECKPOINTS", value):
+        table, separator, paths = entry.partition("=")
+        checkpoints = tuple(path.strip() for path in paths.split("|") if path.strip())
+        if not separator or "." not in table.strip() or not checkpoints:
+            raise InvalidSettingError(
+                "MAINTENANCE_DOWNSTREAM_CHECKPOINTS",
+                value,
+                "a list of <namespace>.<table>=<checkpoint>[|<checkpoint>...] entries",
+            )
+        streams[table.strip()] = checkpoints
+    return streams
+
+
+def default_downstream(lake: LakeSettings) -> dict[str, tuple[str, ...]]:
+    """The checkpoints of the silver and gold streams, by the `<namespace>.<table>` they read."""
+    streams: dict[str, tuple[str, ...]] = {
+        f"{BronzeSettings.LAYER}.{entity.name}": (
+            lake.checkpoint_path(SilverSettings.LAYER, entity.name),
+        )
+        for entity in load_entities()
+    }
+    for load in (*DIMENSIONS, *FACTS):
+        table = f"{SilverSettings.LAYER}.{load.entity.name}"
+        streams[table] = (
+            *streams.get(table, ()),
+            lake.checkpoint_path(GoldSettings.LAYER, load.name),
+        )
+    return streams
+
+
+@dataclass(frozen=True, slots=True)
+class MaintenanceSettings:
+    catalog: str
+    namespaces: tuple[str, ...]
+    snapshot_retention_hours: int
+    retain_last: int
+    orphan_age_hours: int
+    downstream: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
+
+    @classmethod
+    def from_env(cls, env: Mapping[str, str]) -> Self:
+        require(env, *LakeSettings.REQUIRED)
+        lake = LakeSettings.from_env(env)
+        namespaces = env.get("MAINTENANCE_NAMESPACES")
+        downstream = env.get("MAINTENANCE_DOWNSTREAM_CHECKPOINTS")
+        orphan_age_hours = positive_int(
+            env, "MAINTENANCE_ORPHAN_AGE_HOURS", DEFAULT_ORPHAN_AGE_HOURS
+        )
+        if orphan_age_hours < MIN_ORPHAN_AGE_HOURS:
+            raise InvalidSettingError(
+                "MAINTENANCE_ORPHAN_AGE_HOURS",
+                str(orphan_age_hours),
+                f"at least {MIN_ORPHAN_AGE_HOURS}",
+            )
+        return cls(
+            catalog=lake.catalog,
+            namespaces=(
+                split_list("MAINTENANCE_NAMESPACES", namespaces)
+                if namespaces
+                else DEFAULT_MAINTENANCE_NAMESPACES
+            ),
+            snapshot_retention_hours=positive_int(
+                env, "MAINTENANCE_SNAPSHOT_RETENTION_HOURS", DEFAULT_SNAPSHOT_RETENTION_HOURS
+            ),
+            retain_last=positive_int(env, "MAINTENANCE_RETAIN_LAST", DEFAULT_RETAIN_LAST),
+            orphan_age_hours=orphan_age_hours,
+            downstream=(
+                downstream_checkpoints(downstream) if downstream else default_downstream(lake)
+            ),
+        )
+
+    def checkpoints(self, table: str) -> tuple[str, ...]:
+        """The checkpoints of the streams that read `table` (`<namespace>.<table>`)."""
+        return self.downstream.get(table, ())
 
 
 @dataclass(frozen=True, slots=True)

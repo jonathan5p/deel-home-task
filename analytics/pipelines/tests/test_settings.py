@@ -8,6 +8,7 @@ from pipelines.settings import (
     LakeSettings,
     LandingQualitySettings,
     LandingSettings,
+    MaintenanceSettings,
     PipelineSettings,
     SilverSettings,
 )
@@ -232,3 +233,90 @@ def test_gold_reads_silver_tables_and_keeps_checkpoints_per_gold_table() -> None
 
     assert settings.source_table("customers") == "catalog.silver.customers"
     assert settings.checkpoint_path("dim_customer") == "s3a://bucket/checkpoints/gold/dim_customer"
+
+
+MAINTENANCE = {"ICEBERG_CATALOG": "catalog", "LAKE_ROOT": "s3a://lake"}
+
+
+def test_maintenance_defaults_cover_bronze_and_silver_with_a_week_of_snapshots() -> None:
+    settings = MaintenanceSettings.from_env(MAINTENANCE)
+
+    assert settings.catalog == "catalog"
+    assert settings.namespaces == ("bronze", "silver")
+    assert settings.snapshot_retention_hours == 168
+    assert settings.retain_last == 10
+    assert settings.orphan_age_hours == 72
+
+
+def test_the_silver_and_gold_streams_are_the_default_downstream_of_the_tables_they_read() -> None:
+    settings = MaintenanceSettings.from_env(MAINTENANCE | {"CHECKPOINT_ROOT": "s3a://cp/"})
+
+    assert settings.downstream == {
+        **{
+            f"bronze.{entity}": (f"s3a://cp/silver/{entity}",)
+            for entity in ("customers", "order_items", "orders", "products")
+        },
+        "silver.customers": ("s3a://cp/gold/dim_customer",),
+        "silver.products": ("s3a://cp/gold/dim_product",),
+        "silver.orders": ("s3a://cp/gold/fact_order_history",),
+        "silver.order_items": ("s3a://cp/gold/fact_order_item_history",),
+    }
+    assert settings.checkpoints("bronze.unknown") == ()
+
+
+def test_maintenance_settings_can_be_overridden() -> None:
+    settings = MaintenanceSettings.from_env(
+        MAINTENANCE
+        | {
+            "MAINTENANCE_NAMESPACES": "bronze, test",
+            "MAINTENANCE_SNAPSHOT_RETENTION_HOURS": "24",
+            "MAINTENANCE_RETAIN_LAST": "3",
+            "MAINTENANCE_ORPHAN_AGE_HOURS": "48",
+            "MAINTENANCE_DOWNSTREAM_CHECKPOINTS": "bronze.orders = s3a://a | s3a://b, silver.x=s3a://c",
+        }
+    )
+
+    assert settings.namespaces == ("bronze", "test")
+    assert settings.snapshot_retention_hours == 24
+    assert settings.retain_last == 3
+    assert settings.orphan_age_hours == 48
+    assert settings.downstream == {
+        "bronze.orders": ("s3a://a", "s3a://b"),
+        "silver.x": ("s3a://c",),
+    }
+
+
+def test_maintenance_settings_require_the_lake() -> None:
+    with pytest.raises(MissingSettingsError) as error:
+        MaintenanceSettings.from_env({})
+
+    assert error.value.names == LakeSettings.REQUIRED
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "MAINTENANCE_SNAPSHOT_RETENTION_HOURS",
+        "MAINTENANCE_RETAIN_LAST",
+        "MAINTENANCE_ORPHAN_AGE_HOURS",
+    ],
+)
+def test_maintenance_numbers_must_be_positive_integers(name: str) -> None:
+    with pytest.raises(InvalidSettingError, match=name):
+        MaintenanceSettings.from_env(MAINTENANCE | {name: "0"})
+
+
+def test_orphan_files_must_be_at_least_a_day_old() -> None:
+    with pytest.raises(InvalidSettingError, match="at least 24"):
+        MaintenanceSettings.from_env(MAINTENANCE | {"MAINTENANCE_ORPHAN_AGE_HOURS": "23"})
+
+
+def test_maintenance_namespaces_must_not_be_empty() -> None:
+    with pytest.raises(InvalidSettingError, match="MAINTENANCE_NAMESPACES"):
+        MaintenanceSettings.from_env(MAINTENANCE | {"MAINTENANCE_NAMESPACES": ","})
+
+
+@pytest.mark.parametrize("value", ["bronze.orders", "orders=s3a://a", "bronze.orders= | "])
+def test_downstream_checkpoints_must_name_a_table_and_a_path(value: str) -> None:
+    with pytest.raises(InvalidSettingError, match="MAINTENANCE_DOWNSTREAM_CHECKPOINTS"):
+        MaintenanceSettings.from_env(MAINTENANCE | {"MAINTENANCE_DOWNSTREAM_CHECKPOINTS": value})

@@ -20,7 +20,7 @@ make spark-submit   # Submit a job to the Spark cluster (defaults to a one-minut
 make help           # Show lifecycle commands
 ```
 
-Optional services are grouped in Compose profiles and are not started by a plain `make up`: `monitoring` (Conduktor, see **Optional Kafka monitoring**) and `history` (Spark History Server, see **Spark History Server**). Pass them with `PROFILES`, separated by spaces.
+Optional services are grouped in Compose profiles and are not started by a plain `make up`: `monitoring` (Conduktor, see **Optional Kafka monitoring**), `history` (Spark History Server, see **Spark History Server**) and `maintenance` (scheduled lake maintenance, see **Lake maintenance**). Pass them with `PROFILES`, separated by spaces.
 
 #### Destructive reset
 
@@ -537,6 +537,12 @@ The code holds no deployment details: anything that depends on where it runs (br
 | `SILVER_TRIGGER_SECONDS` | `pipelines.settings.SilverSettings` | `10` | not set | Micro-batch interval of the silver job (a positive integer) |
 | `GOLD_TRIGGER_SECONDS` | `pipelines.settings.GoldSettings` | `10` | not set | Micro-batch interval of the gold job (a positive integer) |
 | `LANDING_CHECK_LAST_OFFSETS` | `pipelines.settings.LandingQualitySettings` | all landed offsets | not set | Limit the landing data quality checks to the latest offsets of each partition (a positive integer) |
+| `MAINTENANCE_NAMESPACES` | `pipelines.settings.MaintenanceSettings` | `bronze,silver` | not set | Comma-separated Iceberg namespaces whose tables lake maintenance covers; a namespace that does not exist yet is skipped |
+| `MAINTENANCE_SNAPSHOT_RETENTION_HOURS` | `pipelines.settings.MaintenanceSettings` | `168` (7 days) | not set | Snapshots older than this are expired (a positive integer) |
+| `MAINTENANCE_RETAIN_LAST` | `pipelines.settings.MaintenanceSettings` | `10` | not set | The newest snapshots kept whatever their age (a positive integer) |
+| `MAINTENANCE_ORPHAN_AGE_HOURS` | `pipelines.settings.MaintenanceSettings` | `72` (3 days) | not set | Unreferenced files younger than this are kept (at least 24, Iceberg's own floor) |
+| `MAINTENANCE_DOWNSTREAM_CHECKPOINTS` | `pipelines.settings.MaintenanceSettings` | `bronze.<entity>=<CHECKPOINT_ROOT>/silver/<entity>` for each source entity, and `silver.<entity>=<CHECKPOINT_ROOT>/gold/<gold table>` for each gold stream | not set | Checkpoints of the streams reading each table, as `<namespace>.<table>=<checkpoint>[\|<checkpoint>...]` entries separated by commas; replaces the default when set |
+| `MAINTENANCE_INTERVAL_HOURS` | `maintenance-job` service | `24` | not set | Hours between two runs of the scheduled maintenance service |
 | `ANALYTICS_DB_URL` | `common.settings.AnalyticsDbSettings` | required | `jdbc:postgresql://analytics-db:5432/analytics` | JDBC URL of the analytics database (gold layer) |
 | `ANALYTICS_DB_USER` | `common.settings.AnalyticsDbSettings` | required | `analytics` | Analytics database user |
 | `ANALYTICS_DB_PASSWORD` | `common.settings.AnalyticsDbSettings` | required | `analytics` | Analytics database password |
@@ -816,6 +822,32 @@ When bronze's parsing changes (a new column, a fixed conversion), bronze can be 
 5. Reset silver as in [Silver layer](#silver-layer) (drop its tables and delete `<CHECKPOINT_ROOT>/silver/`), so it versions the new bronze tables from their first snapshot instead of appending every change again, and restart it. Gold, which reads silver, needs the same reset after it.
 6. Once the new tables are checked, drop the old ones (`DROP TABLE lake.bronze.<entity>_before_rebuild PURGE`).
 
+#### Lake maintenance
+
+Streams commit small files and one snapshot per micro-batch, so the bronze and silver Iceberg tables need regular maintenance. `pipelines/maintenance/job.py` runs three Iceberg procedures on every table of the namespaces in `MAINTENANCE_NAMESPACES` (default `bronze,silver`; a namespace that does not exist yet is skipped):
+
+1. `rewrite_data_files` (bin-pack) merges small data files into fewer, larger ones. It commits a `replace` snapshot with the same rows, which Iceberg's streaming reader skips, so the streams reading the table see no new data.
+2. `expire_snapshots` removes the snapshots older than `MAINTENANCE_SNAPSHOT_RETENTION_HOURS` (default 7 days), always keeping the newest `MAINTENANCE_RETAIN_LAST` (default 10), together with the files only they referenced. It runs only when no stream reading the table still needs those snapshots (see below).
+3. `remove_orphan_files` deletes files no snapshot references, such as the leftovers of a failed write, once they are older than `MAINTENANCE_ORPHAN_AGE_HOURS` (default 3 days). A write still in progress is far younger than that, so its files are never taken; Iceberg refuses anything under 24 hours. It lists the table's files through the table's own FileIO (`prefix_listing`), because the warehouse uses `s3://` paths that Hadoop cannot list.
+
+No step rewrites or deletes rows: the tables stay append-only for the streams that read them. One table failing does not stop the others; the job reports every table and fails at the end if any table failed.
+
+```sh
+make lake-maintenance                        # run it once, Spark UI on localhost:4044
+make up PROFILES=maintenance                 # or keep it running on a schedule
+docker compose logs -f maintenance-job       # one summary line per table and run
+```
+
+**Schedule.** The `maintenance-job` service, in its own `maintenance` profile, loops forever: it runs the job with a fresh `spark-submit` (`spark.cores.max=2`, Spark UI on `localhost:4044`), then sleeps `MAINTENANCE_INTERVAL_HOURS` (default 24). Each run is a new application, so the cluster's cores are free between runs, and a failed run is logged and retried at the next interval instead of stopping the loop. `make lake-maintenance` stays available for one-off runs.
+
+**Streams that fall behind.** A stream resumes from the snapshot of its last committed batch, so that snapshot must still exist when it restarts. If a stream (silver reading bronze, gold reading silver) is stopped, or lags, for longer than the snapshot retention, expiring its snapshot would make it fail with `Cannot load current offset at snapshot …` until its checkpoint is reset. `retain_last` protects very little here: with one snapshot per micro-batch, ten snapshots are only minutes of history. So before expiring a table's snapshots, the job reads the checkpoint of every stream that reads the table (`MAINTENANCE_DOWNSTREAM_CHECKPOINTS`; by default each silver stream, `<CHECKPOINT_ROOT>/silver/<entity>`, for its `bronze.<entity>` table, and each gold stream, `<CHECKPOINT_ROOT>/gold/<gold table>`, for the `silver.<entity>` table it reads):
+
+- it takes the Iceberg snapshot in `offsets/<batch>` for the highest batch that also has `commits/<batch>`;
+- if that snapshot would be expired (older than the cutoff and not among the newest `MAINTENANCE_RETAIN_LAST`) or is already gone, it skips expiry for that table with a warning and still compacts and removes orphans; the stream catches up from its snapshot, and a later run expires the old snapshots;
+- a checkpoint with no committed batch (the stream never started) sets no constraint, and the job says so.
+
+When a stream is reset deliberately, the guard follows its new checkpoint. Iceberg also stores a stream's first snapshot in its checkpoint (`sources/0/offsets/0`), and a restart with `trigger(availableNow=True)` (the jobs' `--available-now` flag) goes back to it: once that snapshot is expired, an `--available-now` run of a stream reading an Iceberg table fails, while the long-running jobs, which use a processing-time trigger, resume normally. Reset the checkpoint of such a one-off run, or run the stream as a long-running job.
+
 #### Tests, lint and format
 
 The checks run in a throwaway container from the `app` image, with `analytics/` and `tests/` mounted, so they use the cluster's exact Spark and Python versions and pick up edits without a rebuild. They use their own Compose project, named after the checkout folder (`deel-checks-<folder>`, lowercased, with every character other than letters, digits, `_` and `-` replaced by `-`), with one app image (`<project>-spark-app`), so checks in different checkouts or worktrees never share an image and can run in parallel:
@@ -855,6 +887,7 @@ They start an isolated Compose project named after the checkout folder (`deel-in
 - `make gold-reset` refuses without `CONFIRM=1`, recreates `gold` and `gold_internal` empty, can run again, deletes the gold checkpoints and keeps the silver checkpoints and the Iceberg catalog;
 - the gold job, run with `--available-now` on silver-shaped fixture tables in a catalog of their own (`gold_fixture`, with its own warehouse), keeps the SCD2 dimensions in PostgreSQL, checked through the versions and public views: a price change closes the previous version and opens a new one, each key has exactly one current version, replaying every batch from a fresh checkpoint changes nothing, a late older version goes into history without becoming current, a re-snapshot or audit-only update is folded and a late differing version between two equal ones unfolds the later one, and a delete leaves no current version that replays or late versions could revive (the test removes its rows afterwards).
 - the bronze replay, in its own Iceberg catalog on the stack, appends nothing for a range the bronze stream already wrote, appends each change of a range the stream never saw exactly once (including a re-sent copy inside the range), and quarantines a failing record once however many times it is replayed.
+- `make lake-maintenance` on a test table built from six one-row commits leaves one data file with the same rows and adds only a `replace` snapshot, skips a namespace that does not exist, and the `maintenance-job` service runs the same maintenance on its first loop.
 
 #### Pre-commit hooks
 
