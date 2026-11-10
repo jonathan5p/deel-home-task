@@ -20,7 +20,7 @@ make spark-submit   # Submit a job to the Spark cluster (defaults to a one-minut
 make help           # Show lifecycle commands
 ```
 
-Optional services are grouped in Compose profiles and are not started by a plain `make up`: `monitoring` (Conduktor, see **Optional Kafka monitoring**), `history` (Spark History Server, see **Spark History Server**) and `maintenance` (scheduled lake maintenance, see **Lake maintenance**). Pass them with `PROFILES`, separated by spaces.
+Optional services are grouped in Compose profiles and are not started by a plain `make up`: `monitoring` (Conduktor, see **Optional Kafka monitoring**), `history` (Spark History Server, see **Spark History Server**) and `maintenance` (scheduled lake maintenance and gold retention, see **Lake maintenance** and **Gold retention**). Pass them with `PROFILES`, separated by spaces.
 
 #### Destructive reset
 
@@ -82,7 +82,7 @@ In short:
 - **Current state only moves forward:** a version replaces the current row only if its `_commit_sequence` is higher, so late or replayed events never overwrite newer state; they are still kept as history.
 - **Top 3 questions include ties**, so more than three rows can come back.
 
-`docker/analytics-db/initdb/02-gold-model.sql` is generated and git-ignored: `make up` (and `make pipeline` and `make test-infra`) renders it, on the host with [uv](https://docs.astral.sh/uv/), from the Jinja template `analytics/pipelines/src/pipelines/gold/ddl.sql.j2` and the gold Avro schemas (see [table and column definitions](#table-and-column-definitions)), which give every column its type, nullability and description. Edit the template or the schemas, never the SQL file. The file creates both schemas, the tables, views and seeds, and each history table's default partition; the monthly history partitions are created and dropped by the retention job. It runs on an empty volume like the other init scripts, and every statement is idempotent, so it can also be applied to an existing database without losing data:
+`docker/analytics-db/initdb/02-gold-model.sql` is generated and git-ignored: `make up` (and `make pipeline` and `make test-infra`) renders it, on the host with [uv](https://docs.astral.sh/uv/), from the Jinja template `analytics/pipelines/src/pipelines/gold/ddl.sql.j2` and the gold Avro schemas (see [table and column definitions](#table-and-column-definitions)), which give every column its type, nullability and description. Edit the template or the schemas, never the SQL file. The file creates both schemas, the tables, views and seeds, and each history table's default partition; the monthly history partitions are created and dropped by the retention job (see [Gold retention](#gold-retention)). It runs on an empty volume like the other init scripts, and every statement is idempotent, so it can also be applied to an existing database without losing data:
 
 ```sh
 docker compose exec -T analytics-db psql -v ON_ERROR_STOP=1 -U analytics -d analytics < docker/analytics-db/initdb/02-gold-model.sql
@@ -406,7 +406,8 @@ analytics/
       silver/               silver layer: the transform from bronze rows to version rows, the history and current views, and job.py (streaming job)
       gold/                 gold layer: ddl.py and ddl.sql.j2 (the gold DDL from the gold Avro schemas), scd2.py (the SCD2 SQL),
                             facts.py (the history fact and current-state SQL), dimensions.py (the dimensions and facts
-                            and their lookups), sink.py, postgres.py and job.py (the gold streaming job)
+                            and their lookups), sink.py, postgres.py, job.py (the gold streaming job) and
+                            retention.py (the gold retention job)
     tests/
   sql/gold/                 the four business questions as SQL on the gold views in PostgreSQL
 tests/infra/                infra tests that drive an isolated copy of the stack
@@ -536,6 +537,9 @@ The code holds no deployment details: anything that depends on where it runs (br
 | `BRONZE_TRIGGER_SECONDS` | `pipelines.settings.BronzeSettings` | `10` | not set | Micro-batch interval of the bronze job (a positive integer) |
 | `SILVER_TRIGGER_SECONDS` | `pipelines.settings.SilverSettings` | `10` | not set | Micro-batch interval of the silver job (a positive integer) |
 | `GOLD_TRIGGER_SECONDS` | `pipelines.settings.GoldSettings` | `10` | not set | Micro-batch interval of the gold job (a positive integer) |
+| `GOLD_RETENTION_MONTHS` | `pipelines.settings.GoldRetentionSettings` | `36` (3 years) | not set | Months of gold history kept in PostgreSQL; a monthly partition that ends before this window is dropped (a positive integer) |
+| `GOLD_PARTITION_MONTHS_AHEAD` | `pipelines.settings.GoldRetentionSettings` | `2` | not set | Months after the current one that the retention job creates history partitions for (a positive integer) |
+| `GOLD_RETENTION_INTERVAL_HOURS` | `gold-retention-job` service | `24` | not set | Hours between two runs of the scheduled gold retention service |
 | `LANDING_CHECK_LAST_OFFSETS` | `pipelines.settings.LandingQualitySettings` | all landed offsets | not set | Limit the landing data quality checks to the latest offsets of each partition (a positive integer) |
 | `MAINTENANCE_NAMESPACES` | `pipelines.settings.MaintenanceSettings` | `bronze,silver` | not set | Comma-separated Iceberg namespaces whose tables lake maintenance covers; a namespace that does not exist yet is skipped |
 | `MAINTENANCE_SNAPSHOT_RETENTION_HOURS` | `pipelines.settings.MaintenanceSettings` | `168` (7 days) | not set | Snapshots older than this are expired (a positive integer) |
@@ -793,6 +797,23 @@ make spark-submit SPARK_APP=analytics/pipelines/src/pipelines/gold/job.py SPARK_
 
 The details, with the fold rule, the transactions and the dimension keys of the facts, are in [Writing gold](docs/architecture/gold-model.md#writing-gold).
 
+#### Gold retention
+
+PostgreSQL keeps `GOLD_RETENTION_MONTHS` (default 36, three years) of gold history; the lake keeps all of it. The history facts are partitioned by month on `_changed_at`, so retention drops whole partitions. `pipelines/gold/retention.py` runs `gold_internal.apply_history_retention(keep_months, months_ahead, as_of)` in one transaction, after taking the gold writer lock, so it never runs in the middle of a gold job merge:
+
+1. it gives every month the default partition holds rows of a partition of its own (rows the stream or a reload wrote outside the partitions created so far), and creates the partitions of the current month and the `GOLD_PARTITION_MONTHS_AHEAD` (default 2) months after it;
+2. it drops every monthly partition that ends before the first day of the month `GOLD_RETENTION_MONTHS` months before the current one. A month that is only partly outside the window is kept whole, so at least the configured number of full months stays.
+
+The current-state tables and the dimensions are never trimmed, so an order that is still open keeps its current row however old its last change is.
+
+```sh
+make gold-retention                         # run it once; prints the partitions it dropped
+make up PROFILES=maintenance                # or keep it running on a schedule
+docker compose logs -f gold-retention-job   # one summary per run
+```
+
+**When it runs.** `make up` and `make pipeline` run it once, as soon as `analytics-db` is healthy, so the monthly partitions exist before the gold job writes; the DDL creates none. Until it has run, the default partition takes every history row, so the gold job never fails for a missing partition; the next run moves those rows into their months. The `gold-retention-job` service, in the `maintenance` profile, keeps it current: it loops forever, running the retention job (plain Python with psycopg, no Spark), then sleeps `GOLD_RETENTION_INTERVAL_HOURS` (default 24). A failed run is logged and retried at the next interval instead of stopping the loop.
+
 #### Replaying a landing range into bronze
 
 `analytics/pipelines/src/pipelines/bronze/replay.py` is a one-shot batch job that re-feeds a range of one landing topic into bronze, for example after a fix to a record that was quarantined, or to fill a gap. It reads the topic's landing files in batch (only the files the landing sink's commit log records), keeps the records in the range, parses them with the same `parse_changes` as the bronze stream, and appends only what bronze does not hold yet:
@@ -884,6 +905,7 @@ They start an isolated Compose project named after the checkout folder (`deel-in
 - the bronze job, run with `--available-now` on records landed through the landing job's file sink (topics `test.operations.<table>`), writes typed rows with their change metadata to each entity's Iceberg table, partitioned by publish day; quarantines invalid records while valid ones flow, each with the path of the landing file it was read from, and drops tombstones; after new records land, a second run appends only those, and a third run with nothing new appends nothing, so every Kafka offset is written exactly once; and ignores an Avro file in a landing folder that the commit log does not record;
 - the silver job, run with `--available-now` on the bronze tables those runs leave, writes one version row per bronze change to each entity's silver table, with the bronze values and change metadata and `_is_deleted` true only for the delete, which keeps the last known values; partitions the table by change day and describes every table and column; after bronze appends another change, that change delivered again and an already versioned change delivered again, a second run appends only the new change once, and a third run with nothing new appends nothing; keeps its deduplication state in RocksDB (the checkpoint's state folder holds RocksDB files); and exits with an error when a bronze table is missing; the views job, run after each silver run, creates each entity's history and current views in the JDBC catalog, where the history view folds the unchanged update but keeps the delete and the change after it, and the current view holds the live row with the source values; describes every view and column from its template; leaves the views' metadata files untouched when it runs again with nothing changed; serves the views to `make spark-sql`; and fails before creating any view when a silver table is missing.
 - the gold DDL applies again to an existing database, describes every schema, table, column and index, creates the staging tables unlogged, keeps only views without the pipeline-only columns (`_commit_sequence`, `_content_hash`, `_is_deleted`, `_is_folded`) in `gold` and hides deleted rows from its current-state views, seeds the date and status dimensions, routes history rows to the default partition, rejects replayed history rows, orders versions by `_commit_sequence` despite late events, creates the business question views with the columns and types of their schemas and the indexes on `current_orders` behind them, and the four business queries return the expected rows from those views on a fixture with a completed order, a deleted order, an unknown status and ties for third place (each test rolls its rows back).
+- gold retention drops only the monthly history partitions that end before the window (orders and order items alike), first gives every month the default partition holds a partition of its own, creates the months ahead, keeps the current-state row of an open order whose history it dropped, and drops nothing more when it runs again (each test rolls its rows back); `make gold-retention` and the first run of the `gold-retention-job` service drop a committed out-of-window month;
 - `make gold-reset` refuses without `CONFIRM=1`, recreates `gold` and `gold_internal` empty, can run again, deletes the gold checkpoints and keeps the silver checkpoints and the Iceberg catalog;
 - the gold job, run with `--available-now` on silver-shaped fixture tables in a catalog of their own (`gold_fixture`, with its own warehouse), keeps the SCD2 dimensions in PostgreSQL, checked through the versions and public views: a price change closes the previous version and opens a new one, each key has exactly one current version, replaying every batch from a fresh checkpoint changes nothing, a late older version goes into history without becoming current, a re-snapshot or audit-only update is folded and a late differing version between two equal ones unfolds the later one, and a delete leaves no current version that replays or late versions could revive (the test removes its rows afterwards).
 - the bronze replay, in its own Iceberg catalog on the stack, appends nothing for a range the bronze stream already wrote, appends each change of a range the stream never saw exactly once (including a re-sent copy inside the range), and quarantines a failing record once however many times it is replayed.

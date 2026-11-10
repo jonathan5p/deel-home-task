@@ -15,8 +15,9 @@ from analytics.pipelines.tests.gold.silver_setup import (
 from common.settings import AnalyticsDbSettings
 from pipelines.gold.dimensions import FACTS, load_dimensions, load_facts
 from pipelines.gold.facts import FactDefinitionError
+from pipelines.gold.postgres import WRITER_LOCK
 from pipelines.gold.scd2 import Scd2DefinitionError
-from pipelines.gold.sink import WRITER_LOCK, MergeSink, jdbc_options, staged_rows
+from pipelines.gold.sink import MergeSink, jdbc_options, staged_rows
 
 PRODUCTS = load_dimensions()["dim_product"]
 ITEMS = load_facts()["fact_order_item_history"]
@@ -112,7 +113,6 @@ def test_every_merge_takes_the_gold_writer_lock_first() -> None:
     sinks = [MergeSink(load, lambda staged, table: None, FakeConnection) for load in FACTS]
 
     assert all(sink.statements()[0] == WRITER_LOCK for sink in sinks)
-    assert WRITER_LOCK == "SELECT pg_advisory_xact_lock(hashtextextended('gold_internal', 0))"
 
 
 def test_a_dimension_merge_is_followed_by_the_re_resolution_of_its_facts() -> None:

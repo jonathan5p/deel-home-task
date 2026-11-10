@@ -40,6 +40,9 @@ x-spark-app: &spark-app
     BRONZE_TRIGGER_SECONDS: ${BRONZE_TRIGGER_SECONDS:-}
     SILVER_TRIGGER_SECONDS: ${SILVER_TRIGGER_SECONDS:-}
     GOLD_TRIGGER_SECONDS: ${GOLD_TRIGGER_SECONDS:-}
+    GOLD_RETENTION_MONTHS: ${GOLD_RETENTION_MONTHS:-}
+    GOLD_PARTITION_MONTHS_AHEAD: ${GOLD_PARTITION_MONTHS_AHEAD:-}
+    GOLD_RETENTION_INTERVAL_HOURS: ${GOLD_RETENTION_INTERVAL_HOURS:-}
     LANDING_CHECK_LAST_OFFSETS: ${LANDING_CHECK_LAST_OFFSETS:-}
     MAINTENANCE_NAMESPACES: ${MAINTENANCE_NAMESPACES:-}
     MAINTENANCE_SNAPSHOT_RETENTION_HOURS: ${MAINTENANCE_SNAPSHOT_RETENTION_HOURS:-}
@@ -299,6 +302,28 @@ services:
         done
     ports:
       - "4044:4040"
+
+  gold-retention-job:
+    <<: *spark-app
+    profiles: [maintenance]
+    hostname: gold-retention-job
+    restart: unless-stopped
+    depends_on:
+      analytics-db:
+        condition: service_healthy
+    command:
+      - sh
+      - -c
+      - |
+        hours="$${GOLD_RETENTION_INTERVAL_HOURS:-24}"
+        case "$$hours" in
+          ''|*[!0-9]*|0) echo "GOLD_RETENTION_INTERVAL_HOURS=$$hours is not a positive integer" >&2; exit 1 ;;
+        esac
+        while true; do
+          python -m pipelines.gold.retention \
+            || echo "Gold retention failed; the next run starts in $$hours hours" >&2
+          sleep "$$((hours * 3600))"
+        done
 
   # Optional: Spark history server
   spark-history:

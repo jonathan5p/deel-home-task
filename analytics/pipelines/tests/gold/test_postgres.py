@@ -2,7 +2,14 @@ import pytest
 
 from analytics.pipelines.tests.gold.postgres_setup import FakeConnection, StatementFailedError
 from common.settings import AnalyticsDbSettings
-from pipelines.gold.postgres import Connection, connection_factory, conninfo, run_in_transaction
+from pipelines.gold.postgres import (
+    WRITER_LOCK,
+    Connection,
+    connection_factory,
+    conninfo,
+    run_in_transaction,
+    transaction,
+)
 
 SETTINGS = AnalyticsDbSettings(
     url="jdbc:postgresql://db:5432/analytics", user="analytics", password="secret"
@@ -48,3 +55,31 @@ def test_a_failing_statement_rolls_back_the_transaction_and_is_raised() -> None:
         run_in_transaction(lambda: connection, ["first", "second", "third"])
 
     assert connection.log == ["execute first", "execute second", "rollback", "close"]
+
+
+def test_a_transaction_commits_what_its_block_did_and_closes() -> None:
+    connection = FakeConnection(results={"query": [("a",), ("b",)]})
+
+    with transaction(lambda: connection) as open_connection:
+        open_connection.execute("first")
+        fetched = open_connection.execute("query").fetchall()
+
+    assert fetched == [("a",), ("b",)]
+    assert connection.log == ["execute first", "execute query", "commit", "close"]
+
+
+def test_a_transaction_whose_block_fails_rolls_back_and_raises() -> None:
+    connection = FakeConnection(fail_on="second")
+
+    def write(open_connection: Connection) -> None:
+        open_connection.execute("first")
+        open_connection.execute("second")
+
+    with pytest.raises(StatementFailedError), transaction(lambda: connection) as open_connection:
+        write(open_connection)
+
+    assert connection.log == ["execute first", "execute second", "rollback", "close"]
+
+
+def test_every_gold_writer_takes_the_same_transaction_lock() -> None:
+    assert WRITER_LOCK == "SELECT pg_advisory_xact_lock(hashtextextended('gold_internal', 0))"
