@@ -5,7 +5,7 @@ from typing import NamedTuple
 
 from pyspark.sql import Row, SparkSession
 
-from pipelines.maintenance.checkpoints import (
+from pipelines.lake.checkpoints import (
     CheckpointFiles,
     HadoopCheckpointFiles,
     committed_snapshots,

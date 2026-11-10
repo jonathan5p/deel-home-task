@@ -99,3 +99,15 @@ def test_hadoop_files_list_and_read_a_checkpoint(spark: SparkSession, tmp_path: 
 
     assert files.names(f"{root}/missing") is None
     assert committed_snapshots(files, root) == (40,)
+
+
+def test_the_committed_snapshots_need_only_the_commits_and_the_offsets() -> None:
+    files = FakeCheckpoints(
+        {
+            f"{CHECKPOINT}/commits/0": "",
+            f"{CHECKPOINT}/offsets/0": offsets(snapshot_offset(10), snapshot_offset(11)),
+            f"{CHECKPOINT}/offsets/1": offsets(snapshot_offset(20)),
+        }
+    )
+
+    assert committed_snapshots(files, CHECKPOINT) == (10, 11)

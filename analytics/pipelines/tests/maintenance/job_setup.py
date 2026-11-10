@@ -85,26 +85,6 @@ def stream_into(spark: SparkSession, table: str, output: Path) -> list[Row]:
     return spark.read.parquet(str(output / "rows")).orderBy("id").collect()
 
 
-class FakeCheckpoints:
-    """Checkpoint files held in memory, keyed by path."""
-
-    def __init__(self, files: Mapping[str, str] | None = None) -> None:
-        self.files = files or {}
-
-    def names(self, folder: str) -> list[str] | None:
-        names = [path.removeprefix(f"{folder}/") for path in self.files if path.startswith(folder)]
-        return names or None
-
-    def text(self, path: str) -> str:
-        return self.files[path]
-
-
-def offsets(*snapshot_ids: int) -> str:
-    """An offsets file as Spark writes it for a stream reading Iceberg tables."""
-    sources = [f'{{"version":1,"snapshot_id":{id_},"position":3}}' for id_ in snapshot_ids]
-    return "\n".join(["v1", '{"batchWatermarkMs":0,"batchTimestampMs":0}', *sources])
-
-
 class FakeSql:
     def __init__(
         self,

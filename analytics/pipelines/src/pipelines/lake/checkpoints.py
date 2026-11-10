@@ -60,11 +60,16 @@ def _batches(files: CheckpointFiles, folder: str) -> list[int]:
     return [int(name) for name in files.names(folder) or () if name.isdecimal()]
 
 
-def _batch(files: CheckpointFiles, checkpoint: str, batch: int) -> CommittedBatch:
+def _sources(files: CheckpointFiles, checkpoint: str, batch: int) -> tuple[Offset, ...]:
     lines = files.text(f"{checkpoint}/offsets/{batch}").splitlines()[2:]
+    return tuple(json.loads(line) for line in lines if line.startswith("{"))
+
+
+def _batch(files: CheckpointFiles, checkpoint: str, batch: int) -> CommittedBatch:
     query_id = json.loads(files.text(f"{checkpoint}/metadata"))["id"]
-    sources = tuple(json.loads(line) for line in lines if line.startswith("{"))
-    return CommittedBatch(query_id=query_id, batch=batch, sources=sources)
+    return CommittedBatch(
+        query_id=query_id, batch=batch, sources=_sources(files, checkpoint, batch)
+    )
 
 
 def committed_batch(files: CheckpointFiles, checkpoint: str) -> CommittedBatch | None:
@@ -91,10 +96,10 @@ def planned_batch(files: CheckpointFiles, checkpoint: str) -> CommittedBatch | N
 def committed_snapshots(files: CheckpointFiles, checkpoint: str) -> tuple[int, ...] | None:
     """The Iceberg snapshots a stream had read up to in its last committed batch, or None before
     its first commit; an Iceberg source's offset names a `snapshot_id`."""
-    committed = committed_batch(files, checkpoint)
-    if committed is None:
+    batches = _batches(files, f"{checkpoint}/commits")
+    if not batches:
         return None
-    return tuple(source["snapshot_id"] for source in committed.sources)
+    return tuple(source["snapshot_id"] for source in _sources(files, checkpoint, max(batches)))
 
 
 def committed_files(
