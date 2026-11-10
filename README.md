@@ -385,6 +385,8 @@ Because every run has its own container, one application's memory, logs and life
 
 To run several applications at the same time, give each its own UI port and cap its cores: the standalone master gives an application every free core unless `spark.cores.max` is set, so a second application would wait until the first one ends.
 
+The [sizing strategy](docs/architecture/sizing.md) explains how the cores and memory are shared between the jobs, ties each setting to a variable, and names the metrics that show whether the sizing holds.
+
 While the pipeline jobs run (`make pipeline`), they hold ports 4040 and up (see [Running the pipeline](#running-the-pipeline)), so give ad-hoc runs another port, for example `make spark-submit SPARK_UI_PORT=4050` (the same applies to `make spark-sql`); otherwise Docker refuses to start the driver with `port is already allocated`.
 
 #### Spark History Server (optional)
