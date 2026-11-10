@@ -26,7 +26,9 @@ Optional services are grouped in Compose profiles and are not started by a plain
 
 **Data loss:** `make clean CONFIRM=1` removes this Compose project's containers and volumes, including persisted database, Kafka, and optional monitor data. Use it only when you intend to discard that data. It does not delete images or source files, or perform a global Docker prune. `make clean` refuses before invoking Docker unless GNU Make evaluates `CONFIRM` to exactly `1`. Make normalizes leading assignment whitespace, so `make clean 'CONFIRM= 1'` also explicitly confirms deletion.
 
-All lifecycle targets use the same Compose project selection; `make down` preserves its volumes. Keep the same working directory and Compose environment between commands. `COMPOSE` defaults to `docker compose` and can be overridden for a compatible CLI or a harmless test probe. Compose failures cause Make to fail.
+All lifecycle targets use the same Compose project selection; `make down` preserves its volumes, so the source database, the Kafka topics (including the offsets Debezium stores in Kafka), the analytics database and the lake survive a restart. Keep the same working directory and Compose environment between commands. `COMPOSE` defaults to `docker compose` and can be overridden for a compatible CLI or a harmless test probe. Compose failures cause Make to fail.
+
+**Stacks started before Kafka had volumes** kept their topics only inside the Kafka container, so the first `make up` with the volumes starts with empty topics and Debezium snapshots the source tables again. Landing then stops with `Some data may have been lost because they are not available in Kafka any more`, because its checkpoint points past the new offsets: reset the lake once with `make clean CONFIRM=1`, or drop its tables and checkpoints, so the pipelines rebuild from the new topics.
 
 Once you have the Database up and running feel free to connect to this using any tool you want, for this you can use the following credentials:
 
