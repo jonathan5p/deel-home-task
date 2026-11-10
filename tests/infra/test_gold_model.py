@@ -12,6 +12,7 @@ from tests.infra.gold_fixtures import (
     INTERNAL_TABLES,
     PUBLIC_PIPELINE_ONLY_COLUMNS,
     PUBLIC_VIEWS,
+    TIES_AT_THE_TOP,
     UNDESCRIBED_COLUMNS,
     UNDESCRIBED_RELATIONS,
     UNDESCRIBED_SCHEMAS,
@@ -261,6 +262,24 @@ def test_top_delivery_dates_include_ties_for_third_place(gold: Stack) -> None:
         ["2026-11-11", "2"],
         ["2026-11-12", "1"],
         ["2026-11-13", "1"],
+    ]
+
+
+def test_top_delivery_dates_leave_out_the_fourth_place_after_a_tie_for_first(
+    gold: Stack,
+) -> None:
+    assert answer(gold, "02_top_delivery_dates_by_open_orders.sql", TIES_AT_THE_TOP) == [
+        ["2026-12-01", "3"],
+        ["2026-12-02", "3"],
+        ["2026-12-03", "2"],
+    ]
+
+
+def test_top_customers_leave_out_the_fourth_place_after_a_tie_for_first(gold: Stack) -> None:
+    assert answer(gold, "04_top_customers_by_pending_orders.sql", TIES_AT_THE_TOP) == [
+        ["11", "", "3"],
+        ["12", "", "3"],
+        ["13", "", "2"],
     ]
 
 

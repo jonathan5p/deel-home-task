@@ -88,7 +88,7 @@ In short:
 docker compose exec -T analytics-db psql -v ON_ERROR_STOP=1 -U analytics -d analytics < docker/analytics-db/initdb/02-gold-model.sql
 ```
 
-The four business questions are in `sql/gold/`, one query per file, and read only the `gold` views:
+The four business questions are in `analytics/sql/gold/`, one query per file, and read only the `gold` views:
 
 | File | Question |
 | --- | --- |
@@ -98,7 +98,7 @@ The four business questions are in `sql/gold/`, one query per file, and read onl
 | `04_top_customers_by_pending_orders.sql` | Top 3 customers with more pending orders |
 
 ```sh
-docker compose exec -T analytics-db psql -U analytics -d analytics < sql/gold/01_open_orders_by_delivery_date_and_status.sql
+docker compose exec -T analytics-db psql -U analytics -d analytics < analytics/sql/gold/01_open_orders_by_delivery_date_and_status.sql
 ```
 
 `gold.data_freshness` shows, per entity (customers, products, orders, order items), how up to date gold is. For now it is computed from the data, as the source commit time of the newest change gold holds, so it ages when the source stops changing even though the pipeline is healthy. Later the pipeline metrics (#127) will fill it; its shape stays the same.
@@ -392,6 +392,7 @@ analytics/
       bronze/               bronze layer: source entities, the transforms from landing records to bronze rows, and job.py (streaming job)
       silver/               silver layer: the transform from bronze rows to version rows, and job.py (streaming job)
     tests/
+  sql/gold/                 the four business questions as SQL on the gold views in PostgreSQL
 tests/infra/                infra tests that drive an isolated copy of the stack
   apps/                     Spark applications they submit (UI check, Iceberg smoke check, version and hold apps, fixture helpers)
 ```
@@ -732,7 +733,7 @@ They start an isolated Compose project named after the checkout folder (`deel-in
 - each application run gets its own driver container, which is removed when the application ends;
 - two applications capped with `spark.cores.max=2` run at the same time, both with executors, in two separate driver containers;
 - the landing example queries (`make spark-sql`) return the expected records from neutral, landing-shaped fixture data (topics `topic-a` and `topic-b`), including an update, a delete, a tombstone and a snapshot read, and inspect only the chosen topic;
-- the bronze job, run with `--available-now` on records landed through the landing job's file sink (topics `test.operations.<table>`), writes typed rows with their change metadata to each entity's Iceberg table, partitioned by publish day; quarantines invalid records while valid ones flow, each with the path of the landing file it was read from, and drops tombstones; after new records land, a second run appends only those, and a third run with nothing new appends nothing, so every Kafka offset is written exactly once; and ignores an Avro file in a landing folder that the commit log does not record.
+- the bronze job, run with `--available-now` on records landed through the landing job's file sink (topics `test.operations.<table>`), writes typed rows with their change metadata to each entity's Iceberg table, partitioned by publish day; quarantines invalid records while valid ones flow, each with the path of the landing file it was read from, and drops tombstones; after new records land, a second run appends only those, and a third run with nothing new appends nothing, so every Kafka offset is written exactly once; and ignores an Avro file in a landing folder that the commit log does not record;
 - the silver job, run with `--available-now` on the bronze tables those runs leave, writes one version row per bronze change to each entity's silver table, with the bronze values and change metadata and `_is_deleted` true only for the delete, which keeps the last known values; partitions the table by change day and describes every table and column; after bronze appends another change, that change delivered again and an already versioned change delivered again, a second run appends only the new change once, and a third run with nothing new appends nothing; keeps its deduplication state in RocksDB (the checkpoint's state folder holds RocksDB files); and exits with an error when a bronze table is missing.
 - the gold DDL applies again to an existing database, describes every schema, table and column, keeps only views without `_commit_sequence` and `_is_deleted` in `gold` and hides deleted rows from its current-state views, seeds the date and status dimensions, routes history rows to their monthly or default partition, rejects replayed history rows, orders versions by `_commit_sequence` despite late events, and the four business queries return the expected rows on a fixture with a completed order, a deleted order, an unknown status and ties for third place (each test rolls its rows back).
 

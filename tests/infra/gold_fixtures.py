@@ -3,7 +3,7 @@ import subprocess
 from tests.infra.stack import REPO_ROOT, Stack
 
 GOLD_DDL = REPO_ROOT / "docker/analytics-db/initdb/02-gold-model.sql"
-GOLD_QUERIES = REPO_ROOT / "sql/gold"
+GOLD_QUERIES = REPO_ROOT / "analytics/sql/gold"
 
 INTERNAL_TABLES = {
     "dim_customer",
@@ -140,6 +140,29 @@ FROM (
 """
 
 
+# Two delivery dates and two customers tie for first place with 3 open orders, then one with 2
+# and one with 1: ranked with gaps, the tie takes places 1 and 2, so the single third place
+# is the one with 2, and the one with 1 (fourth) is left out.
+TIES_AT_THE_TOP = """
+INSERT INTO gold_internal.current_orders (
+    order_id, status_key, customer_id, order_date, delivery_date,
+    order_date_key, delivery_date_key, _commit_sequence, _changed_at, _is_deleted
+)
+SELECT
+    o.order_id, s.status_key, o.customer_id, date '2026-11-09', o.delivery_date,
+    20261109, to_char(o.delivery_date, 'YYYYMMDD')::int, 800 + o.order_id,
+    timestamp '2026-11-09 09:00', false
+FROM (
+    VALUES
+        (201, 11, date '2026-12-01'), (202, 11, date '2026-12-01'), (203, 11, date '2026-12-01'),
+        (204, 12, date '2026-12-02'), (205, 12, date '2026-12-02'), (206, 12, date '2026-12-02'),
+        (207, 13, date '2026-12-03'), (208, 13, date '2026-12-03'),
+        (209, 14, date '2026-12-04')
+) AS o (order_id, customer_id, delivery_date)
+JOIN gold_internal.dim_order_status AS s ON s.status_code = 'PENDING';
+"""
+
+
 def psql(stack: Stack, script: str) -> subprocess.CompletedProcess[str]:
     """Run a SQL script in the analytics database; stdout holds only the query rows."""
     return subprocess.run(
@@ -207,10 +230,10 @@ def rolled_back(*statements: str) -> str:
     return "\n".join(["BEGIN;", *statements, "ROLLBACK;"])
 
 
-def answer(stack: Stack, query_file: str) -> list[list[str]]:
-    """Run one of the business-question queries on the current-state fixture."""
+def answer(stack: Stack, query_file: str, fixture: str = CURRENT_STATE) -> list[list[str]]:
+    """Run one of the business-question queries on a current-state fixture."""
     query = (GOLD_QUERIES / query_file).read_text()
-    return rows(stack, rolled_back(CURRENT_STATE, query))
+    return rows(stack, rolled_back(fixture, query))
 
 
 FRESHNESS_FIXTURE = """

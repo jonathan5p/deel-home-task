@@ -1,6 +1,8 @@
-# Gold dimensional model
+# Gold dimensional model (PostgreSQL)
 
-Gold is the serving layer: a star schema in PostgreSQL (the `analytics` database) that answers the four business questions with near-real-time current state and keeps the history of every change. Spark builds it from the silver history tables in the lake, and writes the same rows to Iceberg gold tables in the lake as a second sink.
+**Gold lives in PostgreSQL, not in the lake.** Bronze and silver are Iceberg tables in the lake (SeaweedFS); gold is the `analytics` database on the `analytics-db` PostgreSQL service, in two schemas: `gold_internal` (the tables the pipeline writes) and `gold` (the views consumers read).
+
+Gold is the serving layer: a star schema in PostgreSQL that answers the four business questions with near-real-time current state and keeps the history of every change. Spark builds it from the silver history tables in the lake, and writes the same rows to Iceberg gold tables in the lake as a second sink.
 
 ## Inputs from silver
 
@@ -37,9 +39,12 @@ Consumers never need to know how the pipeline orders or deduplicates changes, an
 
 ## Model
 
-The diagram shows the `gold` views; the keys and relations are enforced on the `gold_internal` tables.
+The diagram shows the `gold` views in the PostgreSQL `analytics` database; the keys and relations are enforced on the `gold_internal` tables.
 
 ```mermaid
+---
+title: Gold star schema in PostgreSQL (analytics database, schema gold)
+---
 erDiagram
     dim_customer ||--o{ fact_order_history : "customer_key"
     dim_order_status ||--o{ fact_order_history : "status_key"
@@ -178,7 +183,7 @@ Notes:
 
 - **Pending order** (question 4): an open order. `PENDING` alone would leave out orders being processed, and would not match questions 1 to 3.
 - **Pending item** (question 3): an item, not deleted, of an open order. Question 3 reports both the number of pending items and their total quantity per product.
-- **Top 3:** questions 2 and 4 include ties (`FETCH FIRST 3 ROWS WITH TIES`), so more than three rows come back when several share the third place.
+- **Top 3:** questions 2 and 4 rank by count with `RANK()` and keep places 1 to 3, so every row tied for third place is kept and more than three rows can come back. `RANK()` leaves gaps after a tie (two dates tied for first are both 1, the next is 3), so ties never add places: `DENSE_RANK()` would count a tie as one place and could return many more rows. Window functions work in any SQL engine, unlike `FETCH FIRST ... WITH TIES`.
 
 Example: customer 3 has order 10 `PENDING` with two items of product 5 (quantities 4 and 6), and order 11 `COMPLETED` with one item of product 5. Customer 3 has one pending order; product 5 has two pending items with a total quantity of 10.
 
@@ -210,21 +215,26 @@ No transaction spans PostgreSQL and the lake, so both writes are idempotent: a f
 
 | Question | Answered from | Query |
 | --- | --- | --- |
-| Number of open orders by delivery date and status | `current_orders` joined to `dim_order_status`, where open, grouped by `delivery_date` and `status_code` | [01](../../sql/gold/01_open_orders_by_delivery_date_and_status.sql) |
-| Top 3 delivery dates with more open orders | the same count by `delivery_date`, ordered descending, top 3 with ties | [02](../../sql/gold/02_top_delivery_dates_by_open_orders.sql) |
-| Number of open pending items by product | `current_order_items` joined to open `current_orders`, grouped by `product_id`: item count and total quantity | [03](../../sql/gold/03_pending_items_by_product.sql) |
-| Top 3 customers with more pending orders | open `current_orders` by `customer_id`, with the name from the current `dim_customer`, top 3 with ties | [04](../../sql/gold/04_top_customers_by_pending_orders.sql) |
+| Number of open orders by delivery date and status | `current_orders` joined to `dim_order_status`, where open, grouped by `delivery_date` and `status_code` | [01](../../analytics/sql/gold/01_open_orders_by_delivery_date_and_status.sql) |
+| Top 3 delivery dates with more open orders | the same count by `delivery_date`, ordered descending, top 3 with ties | [02](../../analytics/sql/gold/02_top_delivery_dates_by_open_orders.sql) |
+| Number of open pending items by product | `current_order_items` joined to open `current_orders`, grouped by `product_id`: item count and total quantity | [03](../../analytics/sql/gold/03_pending_items_by_product.sql) |
+| Top 3 customers with more pending orders | open `current_orders` by `customer_id`, with the name from the current `dim_customer`, top 3 with ties | [04](../../analytics/sql/gold/04_top_customers_by_pending_orders.sql) |
 
-The queries are in [`sql/gold/`](../../sql/gold/) and read only the `gold` views. For example, the core of question 2:
+The queries are in [`analytics/sql/gold/`](../../analytics/sql/gold/) and read only the `gold` views. For example, the core of question 2:
 
 ```sql
-SELECT o.delivery_date, count(*) AS open_orders
-FROM gold.current_orders AS o
-JOIN gold.dim_order_status AS s ON s.status_key = o.status_key
-WHERE s.is_open
-GROUP BY o.delivery_date
-ORDER BY open_orders DESC
-FETCH FIRST 3 ROWS WITH TIES;
+SELECT delivery_date, open_orders
+FROM (
+    SELECT
+        o.delivery_date,
+        count(*) AS open_orders,
+        rank() OVER (ORDER BY count(*) DESC) AS place
+    FROM gold.current_orders AS o
+    JOIN gold.dim_order_status AS s ON s.status_key = o.status_key
+    WHERE s.is_open
+    GROUP BY o.delivery_date
+) AS ranked_dates
+WHERE place <= 3;
 ```
 
 ## Known source issues
