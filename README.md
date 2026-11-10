@@ -6,6 +6,10 @@ Welcome to Deel's Data Engineering Take-Home task, as mentioned in the Task spec
 
 ![Database Diagram](./diagrams/database-diagram.png)
 
+### Architecture
+
+The [architecture overview](docs/architecture/overview.md) shows every service, the data flow from the source database through the lake layers to gold, one micro-batch end to end, the replay, rebuild, retention and maintenance operations, and the data quality chain. [The gold model](docs/architecture/gold-model.md) describes the dimensional model in PostgreSQL.
+
 ### Database Configuration
 
 Install [Docker](https://www.docker.com/products/docker-desktop/) with [Compose v2](https://docs.docker.com/compose/install/), GNU Make and [uv](https://docs.astral.sh/uv/) (`make up` uses it to render the gold DDL). With the Docker engine running, run these commands from the repository root:
