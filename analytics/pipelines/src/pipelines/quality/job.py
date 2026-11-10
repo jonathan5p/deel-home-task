@@ -11,7 +11,14 @@ from pipelines.gold import quality as gold
 from pipelines.landing import quality as landing
 from pipelines.quality.checks import CheckResult, all_passed, report_lines, summary_object
 from pipelines.quality.report import Results, write_report
-from pipelines.settings import BronzeSettings, GoldSettings, LakeSettings, LandingQualitySettings
+from pipelines.settings import (
+    BronzeSettings,
+    GoldSettings,
+    LakeSettings,
+    LandingQualitySettings,
+    SilverSettings,
+)
+from pipelines.silver import quality as silver
 
 ALL = "all"
 SUMMARY_PREFIX = "DATA QUALITY"
@@ -29,6 +36,10 @@ def bronze_checks(spark: SparkSession, env: Env) -> list[CheckResult]:
     return bronze.run_checks(spark, BronzeSettings.from_env(env))
 
 
+def silver_checks(spark: SparkSession, env: Env) -> list[CheckResult]:
+    return silver.run_checks(spark, SilverSettings.from_env(env))
+
+
 def gold_checks(spark: SparkSession, env: Env) -> list[CheckResult]:
     return gold.run_checks(spark, GoldSettings.from_env(env))
 
@@ -36,6 +47,7 @@ def gold_checks(spark: SparkSession, env: Env) -> list[CheckResult]:
 CHECKS: Mapping[str, QualityCheck] = {
     "landing": landing_checks,
     "bronze": bronze_checks,
+    "silver": silver_checks,
     "gold": gold_checks,
 }
 

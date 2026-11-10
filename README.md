@@ -689,16 +689,17 @@ The cluster has two workers with 5 cores and 5 GiB each, and each job takes at m
 
 #### Data quality checks
 
-Data quality checks verify the data itself, on the running stack. They are separate from unit tests (the code, on synthetic data) and from infra tests (the platform, on a throwaway stack), and run on demand. Each check compares one layer with its upstream layer only, never with the source database, so the checks form a chain from Kafka to the lake. The framework lives in `analytics/pipelines/src/pipelines/quality/`, and each layer's checks next to its code (`pipelines/landing/quality.py`, `pipelines/bronze/quality.py`, `pipelines/gold/quality.py`). They run as one Spark job, `pipelines/quality/job.py`:
+Data quality checks verify the data itself, on the running stack. They are separate from unit tests (the code, on synthetic data) and from infra tests (the platform, on a throwaway stack), and run on demand. Each check compares one layer with its upstream layer only, never with the source database, so the checks form a chain from Kafka to the lake. The framework lives in `analytics/pipelines/src/pipelines/quality/`, and each layer's checks next to its code (`pipelines/landing/quality.py`, `pipelines/bronze/quality.py`, `pipelines/silver/quality.py`, `pipelines/gold/quality.py`). They run as one Spark job, `pipelines/quality/job.py`:
 
 ```sh
 make data-quality                 # every check (CHECK=all)
 make data-quality CHECK=landing   # Kafka -> landing
 make data-quality CHECK=bronze    # landing -> bronze and its quarantine
+make data-quality CHECK=silver    # bronze -> silver
 make data-quality CHECK=gold      # silver -> gold in PostgreSQL, through the gold views in the lake
 ```
 
-- **Output:** each check prints one JSON line per result, prefixed with `<CHECK> QUALITY` (`LANDING QUALITY`, `BRONZE QUALITY`), then a summary line of its own, and the run ends with a `DATA QUALITY` summary of every check that names the run's report. The job exits with code 1 if any check fails.
+- **Output:** each check prints one JSON line per result, prefixed with `<CHECK> QUALITY` (`LANDING QUALITY`, `BRONZE QUALITY`, `SILVER QUALITY`, `GOLD QUALITY`), then a summary line of its own, and the run ends with a `DATA QUALITY` summary of every check that names the run's report. The job exits with code 1 if any check fails.
 - **Report:** every run also writes one JSON file, `<LAKE_ROOT>/quality/reports/<UTC time>.json` (locally `s3a://lake/quality/reports/20261110T151803Z.json`), with each check's results and summary and the run's summary, so the results persist and can be inspected later (`curl http://localhost:8888/buckets/lake/quality/reports/` lists them).
 - **Bounded by what the downstream layer committed:** a check reads the upstream position the downstream stream's checkpoint committed (`pipelines/lake/checkpoints.py`), and the downstream table as of the newest snapshot that holds no later batch of that stream (`pipelines/lake/snapshots.py`; Iceberg's streaming sink records the query and batch, `spark.sql.streaming.queryId` and `spark.sql.streaming.epochId`, in each append's snapshot summary). A batch whose rows are in the table but whose checkpoint commit is not written yet does not count, so the result does not depend on pipeline lag.
 
@@ -731,6 +732,15 @@ The bronze checks reconcile each topic's landing records with bronze and its qua
 | `committed_records_only` | each table holds only records of the landing files its own query committed |
 
 A record whose file only one of the two queries has committed so far is not missing yet: the other query has not read it. The results report the counts (`committed_records`, `missing`, `held_records`, `duplicated`, `unexpected`) and the committed batch of each query; a topic whose queries have not committed a batch yet has nothing to check and passes.
+
+The silver checks compare each entity's silver table with bronze by change identity: the entity key, `_commit_sequence` and `_change_op`. Silver reads bronze as an Iceberg stream, so the offset of its last committed batch (`<CHECKPOINT_ROOT>/silver/<entity>/offsets/<batch>`) names the bronze snapshot it had read up to. Silver reads bronze without a rate limit, so every batch ends at a whole snapshot. The expected changes are the distinct identities of bronze as of that snapshot, so a change bronze holds twice, such as a Kafka redelivery, is expected once. Silver is read as of its newest snapshot that holds no later batch of its stream.
+
+| Check | Checks that |
+| --- | --- |
+| `same_changes_as_bronze` | silver holds every change bronze held at that snapshot, and no other |
+| `changes_held_once` | no change identity is in silver more than once |
+
+The results report the counts (`bronze_changes`, `missing`, `extra`, `silver_rows`, `duplicated`), silver's committed batch, the bronze and silver snapshots compared, and up to 10 sample identities of each mismatch. An entity whose silver stream has not committed a batch yet has nothing to check and passes. If the bronze snapshot has been expired, which lake maintenance avoids while a silver checkpoint still needs it, `same_changes_as_bronze` fails and gives the reason in its details.
 
 The `gold` check compares every PostgreSQL `gold` view with the [gold view in the lake](#gold-views-in-the-lake) of the same name, computed over silver, one `gold_matches_silver` result per view, `data_freshness` aside. The lake views apply gold's rules to silver at read time, so one comparison checks silver against gold in PostgreSQL and the lake views against PostgreSQL, and silver and PostgreSQL are each read once per run:
 
