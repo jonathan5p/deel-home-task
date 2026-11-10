@@ -196,7 +196,7 @@ def test_the_job_creates_the_history_and_current_views_of_each_entity(
     settings = silver_settings(CUSTOMERS, PRODUCTS, catalog=iceberg_view_catalog)
     for entity in (CUSTOMERS, PRODUCTS):
         created = bronze_change(entity, 1, ChangeOp.CREATE)
-        deleted = bronze_change(entity, 2, ChangeOp.DELETE) | {entity.key_column: 1}
+        deleted = bronze_change(entity, 2, ChangeOp.DELETE) | {entity.lake_key: 1}
         write_bronze(spark, settings, entity, [created, deleted])
 
     run_until_caught_up(spark, settings)

@@ -25,7 +25,7 @@ def history_query(entity: Entity, table: str) -> str:
     is_deleted = q(MetadataColumn.IS_DELETED)
     changed_at = q(MetadataColumn.CHANGED_AT)
     commit_sequence = q(MetadataColumn.COMMIT_SEQUENCE)
-    by_key = f"PARTITION BY {q(entity.key_column)} ORDER BY {commit_sequence}"
+    by_key = f"PARTITION BY {q(entity.lake_key)} ORDER BY {commit_sequence}"
     # The first version of a key has no previous one: lag() is null and coalesce keeps it.
     folded = (
         f"coalesce({content_hash} = lag({content_hash}) OVER ({by_key})"

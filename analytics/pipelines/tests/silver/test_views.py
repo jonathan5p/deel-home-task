@@ -190,7 +190,7 @@ def test_the_current_view_has_the_current_version_of_each_live_key(
     create_views(spark, settings)
 
     rows = current(spark, settings)
-    assert [(row[CUSTOMERS.key_column], row[MetadataColumn.COMMIT_SEQUENCE]) for row in rows] == [
+    assert [(row[CUSTOMERS.lake_key], row[MetadataColumn.COMMIT_SEQUENCE]) for row in rows] == [
         (1, 2),
         (3, 8),
     ]
