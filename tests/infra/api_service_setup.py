@@ -20,7 +20,7 @@ def start_api(stack: Stack) -> None:
 
 
 def get(stack: Stack, path: str) -> tuple[int, str]:
-    """GET a path of the API from inside its own container, which has no host port here."""
+    """GET a path of the API from inside its own container."""
     run = subprocess.run(
         ["docker", "compose", "exec", "-T", "api", "python", "-c", GET, path],
         cwd=REPO_ROOT,
