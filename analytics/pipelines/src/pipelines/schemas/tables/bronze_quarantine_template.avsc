@@ -4,6 +4,7 @@
   "namespace": "lake",
   "doc": "Change events of source table {entity} that failed bronze validation, kept raw with the reason",
   "include": [],
+  "partitioned_by": "_published_at",
   "fields": [
     {
       "name": "_record_source",

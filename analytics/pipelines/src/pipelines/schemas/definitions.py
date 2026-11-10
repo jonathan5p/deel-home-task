@@ -96,12 +96,14 @@ class TableTemplate:
     `name` is the template's file name without `_template`: the layer, then the kind of table
     if the layer keeps more than one per entity (`bronze`, `bronze_quarantine`). The table's
     columns are the included groups, in order, then the template's own `fields`.
+    `partitioned_by` is the timestamp field whose day partitions the table, if any.
     """
 
     name: str
     description: str
     include: tuple[ColumnGroup, ...] = ()
     fields: tuple[ColumnDefinition, ...] = ()
+    partitioned_by: str | None = None
 
     @property
     def layer(self) -> str:
@@ -123,10 +125,11 @@ class TableTemplate:
 
 RECORD_PROPERTIES = frozenset({"type", "name", "namespace", "doc", "fields"})
 SOURCE_PROPERTIES = RECORD_PROPERTIES | {"key", "include"}
-TABLE_PROPERTIES = RECORD_PROPERTIES | {"include"}
+TABLE_PROPERTIES = RECORD_PROPERTIES | {"include", "partitioned_by"}
 FIELD_PROPERTIES = frozenset({"name", "type", "doc", "default"})
 SOURCE_FIELD_PROPERTIES = FIELD_PROPERTIES | {"renamed_to"}
 TEMPLATE_PLACEHOLDERS = frozenset({"entity", "entity_description"})
+PARTITION_TYPES = frozenset({ColumnType.TIMESTAMP_MILLIS, ColumnType.DATE})
 
 
 @dataclass(frozen=True, slots=True)
@@ -290,7 +293,23 @@ def _template(file: Traversable, root: Traversable) -> TableTemplate:
         description=record.description,
         include=tuple(group for group in groups.values() if group is not None),
         fields=record.columns,
+        partitioned_by=_partition_column(record),
     )
+
+
+def _partition_column(record: _Record) -> str | None:
+    if "partitioned_by" not in record.properties:
+        return None
+    owner = f"record {record.name}"
+    name = _text(record.source, record.properties, "partitioned_by", owner)
+    timestamps = [column.lake_name for column in record.columns if column.type in PARTITION_TYPES]
+    if name not in timestamps:
+        raise DefinitionError(
+            record.source,
+            f"partitioned_by of {owner} must name one of its own timestamp or date fields,"
+            f" not {name}",
+        )
+    return name
 
 
 def load_table_templates(root: Traversable = SCHEMAS) -> Mapping[str, TableTemplate]:

@@ -15,12 +15,13 @@ from pipelines.lake.streams import (
     start_streams,
     wants_available_now,
 )
-from pipelines.lake.tables import ensure_table
+from pipelines.lake.tables import ensure_table, table_definition
 from pipelines.settings import SilverSettings
-from pipelines.silver.tables import silver_table
 from pipelines.silver.versions import versions
 
 type BronzeReader = Callable[[SparkSession, str], DataFrame]
+
+SILVER = "silver"
 
 
 def read_bronze(spark: SparkSession, table: str) -> DataFrame:
@@ -32,7 +33,8 @@ def entity_stream(
 ) -> TableStream:
     entity = entity_for_topic(topic)
     rows = versions(read(spark, settings.bronze_table(entity.name)), entity)
-    return TableStream.for_table(settings, entity.name, rows, silver_table(entity))
+    definition = table_definition(SILVER, entity.definition)
+    return TableStream.for_table(settings, entity.name, rows, definition)
 
 
 def run(

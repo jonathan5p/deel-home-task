@@ -8,8 +8,9 @@ pytest.importorskip("pyspark")
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
-from pipelines.bronze.decimals import BRONZE_DECIMAL, decode_decimal, is_valid_decimal
+from pipelines.bronze.decimals import decode_decimal, is_valid_decimal
 from pipelines.bronze.entities import VARIABLE_SCALE_DECIMAL
+from pipelines.lake.types import LAKE_DECIMAL
 
 
 def encoded(unscaled: int, size: int | None = None) -> str:
@@ -71,7 +72,7 @@ def test_variable_scale_decimals_decode_exactly(
 def test_decoded_values_have_the_bronze_type(spark: SparkSession) -> None:
     frame = spark.createDataFrame([(None,)], f"price {VARIABLE_SCALE_DECIMAL.simpleString()}")
 
-    assert frame.select(decode_decimal(F.col("price"))).schema[0].dataType == BRONZE_DECIMAL
+    assert frame.select(decode_decimal(F.col("price"))).schema[0].dataType == LAKE_DECIMAL
 
 
 @pytest.mark.parametrize(

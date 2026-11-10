@@ -19,11 +19,10 @@ from analytics.pipelines.tests.silver.job_setup import (
 from analytics.pipelines.tests.silver.versions_samples import ENTITY_IDS, bronze_change
 from pipelines.bronze.entities import CUSTOMERS, ENTITIES, PRODUCTS, Entity
 from pipelines.lake.columns import ChangeOp, MetadataColumn
-from pipelines.lake.tables import TABLE_TEMPLATES
+from pipelines.lake.tables import TABLE_TEMPLATES, table_definition
 from pipelines.lake.types import SPARK_TYPES
 from pipelines.schemas.render import avro_field, render_table_schema
-from pipelines.silver.job import entity_stream, run
-from pipelines.silver.tables import silver_table
+from pipelines.silver.job import SILVER, entity_stream, run
 
 
 @pytest.mark.parametrize("entity", ENTITIES, ids=ENTITY_IDS)
@@ -37,7 +36,7 @@ def test_every_column_of_every_silver_table_is_described(
     schema = stream.table_schema()
     assert all(field.metadata["comment"] for field in schema)
     assert schema.fieldNames() == stream.rows.schema.fieldNames()
-    assert stream.definition == silver_table(entity)
+    assert stream.definition == table_definition(SILVER, entity.definition)
 
 
 @pytest.mark.parametrize("entity", ENTITIES, ids=ENTITY_IDS)
@@ -120,7 +119,7 @@ def test_silver_tables_are_partitioned_by_change_day_and_store_every_description
     ddl = table_ddl(spark, table)
     assert f"PARTITIONED BY (days({MetadataColumn.CHANGED_AT}))" in ddl
     assert "'write.distribution-mode' = 'none'" in ddl
-    definition = silver_table(PRODUCTS)
+    definition = table_definition(SILVER, PRODUCTS.definition)
     stored = stored_description(spark, table)
     assert stored.comment == definition.comment
     assert stored.columns == {

@@ -21,12 +21,11 @@ from analytics.pipelines.tests.lake.streams_setup import FakeCatalog
 from analytics.pipelines.tests.lake.tables_setup import stored_description, table_ddl
 from pipelines.bronze.columns import QUARANTINE_COLUMNS, RawColumn
 from pipelines.bronze.entities import CUSTOMERS, ENTITIES, PRODUCTS, Entity, UnknownEntityError
-from pipelines.bronze.job import entity_streams, read_landing, run
+from pipelines.bronze.job import BRONZE, QUARANTINE, entity_streams, read_landing, run
 from pipelines.bronze.parse import FailureReason, parse_changes
-from pipelines.bronze.tables import bronze_table, quarantine_table
 from pipelines.lake.columns import MetadataColumn
 from pipelines.lake.streams import await_queries
-from pipelines.lake.tables import TABLE_TEMPLATES, described_schema
+from pipelines.lake.tables import TABLE_TEMPLATES, described_schema, table_definition
 from pipelines.lake.types import SPARK_TYPES
 from pipelines.schemas.render import avro_field, render_table_schema
 
@@ -86,12 +85,14 @@ def test_each_entity_gets_a_bronze_and_a_quarantine_table(
         table = f"catalog.bronze.{entity.name}"
         bronze = parse_changes(landing_records(spark), entity).bronze
         assert fake_catalog.schemas[table] == (
-            described_schema(table, bronze.schema, bronze_table(entity))
+            described_schema(table, bronze.schema, table_definition(BRONZE, entity.definition))
         )
-        assert fake_catalog.definitions[table] == bronze_table(entity)
+        assert fake_catalog.definitions[table] == table_definition(BRONZE, entity.definition)
         quarantine = fake_catalog.schemas[f"{table}_quarantine"]
         assert quarantine.fieldNames() == [*QUARANTINE_COLUMNS, MetadataColumn.QUARANTINED_AT]
-        assert fake_catalog.definitions[f"{table}_quarantine"] == quarantine_table(entity)
+        assert fake_catalog.definitions[f"{table}_quarantine"] == table_definition(
+            QUARANTINE, entity.definition
+        )
     assert quarantine[MetadataColumn.QUARANTINED_AT].dataType == TimestampType()
 
 
@@ -243,8 +244,10 @@ def test_iceberg_tables_store_the_table_comment_and_every_column_doc(
     await_queries(spark.streams, run(spark, settings, available_now=True), available_now=True)
 
     expected = {
-        f"{iceberg_catalog}.bronze.products": bronze_table(PRODUCTS),
-        f"{iceberg_catalog}.bronze.products_quarantine": quarantine_table(PRODUCTS),
+        f"{iceberg_catalog}.bronze.products": table_definition(BRONZE, PRODUCTS.definition),
+        f"{iceberg_catalog}.bronze.products_quarantine": table_definition(
+            QUARANTINE, PRODUCTS.definition
+        ),
     }
     for table, definition in expected.items():
         stored = stored_description(spark, table)

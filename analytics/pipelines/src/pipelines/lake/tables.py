@@ -14,11 +14,11 @@ COMMENT = "comment"
 
 class TableDefinition(NamedTuple):
     """A lake table's description, its columns by lake name, and the timestamp column whose day
-    partitions it."""
+    partitions it, if any."""
 
     comment: str
     columns: Mapping[str, ColumnDefinition]
-    partitioned_by: str
+    partitioned_by: str | None
 
 
 class UndescribedColumnError(ValueError):
@@ -33,16 +33,14 @@ class ColumnTypeMismatchError(TypeError):
         )
 
 
-def table_definition(
-    template_name: str, entity: EntityDefinition, *, partitioned_by: str
-) -> TableDefinition:
-    """The template's description and columns for the entity, by lake name."""
+def table_definition(template_name: str, entity: EntityDefinition) -> TableDefinition:
+    """The entity's table in a layer, from the layer's template (`bronze`, `silver`, ...)."""
     template = TABLE_TEMPLATES[template_name]
     columns = template.columns_for(entity)
     return TableDefinition(
         comment=template.describe(entity),
         columns={column.lake_name: column for column in columns},
-        partitioned_by=partitioned_by,
+        partitioned_by=template.partitioned_by,
     )
 
 
@@ -125,15 +123,16 @@ def create_table(
     spark.sql(f"CREATE NAMESPACE IF NOT EXISTS {namespace}")
     # Streaming disables adaptive execution, so the default hash distribution would shuffle
     # every micro-batch into spark.sql.shuffle.partitions tasks; a local sort is enough here.
-    (
+    writer = (
         spark.createDataFrame([], schema)
         .writeTo(table)
         .using("iceberg")
-        .partitionedBy(partitioning.days(definition.partitioned_by))
         .tableProperty("write.distribution-mode", "none")
         .tableProperty(COMMENT, definition.comment)
-        .create()
     )
+    if definition.partitioned_by is not None:
+        writer = writer.partitionedBy(partitioning.days(definition.partitioned_by))
+    writer.create()
 
 
 def ensure_table(

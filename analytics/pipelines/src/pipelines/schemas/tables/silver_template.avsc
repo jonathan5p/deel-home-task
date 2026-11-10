@@ -4,6 +4,7 @@
   "namespace": "lake",
   "doc": "{entity_description}. Append-only version history of source table {entity}: one row per change, never updated or removed; the input of the gold layer",
   "include": ["source", "audit"],
+  "partitioned_by": "_changed_at",
   "fields": [
     {
       "name": "_commit_sequence",

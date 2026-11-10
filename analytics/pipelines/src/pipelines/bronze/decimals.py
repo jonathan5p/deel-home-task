@@ -3,8 +3,6 @@ from pyspark.sql import functions as F
 
 from pipelines.lake.types import LAKE_DECIMAL
 
-BRONZE_DECIMAL = LAKE_DECIMAL
-BRONZE_SCALE = BRONZE_DECIMAL.scale
 MAX_UNSCALED_BYTES = 8
 
 
@@ -26,7 +24,7 @@ def decode_decimal(value: Column) -> Column:
 
     The source column has no declared precision, so Debezium sends the unscaled value as
     big-endian bytes plus a per-value scale. Returns a DECIMAL(38,10), or null when the value is
-    null, undecodable, wider than eight bytes or not exactly representable at the bronze scale:
+    null, undecodable, wider than eight bytes or not exactly representable at the lake scale:
     `try_cast` to a decimal rounds silently, so a value that does not fit exactly is left for
     quarantine instead of being rounded.
     """
@@ -34,11 +32,11 @@ def decode_decimal(value: Column) -> Column:
     scale = value["scale"]
     unscaled = _signed_unscaled(raw)
     fits_the_scale = (
-        (scale <= BRONZE_SCALE)
+        (scale <= LAKE_DECIMAL.scale)
         | (unscaled == F.lit("0"))
-        | F.endswith(unscaled, F.repeat(F.lit("0"), scale - BRONZE_SCALE))
+        | F.endswith(unscaled, F.repeat(F.lit("0"), scale - LAKE_DECIMAL.scale))
     )
-    exact = F.concat(unscaled, F.lit("E"), (-scale).cast("string")).try_cast(BRONZE_DECIMAL)
+    exact = F.concat(unscaled, F.lit("E"), (-scale).cast("string")).try_cast(LAKE_DECIMAL)
     decodable = F.octet_length(raw).between(1, MAX_UNSCALED_BYTES) & fits_the_scale
     return F.when(decodable, exact)
 

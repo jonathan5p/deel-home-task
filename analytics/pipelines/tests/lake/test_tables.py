@@ -14,6 +14,8 @@ from analytics.pipelines.tests.lake.tables_setup import (
     stored_description,
     table_ddl,
 )
+from pipelines.bronze.columns import RawColumn
+from pipelines.bronze.entities import ORDER_ITEMS
 from pipelines.lake.columns import MetadataColumn
 from pipelines.lake.tables import (
     TABLE_TEMPLATES,
@@ -27,12 +29,13 @@ from pipelines.lake.tables import (
     table_definition,
 )
 from pipelines.schemas.definitions import load_entity
+from pipelines.silver.columns import SILVER_METADATA_COLUMNS
 
 
 def test_a_table_definition_takes_the_template_description_and_columns_by_lake_name() -> None:
     order_items = load_entity("order_items")
 
-    definition = table_definition("bronze", order_items, partitioned_by=MetadataColumn.PUBLISHED_AT)
+    definition = table_definition("bronze", order_items)
 
     template = TABLE_TEMPLATES["bronze"]
     assert definition.comment == template.describe(order_items)
@@ -40,7 +43,61 @@ def test_a_table_definition_takes_the_template_description_and_columns_by_lake_n
         column.lake_name for column in template.columns_for(order_items)
     ]
     assert definition.columns["quantity"].name == "quanity"
-    assert definition.partitioned_by == MetadataColumn.PUBLISHED_AT
+    assert definition.partitioned_by == template.partitioned_by
+
+
+def test_bronze_tables_describe_entity_columns_by_their_lake_name() -> None:
+    columns = table_definition("bronze", ORDER_ITEMS.definition).columns
+
+    assert columns["quantity"].description == "Number of units ordered (source column quanity)"
+    assert "quanity" not in columns
+    assert columns[MetadataColumn.COMMIT_SEQUENCE] in TABLE_TEMPLATES["bronze"].fields
+    assert MetadataColumn.LANDING_FILE not in columns
+    assert RawColumn.KEY not in columns
+
+
+def test_quarantine_tables_describe_the_raw_kafka_columns() -> None:
+    columns = table_definition("bronze_quarantine", ORDER_ITEMS.definition).columns
+
+    assert columns[RawColumn.KEY].description == "Raw Kafka record key, as text"
+    assert "quantity" not in columns
+    assert MetadataColumn.COMMIT_SEQUENCE not in columns
+
+
+def test_silver_tables_describe_the_entity_columns_then_the_version_columns() -> None:
+    columns = table_definition("silver", ORDER_ITEMS.definition).columns
+
+    assert list(columns) == [
+        *(column.lake_name for column in ORDER_ITEMS.columns),
+        *SILVER_METADATA_COLUMNS,
+    ]
+
+
+def test_table_comments_come_from_the_templates_and_name_the_source_table() -> None:
+    description = ORDER_ITEMS.definition.description
+
+    def comment(template: str) -> str:
+        return table_definition(template, ORDER_ITEMS.definition).comment
+
+    assert comment("bronze").startswith(f"{description}. Change log of source table")
+    assert "source table order_items" in comment("bronze_quarantine")
+    assert comment("silver").startswith(
+        f"{description}. Append-only version history of source table order_items"
+    )
+
+
+@pytest.mark.parametrize(
+    ("template", "column"),
+    [
+        ("bronze", MetadataColumn.PUBLISHED_AT),
+        ("bronze_quarantine", MetadataColumn.PUBLISHED_AT),
+        ("silver", MetadataColumn.CHANGED_AT),
+    ],
+)
+def test_each_layer_table_is_partitioned_by_the_day_of_its_template_column(
+    template: str, column: str
+) -> None:
+    assert table_definition(template, ORDER_ITEMS.definition).partitioned_by == column
 
 
 def test_the_described_schema_carries_each_description_as_the_field_comment() -> None:
@@ -133,6 +190,17 @@ def test_a_new_table_is_created_with_its_descriptions_partitioned_by_day(
     ddl = table_ddl(spark, table)
     assert f"PARTITIONED BY (days({DEFINITION.partitioned_by}))" in ddl
     assert "'write.distribution-mode' = 'none'" in ddl
+
+
+def test_a_table_without_a_partition_column_is_created_unpartitioned(
+    spark: SparkSession, iceberg_catalog: str
+) -> None:
+    table = f"{iceberg_catalog}.bronze.unpartitioned"
+    schema = described_schema(table, SCHEMA, DEFINITION)
+
+    ensure_table(spark, table, schema, DEFINITION._replace(partitioned_by=None))
+
+    assert "PARTITIONED BY" not in table_ddl(spark, table)
 
 
 def test_an_existing_table_gets_only_its_changed_descriptions(

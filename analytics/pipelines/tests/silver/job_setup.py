@@ -10,10 +10,10 @@ from analytics.pipelines.tests.silver.versions_samples import (
     bronze_schema,
 )
 from pipelines.bronze.entities import Entity
-from pipelines.bronze.tables import bronze_table
+from pipelines.bronze.job import BRONZE
 from pipelines.lake.columns import MetadataColumn
 from pipelines.lake.streams import await_queries
-from pipelines.lake.tables import described_schema, ensure_table
+from pipelines.lake.tables import described_schema, ensure_table, table_definition
 from pipelines.settings import SilverSettings
 from pipelines.silver.job import BronzeReader, run
 
@@ -35,7 +35,7 @@ def write_bronze(
 ) -> None:
     """Append changes to the entity's bronze table, created the way the bronze job creates it."""
     table = settings.bronze_table(entity.name)
-    definition = bronze_table(entity)
+    definition = table_definition(BRONZE, entity.definition)
     ensure_table(
         spark, table, described_schema(table, bronze_schema(entity), definition), definition
     )

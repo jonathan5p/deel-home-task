@@ -420,7 +420,7 @@ A source table is one Avro record: `name` is the table, `namespace` the source s
 }
 ```
 
-A table template is the layout of one table a layer keeps per entity. It is an ordinary Avro record whose `fields` fully define the columns the layer adds itself, and whose `include` lists the column groups that come before them: `source` is the entity's own fields (under their lake names) and `audit` the shared fields of `audit.avsc` (for the entities that include them). Its `doc` is the table description, with `{entity}` replaced by the source table's name and `{entity_description}` by its description:
+A table template is the layout of one table a layer keeps per entity. It is an ordinary Avro record whose `fields` fully define the columns the layer adds itself, and whose `include` lists the column groups that come before them: `source` is the entity's own fields (under their lake names) and `audit` the shared fields of `audit.avsc` (for the entities that include them). Its `doc` is the table description, with `{entity}` replaced by the source table's name and `{entity_description}` by its description. `partitioned_by` names one of its own timestamp or date fields; the table is partitioned by that field's day:
 
 ```json
 {
@@ -429,6 +429,7 @@ A table template is the layout of one table a layer keeps per entity. It is an o
   "namespace": "lake",
   "doc": "{entity_description}. Change log of source table {entity}: one typed row per Debezium change event ...",
   "include": ["source", "audit"],
+  "partitioned_by": "_published_at",
   "fields": [
     {
       "name": "_record_source",
@@ -567,9 +568,10 @@ Bronze is a typed, faithful log of every change event: one row per event, no ded
 - `entities.py`: one `Entity` per source table, built from its Avro schema in `pipelines/schemas/sources/`, with its key, content and audit columns, its NOT NULL columns and the JSON row schema Debezium emits. `entity_for_topic` resolves the entity from the last segment of a `<prefix>.<schema>.<table>` topic and rejects unknown tables.
 - `parse.py`: `parse_changes(records, entity)` turns landing records (the Kafka columns as landed, plus `_landing_file`, the path of the landing file each record was read from) into typed bronze rows and quarantine rows. It is a pure DataFrame transform, so it works on batch and streaming DataFrames.
 - `columns.py`: the names of the raw Kafka columns quarantine keeps (`RawColumn`) and the column order of bronze and quarantine metadata, as string enums and tuples used instead of literals. The metadata column names themselves (`MetadataColumn`) and the `_change_op` values (`ChangeOp`) are in `pipelines/lake/columns.py`, shared with silver.
-- `tables.py`: the definitions of the bronze and quarantine tables (descriptions and columns from the Avro schemas, partitioned by `_published_at`). Creating the Iceberg tables and updating their descriptions is shared with silver, in `pipelines/lake/tables.py`.
 - `decimals.py` and `content_hash.py`: the decimal decoding and the content hash below, in plain Spark SQL functions (no Python UDFs).
 - `job.py`: the bronze streaming job, which runs `parse_changes` on every landing topic folder and appends the results to Iceberg tables. Starting the queries and the fail-fast wait below are shared with silver, in `pipelines/lake/streams.py`.
+
+The bronze and quarantine tables are defined by their templates (`tables/bronze_template.avsc` and `tables/bronze_quarantine_template.avsc`, both partitioned by `_published_at`). `table_definition` in `pipelines/lake/tables.py` builds any layer's table from its template, and the same module creates the Iceberg tables and updates their descriptions for every layer.
 
 Run it as a service with `make pipeline PIPELINE=bronze` (see [Running the pipeline](#running-the-pipeline)). It reads what the landing job writes, so run both, or `PIPELINE=all`. Until the landing job has written a topic's first file, the bronze job stops with `PATH_NOT_FOUND` for that topic's folder and Compose restarts it. Don't also start it with `make spark-submit` while the service runs: both would write to the same tables with the same checkpoints.
 
@@ -642,8 +644,7 @@ Silver is the version history of each source table: one row per bronze change, a
 
 - `versions.py`: `versions(bronze, entity)` turns bronze rows into version rows. It is a pure DataFrame transform (no UDFs), so it works on batch and streaming DataFrames.
 - `columns.py`: the metadata columns silver copies from bronze and the one it adds, in table order.
-- `tables.py`: the definition of the silver table (description and columns from `tables/silver_template.avsc`, partitioned by `_changed_at`).
-- `job.py`: the silver streaming job, which reads each bronze table as an Iceberg stream and appends its version rows to the silver table.
+- `job.py`: the silver streaming job, which reads each bronze table as an Iceberg stream and appends its version rows to the silver table, defined by `tables/silver_template.avsc` (partitioned by `_changed_at`) through `table_definition`, as in bronze.
 
 Run it as a service with `make pipeline PIPELINE=silver` (see [Running the pipeline](#running-the-pipeline)). It reads the bronze tables, so bronze must be running too (with landing before it), or use `PIPELINE=all`. Until the bronze job has created an entity's table, the silver job stops at start with `TABLE_OR_VIEW_NOT_FOUND` for that table, before it creates any silver table, and Compose restarts it. Don't also start it with `make spark-submit` while the service runs: both would write to the same tables with the same checkpoints.
 

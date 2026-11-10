@@ -4,6 +4,7 @@
   "namespace": "lake",
   "doc": "{entity_description}. Change log of source table {entity}: one typed row per Debezium change event (create, update, delete or snapshot), append-only and not deduplicated",
   "include": ["source", "audit"],
+  "partitioned_by": "_published_at",
   "fields": [
     {
       "name": "_record_source",

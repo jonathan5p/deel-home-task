@@ -8,7 +8,6 @@ from pyspark.sql.streaming import StreamingQuery
 
 from pipelines.bronze.entities import entity_for_topic
 from pipelines.bronze.parse import parse_changes
-from pipelines.bronze.tables import bronze_table, quarantine_table
 from pipelines.lake.columns import MetadataColumn
 from pipelines.lake.streams import (
     TableCreator,
@@ -19,11 +18,14 @@ from pipelines.lake.streams import (
     start_streams,
     wants_available_now,
 )
-from pipelines.lake.tables import ensure_table
+from pipelines.lake.tables import ensure_table, table_definition
 from pipelines.schemas import KAFKA_RECORD_SCHEMA
 from pipelines.settings import BronzeSettings
 
 type LandingReader = Callable[[SparkSession, str], DataFrame]
+
+BRONZE = "bronze"
+QUARANTINE = "bronze_quarantine"
 
 
 def read_landing(spark: SparkSession, path: str) -> DataFrame:
@@ -41,12 +43,14 @@ def entity_streams(
     entity = entity_for_topic(topic)
     parsed = parse_changes(read(spark, settings.landing_path(topic)), entity)
     return (
-        TableStream.for_table(settings, entity.name, parsed.bronze, bronze_table(entity)),
+        TableStream.for_table(
+            settings, entity.name, parsed.bronze, table_definition(BRONZE, entity.definition)
+        ),
         TableStream.for_table(
             settings,
             f"{entity.name}_quarantine",
             quarantined(parsed.quarantine),
-            quarantine_table(entity),
+            table_definition(QUARANTINE, entity.definition),
         ),
     )
 
