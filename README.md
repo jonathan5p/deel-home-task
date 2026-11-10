@@ -58,6 +58,7 @@ Consumers of gold never use the `analytics` owner. Each one logs in with a servi
 | Login | Used by | Credentials in `.env` | Statement timeout |
 | --- | --- | --- | --- |
 | `api_reader` | the analytics API | `API_READER_USER`, `API_READER_PASSWORD` | 5 s |
+| `grafana` | the Grafana Gold datasource (see [Grafana](#grafana)) | `GRAFANA_READER_USER`, `GRAFANA_READER_PASSWORD` | 30 s |
 
 ```sh
 docker compose exec -e PGPASSWORD=api_reader analytics-db psql -h localhost -U api_reader -d analytics -c "select * from gold.data_freshness"
@@ -222,6 +223,23 @@ docker compose --profile monitoring stop conduktor-console conduktor-db
 ```
 
 The Conduktor integration is prepared but runtime validation is still pending. `make down` stops the entire project; use the service-specific command above when leaving the source running.
+
+### Grafana
+
+[Grafana](https://grafana.com/oss/grafana/) (`grafana`, image `grafana/grafana-oss`) starts with `make up` and serves the metrics on http://localhost:3000. Visitors are anonymous viewers, so no login is needed to look; sign in as `admin` / `admin` (`GRAFANA_ADMIN_USER`, `GRAFANA_ADMIN_PASSWORD` in `.env`, local development credentials) to administer it. Its own settings, users and sessions live in the `grafana-data` volume.
+
+Everything Grafana shows is provisioned as code from `docker/grafana/provisioning/`, mounted read-only:
+
+- `datasources/gold.yaml` defines the **Gold** datasource (uid `gold`, the default one): the `analytics` database on `analytics-db:5432`, read only and not editable in the UI.
+
+Grafana connects as its own [service login](#read-only-service-logins), `grafana` (`GRAFANA_READER_USER`, `GRAFANA_READER_PASSWORD` in `.env`), a member of the read-only role `gold_reader`: it reads the views of the public `gold` schema and nothing else, has no rights on `gold_internal`, where the pipeline keeps its tables, and its sessions are read-only with a 30 s statement timeout, so a heavy panel query cannot hold the database. On an analytics volume created before this login existed, `make db-logins` creates it.
+
+```mermaid
+flowchart LR
+    grafana[Grafana] -->|login grafana, member of gold_reader| views["gold views (SELECT only)"]
+    views -->|owner's rights| internal[gold_internal tables]
+    grafana -. no access .-> internal
+```
 
 ### Debezium CDC
 
