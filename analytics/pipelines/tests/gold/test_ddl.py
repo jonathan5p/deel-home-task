@@ -18,6 +18,14 @@ from pipelines.gold.ddl import (
     render,
 )
 from pipelines.gold.dimensions import DIMENSIONS
+from pipelines.schemas.gold_definitions import load_gold_tables
+
+BUSINESS_VIEWS = (
+    "open_orders_by_delivery_date_and_status",
+    "top_delivery_dates_by_open_orders",
+    "pending_items_by_product",
+    "top_customers_by_pending_orders",
+)
 
 
 def test_a_text_becomes_a_postgres_string_with_its_quotes_doubled() -> None:
@@ -195,3 +203,50 @@ def test_history_facts_are_indexed_by_the_dimension_key_they_are_re_resolved_by(
 
     assert f"CREATE INDEX IF NOT EXISTS {index}\n    ON gold_internal.{column};" in ddl
     assert f"COMMENT ON INDEX gold_internal.{index} IS" in ddl
+
+
+@pytest.mark.parametrize(
+    ("index", "definition"),
+    [
+        (
+            "current_orders_live_status_delivery_idx",
+            "current_orders (status_key, delivery_date) WHERE NOT _is_deleted",
+        ),
+        (
+            "current_orders_live_status_customer_idx",
+            "current_orders (status_key, customer_id) WHERE NOT _is_deleted",
+        ),
+    ],
+)
+def test_current_orders_are_indexed_for_the_business_views(index: str, definition: str) -> None:
+    ddl = render()
+
+    assert f"CREATE INDEX IF NOT EXISTS {index}\n    ON gold_internal.{definition};" in ddl
+    assert f"COMMENT ON INDEX gold_internal.{index} IS" in ddl
+
+
+def test_every_index_the_ddl_creates_is_described() -> None:
+    ddl = render()
+    created = re.findall(r"CREATE (?:UNIQUE )?INDEX IF NOT EXISTS (\w+)", ddl)
+
+    assert created
+    described = set(re.findall(r"COMMENT ON INDEX gold_internal\.(\w+) IS", ddl))
+    assert set(created) <= described
+
+
+def test_every_gold_relation_but_the_versions_views_is_described_as_a_public_view() -> None:
+    ddl = render()
+    versions_views = {dimension.versions_relation.split(".")[1] for dimension in DIMENSIONS}
+
+    for name in set(load_gold_tables()) - versions_views:
+        assert f"COMMENT ON VIEW gold.{name} IS" in ddl
+    for name in versions_views:
+        assert f"COMMENT ON VIEW gold.{name} IS" not in ddl
+
+
+@pytest.mark.parametrize("view", BUSINESS_VIEWS)
+def test_a_business_view_has_no_internal_table(view: str) -> None:
+    ddl = render()
+
+    assert f"CREATE OR REPLACE VIEW gold.{view} AS" in ddl
+    assert f"gold_internal.{view}" not in ddl

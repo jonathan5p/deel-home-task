@@ -1,0 +1,25 @@
+{
+  "type": "record",
+  "name": "pending_items_by_product",
+  "namespace": "gold",
+  "doc": "Pending items by product: the order items, not deleted, of open orders",
+  "fields": [
+    {
+      "name": "product_id",
+      "type": ["null", "long"],
+      "default": null,
+      "from": "order_items.product_id"
+    },
+    {
+      "name": "pending_items",
+      "type": "long",
+      "doc": "Number of pending items of the product"
+    },
+    {
+      "name": "pending_quantity",
+      "type": ["null", "long"],
+      "default": null,
+      "doc": "Total quantity of the product's pending items; null when none of them has a quantity"
+    }
+  ]
+}

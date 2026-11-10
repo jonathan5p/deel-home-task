@@ -1,4 +1,5 @@
 import subprocess
+from collections.abc import Iterable
 
 from tests.infra.stack import REPO_ROOT, Stack
 
@@ -22,7 +23,13 @@ STAGING_TABLES = {
     "stage_fact_order_item_history",
 }
 VERSIONS_VIEWS = {"dim_customer_versions", "dim_product_versions"}
-PUBLIC_VIEWS = INTERNAL_TABLES | {"data_freshness"}
+BUSINESS_VIEWS = (
+    "open_orders_by_delivery_date_and_status",
+    "top_delivery_dates_by_open_orders",
+    "pending_items_by_product",
+    "top_customers_by_pending_orders",
+)
+PUBLIC_VIEWS = INTERNAL_TABLES | {"data_freshness", *BUSINESS_VIEWS}
 
 UNDESCRIBED_RELATIONS = """
 SELECT n.nspname || '.' || c.relname
@@ -49,6 +56,30 @@ WHERE n.nspname IN ('gold', 'gold_internal')
 ORDER BY 1;
 """
 
+# Indexes behind a constraint are named and described by it, and partition indexes by their
+# parent's index.
+UNDESCRIBED_INDEXES = """
+SELECT n.nspname || '.' || c.relname
+FROM pg_index AS i
+JOIN pg_class AS c ON c.oid = i.indexrelid
+JOIN pg_namespace AS n ON n.oid = c.relnamespace
+WHERE n.nspname IN ('gold', 'gold_internal')
+  AND NOT c.relispartition
+  AND NOT EXISTS (
+      SELECT FROM pg_constraint AS k
+      WHERE k.conindid = i.indexrelid AND k.contype IN ('p', 'u', 'x')
+  )
+  AND coalesce(obj_description(c.oid, 'pg_class'), '') = ''
+ORDER BY 1;
+"""
+
+CURRENT_STATE_INDEXES = """
+SELECT indexname, indexdef
+FROM pg_indexes
+WHERE schemaname = 'gold_internal' AND tablename IN ('current_orders', 'current_order_items')
+ORDER BY 1;
+"""
+
 UNDESCRIBED_SCHEMAS = """
 SELECT nspname
 FROM pg_namespace
@@ -66,6 +97,21 @@ FROM pg_class AS c
 JOIN pg_namespace AS n ON n.oid = c.relnamespace
 WHERE n.nspname = '{schema}' AND c.relkind IN ('r', 'p', 'v') AND NOT c.relispartition;
 """
+
+
+def column_types(relation: str) -> str:
+    """The columns of a relation in order, as name|type rows."""
+    return f"""
+SELECT attname, atttypid::regtype::text
+FROM pg_attribute
+WHERE attrelid = '{relation}'::regclass AND attnum > 0 AND NOT attisdropped
+ORDER BY attnum;
+"""
+
+
+def type_names(types: Iterable[str]) -> str:
+    """One row with the canonical name of each type, as `column_types` shows it."""
+    return "SELECT " + ", ".join(f"'{name}'::regtype::text" for name in types) + ";"
 
 
 PUBLIC_PIPELINE_ONLY_COLUMNS = """

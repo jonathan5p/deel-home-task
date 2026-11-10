@@ -72,7 +72,7 @@ make up
 Gold is a star schema built from the silver history tables: SCD2 customer and product dimensions, seeded date and order-status dimensions, append-only history facts for orders and order items (partitioned by month, 3 years kept), and current-state tables for orders and items that the four business questions read. It uses two schemas:
 
 - `gold_internal` holds the tables the pipeline writes, with the metadata it needs to skip replayed batches and order versions (`_commit_sequence`, soft deletes in `_is_deleted`, `_content_hash` to fold unchanged versions), plus the unlogged staging tables `stage_dim_customer`, `stage_dim_product`, `stage_fact_order_history` and `stage_fact_order_item_history` that the gold job loads every micro-batch into, and the views `dim_customer_versions` and `dim_product_versions`, which derive each dimension version's fold flag, validity range and current flag.
-- `gold` holds the views consumers read, with the same names, without that metadata: the history views leave out unchanged changes and add each change's validity range, the current-state views leave deleted rows out, and the dimension views leave out folded and deleted versions.
+- `gold` holds the views consumers read, with the same names, without that metadata: the history views leave out unchanged changes and add each change's validity range, the current-state views leave deleted rows out, and the dimension views leave out folded and deleted versions. It also holds one view per business question and `data_freshness`.
 
 The design, with the ERD, the grain of every table, the open and pending rules, versioning by `_commit_sequence`, and retention, is in [docs/architecture/gold-model.md](docs/architecture/gold-model.md).
 
@@ -97,17 +97,20 @@ make pipeline PIPELINE=gold # The gold job reloads everything from silver
 
 **Data loss:** all gold data is deleted; gold is rebuilt from silver, which keeps the full history. The gold checkpoints (`<CHECKPOINT_ROOT>/gold/`, deleted through the SeaweedFS filer; set `GOLD_CHECKPOINTS` to its path for another `CHECKPOINT_ROOT`) must go with the data, or the job would resume after the batches the dropped rows came from.
 
-The four business questions are in `analytics/sql/gold/`, one query per file, and read only the `gold` views:
+The four business questions are views in `gold`, each with a ready-made query in `analytics/sql/gold/` that reads it with the order the question is reported in:
 
-| File | Question |
-| --- | --- |
-| `01_open_orders_by_delivery_date_and_status.sql` | Number of open orders by delivery date and status |
-| `02_top_delivery_dates_by_open_orders.sql` | Top 3 delivery dates with more open orders |
-| `03_pending_items_by_product.sql` | Number of open pending items by product (items and total quantity) |
-| `04_top_customers_by_pending_orders.sql` | Top 3 customers with more pending orders |
+| View | Query | Question |
+| --- | --- | --- |
+| `gold.open_orders_by_delivery_date_and_status` | `01_open_orders_by_delivery_date_and_status.sql` | Number of open orders by delivery date and status |
+| `gold.top_delivery_dates_by_open_orders` | `02_top_delivery_dates_by_open_orders.sql` | Top 3 delivery dates with more open orders |
+| `gold.pending_items_by_product` | `03_pending_items_by_product.sql` | Number of open pending items by product (items and total quantity) |
+| `gold.top_customers_by_pending_orders` | `04_top_customers_by_pending_orders.sql` | Top 3 customers with more pending orders |
+
+A view has no row order, so add an `ORDER BY` when you query one directly. The views, their columns and the indexes behind them are described in [the gold model](docs/architecture/gold-model.md#the-four-business-questions).
 
 ```sh
 docker compose exec -T analytics-db psql -U analytics -d analytics < analytics/sql/gold/01_open_orders_by_delivery_date_and_status.sql
+docker compose exec analytics-db psql -U analytics -d analytics -c "select * from gold.top_customers_by_pending_orders order by pending_orders desc, customer_id"
 ```
 
 `gold.data_freshness` shows, per entity (customers, products, orders, order items), how up to date gold is. For now it is computed from the data, as the source commit time of the newest change gold holds, so it ages when the source stops changing even though the pipeline is healthy. Later the pipeline metrics (#127) will fill it; its shape stays the same.
@@ -433,7 +436,8 @@ sources/<table>.avsc              one source table of the operations schema (cus
 tables/<table>_template.avsc      one table or view a layer keeps per entity (bronze, bronze_quarantine, silver, silver_history,
                                   silver_current): its description, the column groups it includes and the full definition of the
                                   layer's own columns
-gold/<table>.avsc                 one gold table in PostgreSQL (dim_customer, ..., current_order_items) and the data_freshness view
+gold/<table>.avsc                 one gold table in PostgreSQL (dim_customer, ..., current_order_items), or a view without a table
+                                  (data_freshness and the four business question views)
 definitions.py                    the loader
 gold_definitions.py               the loader of the gold schemas
 render.py                         renders every resulting table and view as a flat Avro schema (make schemas, into target/schemas/)
@@ -777,7 +781,7 @@ make spark-submit SPARK_APP=analytics/pipelines/src/pipelines/gold/job.py SPARK_
 - **Unchanged versions are folded, not dropped:** a version whose `_content_hash` and `_is_deleted` equal the previous version's is kept, so a late version that arrives between two equal ones can turn it back into a real version. The dimension versions views mark it with `_is_folded`, and the `gold` dimension views read them and leave folded and deleted versions out; the `gold` history views of the facts leave unchanged changes out at read time.
 - **Deletes are final:** a delete is stored as the key's last version, so the key has no current version afterwards, and replays or late events cannot bring it back; the `gold` current-state views leave deleted orders and items out.
 - **Dimension keys as of the change:** a history fact row takes the customer or product version valid at its `_changed_at` (`customer_key`, or `product_key` with its `unit_price` and `line_amount`), or the first version when the change is older than it, as happens when tables are snapshotted a few milliseconds apart; null while there is none or after a delete. A dimension merge re-resolves the fact rows of the keys it touched, so a customer or product that arrives late, or a late version that changes a validity range, still ends in the right key; the lookup reads the dimension versions views, so it applies the same fold and validity rule as the `gold` dimension views. Every merge first takes one PostgreSQL advisory lock, so these merges never run side by side and miss each other's rows.
-- **Early items:** an item that arrives before its order is stored; the business queries count it once the order arrives.
+- **Early items:** an item that arrives before its order is stored; the business views count it once the order arrives.
 - **The column lists come from the gold Avro schemas:** the staging tables, the merge SQL and the dimension versions views are built from the gold `.avsc` files; a column is loaded from the silver column its `from` names, a metadata column from the silver column of the same name, and `_valid_from` from `_changed_at` (`unit_price` from `unity_price`); the facts' status, date and dimension keys come from lookups declared in `pipelines/gold/dimensions.py`.
 - **Fail fast:** like the bronze job, it stops every query when one stops or fails, and exits non-zero if one failed.
 
@@ -818,7 +822,7 @@ They start an isolated Compose project named after the checkout folder (`deel-in
 - the landing example queries (`make spark-sql`) return the expected records from neutral, landing-shaped fixture data (topics `topic-a` and `topic-b`), including an update, a delete, a tombstone and a snapshot read, and inspect only the chosen topic;
 - the bronze job, run with `--available-now` on records landed through the landing job's file sink (topics `test.operations.<table>`), writes typed rows with their change metadata to each entity's Iceberg table, partitioned by publish day; quarantines invalid records while valid ones flow, each with the path of the landing file it was read from, and drops tombstones; after new records land, a second run appends only those, and a third run with nothing new appends nothing, so every Kafka offset is written exactly once; and ignores an Avro file in a landing folder that the commit log does not record;
 - the silver job, run with `--available-now` on the bronze tables those runs leave, writes one version row per bronze change to each entity's silver table, with the bronze values and change metadata and `_is_deleted` true only for the delete, which keeps the last known values; partitions the table by change day and describes every table and column; after bronze appends another change, that change delivered again and an already versioned change delivered again, a second run appends only the new change once, and a third run with nothing new appends nothing; keeps its deduplication state in RocksDB (the checkpoint's state folder holds RocksDB files); and exits with an error when a bronze table is missing; the views job, run after each silver run, creates each entity's history and current views in the JDBC catalog, where the history view folds the unchanged update but keeps the delete and the change after it, and the current view holds the live row with the source values; describes every view and column from its template; leaves the views' metadata files untouched when it runs again with nothing changed; serves the views to `make spark-sql`; and fails before creating any view when a silver table is missing.
-- the gold DDL applies again to an existing database, describes every schema, table and column, creates the staging tables unlogged, keeps only views without the pipeline-only columns (`_commit_sequence`, `_content_hash`, `_is_deleted`, `_is_folded`) in `gold` and hides deleted rows from its current-state views, seeds the date and status dimensions, routes history rows to the default partition, rejects replayed history rows, orders versions by `_commit_sequence` despite late events, and the four business queries return the expected rows on a fixture with a completed order, a deleted order, an unknown status and ties for third place (each test rolls its rows back).
+- the gold DDL applies again to an existing database, describes every schema, table, column and index, creates the staging tables unlogged, keeps only views without the pipeline-only columns (`_commit_sequence`, `_content_hash`, `_is_deleted`, `_is_folded`) in `gold` and hides deleted rows from its current-state views, seeds the date and status dimensions, routes history rows to the default partition, rejects replayed history rows, orders versions by `_commit_sequence` despite late events, creates the business question views with the columns and types of their schemas and the indexes on `current_orders` behind them, and the four business queries return the expected rows from those views on a fixture with a completed order, a deleted order, an unknown status and ties for third place (each test rolls its rows back).
 - `make gold-reset` refuses without `CONFIRM=1`, recreates `gold` and `gold_internal` empty, can run again, deletes the gold checkpoints and keeps the silver checkpoints and the Iceberg catalog;
 - the gold job, run with `--available-now` on silver-shaped fixture tables in a catalog of their own (`gold_fixture`, with its own warehouse), keeps the SCD2 dimensions in PostgreSQL, checked through the versions and public views: a price change closes the previous version and opens a new one, each key has exactly one current version, replaying every batch from a fresh checkpoint changes nothing, a late older version goes into history without becoming current, a re-snapshot or audit-only update is folded and a late differing version between two equal ones unfolds the later one, and a delete leaves no current version that replays or late versions could revive (the test removes its rows afterwards).
 

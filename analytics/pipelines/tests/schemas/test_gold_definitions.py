@@ -23,6 +23,10 @@ GOLD_TABLES = {
     "dim_product_versions",
     "fact_order_history",
     "fact_order_item_history",
+    "open_orders_by_delivery_date_and_status",
+    "pending_items_by_product",
+    "top_customers_by_pending_orders",
+    "top_delivery_dates_by_open_orders",
 }
 
 
@@ -76,6 +80,19 @@ def test_a_gold_column_can_take_the_description_of_another_gold_column() -> None
     current = {column.name: column for column in tables["current_orders"].columns}
 
     assert current["delivery_date_key"].description == fact["delivery_date_key"].description
+
+
+def test_a_business_view_takes_its_column_descriptions_from_the_columns_it_reads() -> None:
+    tables = load_gold_tables()
+    customers = {column.lake_name: column for column in load_entity("customers").columns}
+    top_customers = tables["top_customers_by_pending_orders"]
+    by_status = tables["open_orders_by_delivery_date_and_status"]
+
+    name = top_customers.column("customer_name")
+    assert name.description == customers["customer_name"].description
+    assert name.not_null is False
+    assert by_status.column("status_code") == tables["dim_order_status"].column("status_code")
+    assert by_status.column("open_orders").description.startswith("Number of open orders")
 
 
 def test_a_gold_table_without_a_public_doc_describes_its_view_like_its_table() -> None:
