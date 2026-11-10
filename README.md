@@ -226,11 +226,12 @@ bootstrap.servers=localhost:9092
 | Service | UI | Resources |
 |---|---|---|
 | `spark-master` | http://localhost:8080 | Cluster manager; accepts jobs at `SPARK_MASTER_URL` |
-| `spark-worker-1` | http://localhost:8081 | 2 cores, 2 GiB executor memory |
-| `spark-worker-2` | http://localhost:8082 | 2 cores, 2 GiB executor memory |
+| `spark-worker-1` | http://localhost:8081 | 4 cores, 4 GiB executor memory |
+| `spark-worker-2` | http://localhost:8082 | 4 cores, 4 GiB executor memory |
 | `spark-history` (optional) | http://localhost:18080 | History server for finished, crashed and running applications; started with `make spark-history` |
 | `spark-app` (one container per run) | http://localhost:4040 | Driver of an application started by `make spark-submit`; its UI is only available while it runs |
 | `landing-job` (optional) | http://localhost:4040 | Driver of the landing job, a long-running service started by `make pipeline` (see [Running the pipeline](#running-the-pipeline)) |
+| `bronze-job` (optional) | http://localhost:4041 | Driver of the bronze job, started the same way |
 
 Spark runs PySpark on **Python 3.14** (3.14.10), the newest version PySpark 4.1.4 supports. The official `apache/spark` images ship Python 3.10, so the Dockerfile installs CPython 3.14 with [uv](https://docs.astral.sh/uv/) at build time and points `PYSPARK_PYTHON` at it; every driver and executor uses it.
 
@@ -246,7 +247,7 @@ Worker resources are set with `SPARK_WORKER_CORES` and `SPARK_WORKER_MEMORY` in 
 make spark-submit                                                               # Run the one-minute UI check job (default)
 make spark-submit SPARK_APP=tests/infra/apps/iceberg_smoke_check.py             # Run another application
 make spark-submit SPARK_APP=path/to/app.py SPARK_APP_ARGS="--date 2026-11-05"  # Pass arguments to the application
-make spark-submit SPARK_CONF="spark.cores.max=2" SPARK_UI_PORT=4041             # Cap cores and publish the UI on another port
+make spark-submit SPARK_CONF="spark.cores.max=2" SPARK_UI_PORT=4050             # Cap cores and publish the UI on another port
 ```
 
 | Variable | Default | Meaning |
@@ -270,7 +271,7 @@ Because every run has its own container, one application's memory, logs and life
 
 To run several applications at the same time, give each its own UI port and cap its cores: the standalone master gives an application every free core unless `spark.cores.max` is set, so a second application would wait until the first one ends.
 
-While the landing job runs (`make pipeline`), it holds port 4040, so give ad-hoc runs another port, for example `make spark-submit SPARK_UI_PORT=4042` (the same applies to `make spark-sql`); otherwise Docker refuses to start the driver with `port is already allocated`.
+While the pipeline jobs run (`make pipeline`), they hold ports 4040 and up (see [Running the pipeline](#running-the-pipeline)), so give ad-hoc runs another port, for example `make spark-submit SPARK_UI_PORT=4050` (the same applies to `make spark-sql`); otherwise Docker refuses to start the driver with `port is already allocated`.
 
 #### Spark History Server (optional)
 
@@ -509,11 +510,12 @@ make pipeline-logs PIPELINE=landing   # follow the job's logs (Ctrl+C stops foll
 make pipeline-stop PIPELINE=landing   # stop and remove the job; the rest of the stack keeps running
 ```
 
-`make pipeline` rebuilds changed images like `make up`, starts the default stack and the Spark History Server, then starts the selected jobs. Running it again after a code change restarts only the jobs whose image changed. A change to the Spark image restarts the cluster, and a job's driver does not survive that; `make pipeline` restarts the jobs along with it, but after a plain `make up`, run `make pipeline` again. Without a valid `PIPELINE` (`landing` or `all`), the targets fail and list the valid names. `make down` stops the jobs with the rest of the stack.
+`make pipeline` rebuilds changed images like `make up`, starts the default stack and the Spark History Server, then starts the selected jobs. Running it again after a code change restarts only the jobs whose image changed. A change to the Spark image restarts the cluster, and a job's driver does not survive that; `make pipeline` restarts the jobs along with it, but after a plain `make up`, run `make pipeline` again. Without a valid `PIPELINE` (`landing`, `bronze` or `all`), the targets fail and list the valid names. `make down` stops the jobs with the rest of the stack.
 
 | Job | Service | Application UI |
 | --- | --- | --- |
 | landing | `landing-job` | http://localhost:4040 |
+| bronze | `bronze-job` | http://localhost:4041 |
 
 Where to look while a job runs:
 
@@ -523,7 +525,7 @@ Where to look while a job runs:
 
 Each job service submits its application with the same settings as `make spark-submit`, plus `spark.cores.max=2` and the service name as the driver host, so executors on the workers can connect back to it. The services restart unless they were stopped (`restart: unless-stopped`): a job whose driver fails is restarted and resumes from its checkpoints, without skipping or duplicating records. A container stopped with `make pipeline-stop` or `docker stop`/`docker kill` stays stopped until the next `make pipeline`.
 
-The cluster has two workers with 2 cores each, and each job takes at most 2 cores. With the landing job and a second job running, every core is in use, so ad-hoc runs (`make spark-submit`, `make spark-sql`) wait for free cores until a job is stopped.
+The cluster has two workers with 4 cores each, and each job takes at most 2 cores. That leaves room for three jobs plus 2 cores for ad-hoc runs (`make spark-submit`, `make spark-sql`, `make data-quality`); further runs wait for free cores until one ends. Each executor takes Spark's default 1 GiB, within the workers' 4 GiB.
 
 #### Data quality checks
 
@@ -564,11 +566,7 @@ Bronze is a typed, faithful log of every change event: one row per event, no ded
 - `decimals.py` and `content_hash.py`: the decimal decoding and the content hash below, in plain Spark SQL functions (no Python UDFs).
 - `job.py`: the bronze streaming job, which runs `parse_changes` on every landing topic folder and appends the results to Iceberg tables.
 
-Run it with:
-
-```sh
-make spark-submit SPARK_APP=analytics/pipelines/src/pipelines/bronze/job.py SPARK_CONF="spark.cores.max=2" SPARK_UI_PORT=4041
-```
+Run it as a service with `make pipeline PIPELINE=bronze` (see [Running the pipeline](#running-the-pipeline)). It reads what the landing job writes, so run both, or `PIPELINE=all`. Until the landing job has written a topic's first file, the bronze job stops with `PATH_NOT_FOUND` for that topic's folder and Compose restarts it. Don't also start it with `make spark-submit` while the service runs: both would write to the same tables with the same checkpoints.
 
 - **Two streaming queries per topic** in `KAFKA_TOPICS`, for the entity the topic names: bronze rows are appended to `<ICEBERG_CATALOG>.bronze.<entity>` (checkpoint `<CHECKPOINT_ROOT>/bronze/<entity>/`), quarantine rows, plus `_quarantined_at` (the micro-batch's processing time), to `<ICEBERG_CATALOG>.bronze.<entity>_quarantine` (checkpoint `<CHECKPOINT_ROOT>/bronze/<entity>_quarantine/`). Locally that is `lake.bronze.customers`, `lake.bronze.customers_quarantine` and so on.
 - **Quarantine rows record their landing file:** the reader adds `_landing_file` from the file source's `_metadata.file_path` column, so each quarantined record points at the Avro file it was read from. Bronze rows do not carry it.
