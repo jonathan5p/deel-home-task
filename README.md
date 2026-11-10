@@ -942,7 +942,7 @@ When a stream is reset deliberately, the guard follows its new checkpoint. Icebe
 
 #### Tests, lint and format
 
-The checks run in a throwaway container from the `app` image, with `analytics/` and `tests/` mounted, so they use the cluster's exact Spark and Python versions and pick up edits without a rebuild. They use their own Compose project, named after the checkout folder (`deel-checks-<folder>`, lowercased, with every character other than letters, digits, `_` and `-` replaced by `-`), with one app image (`<project>-spark-app`), so checks in different checkouts or worktrees never share an image and can run in parallel:
+The checks run in a throwaway container from the `app` image, with `analytics/` and `tests/` mounted, so they use the cluster's exact Spark and Python versions and pick up edits without a rebuild. They use their own Compose project, named after the checkout folder (`deel-checks-<folder>`, lowercased, with every character other than letters, digits, `_` and `-` replaced by `-`), with one app image (`<project>-spark-app`), so checks in different checkouts or worktrees never share an image and can run in parallel. Each check removes the project's network when it ends, whether it passes or fails, so finished checks leave no networks behind:
 
 ```sh
 make test       # unit tests with branch coverage; fails below 90%
