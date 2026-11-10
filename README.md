@@ -10,10 +10,10 @@ Welcome to Deel's Data Engineering Take-Home task, as mentioned in the Task spec
 
 ### Database Configuration
 
-Install [Docker](https://www.docker.com/products/docker-desktop/) with [Compose v2](https://docs.docker.com/compose/install/) and GNU Make. With the Docker engine running, run these commands from the repository root:
+Install [Docker](https://www.docker.com/products/docker-desktop/) with [Compose v2](https://docs.docker.com/compose/install/), GNU Make and [uv](https://docs.astral.sh/uv/) (`make up` uses it to render the gold DDL). With the Docker engine running, run these commands from the repository root:
 
 ```sh
-make up             # Build changed local images and start the default stack (source/CDC, analytics database, data lake, Spark cluster)
+make up             # Render the gold DDL, build changed local images and start the default stack (source/CDC, analytics database, data lake, Spark cluster)
 make up PROFILES="monitoring history"  # Also start optional services (any combination of profiles)
 make down           # Stop/remove all project containers, including optional profiles; keep volumes
 make spark-submit   # Submit a job to the Spark cluster (defaults to a one-minute UI check job)
@@ -82,7 +82,7 @@ In short:
 - **Current state only moves forward:** a version replaces the current row only if its `_commit_sequence` is higher, so late or replayed events never overwrite newer state; they are still kept as history.
 - **Top 3 questions include ties**, so more than three rows can come back.
 
-`docker/analytics-db/initdb/02-gold-model.sql` creates both schemas, the tables, views and seeds, and the monthly history partitions for the current month and the next two (`gold_internal.ensure_history_partitions(months_ahead)`, which a maintenance job can call to create later months). It runs on an empty volume like the other init scripts, and every statement is idempotent, so it can also be applied to an existing database without losing data:
+`docker/analytics-db/initdb/02-gold-model.sql` is generated and git-ignored: `make up` (and `make pipeline` and `make test-infra`) renders it, on the host with [uv](https://docs.astral.sh/uv/), from the Jinja template `analytics/pipelines/src/pipelines/gold/ddl.sql.j2` and the gold Avro schemas (see [table and column definitions](#table-and-column-definitions)), which give every column its type, nullability and description. Edit the template or the schemas, never the SQL file. The file creates both schemas, the tables, views and seeds, and the monthly history partitions for the current month and the next two (`gold_internal.ensure_history_partitions(months_ahead)`, which a maintenance job can call to create later months). It runs on an empty volume like the other init scripts, and every statement is idempotent, so it can also be applied to an existing database without losing data:
 
 ```sh
 docker compose exec -T analytics-db psql -v ON_ERROR_STOP=1 -U analytics -d analytics < docker/analytics-db/initdb/02-gold-model.sql
@@ -391,6 +391,7 @@ analytics/
       lake/                 code the lake layers share: metadata column names, Spark types, Iceberg table creation and description sync, Iceberg view creation and sync, starting and awaiting streaming queries
       bronze/               bronze layer: source entities, the transforms from landing records to bronze rows, and job.py (streaming job)
       silver/               silver layer: the transform from bronze rows to version rows, the history and current views, and job.py (streaming job)
+      gold/                 gold layer: ddl.py and ddl.sql.j2, which render the gold DDL from the gold Avro schemas
     tests/
   sql/gold/                 the four business questions as SQL on the gold views in PostgreSQL
 tests/infra/                infra tests that drive an isolated copy of the stack
@@ -420,7 +421,9 @@ sources/<table>.avsc              one source table of the operations schema (cus
 tables/<table>_template.avsc      one table or view a layer keeps per entity (bronze, bronze_quarantine, silver, silver_history,
                                   silver_current): its description, the column groups it includes and the full definition of the
                                   layer's own columns
+gold/<table>.avsc                 one gold table in PostgreSQL (dim_customer, ..., current_order_items) and the data_freshness view
 definitions.py                    the loader
+gold_definitions.py               the loader of the gold schemas
 render.py                         renders every resulting table and view as a flat Avro schema (make schemas, into target/schemas/)
 landing.py                        the Spark schema of the landed Kafka records (KAFKA_RECORD_SCHEMA)
 ```
@@ -486,6 +489,7 @@ So `lake.bronze.order_items` is the source fields of `order_items`, then its aud
 - **Nullability** follows Avro too: a column that is NOT NULL in the source, or always set by the pipeline, has the plain type; a nullable one is the union `["null", <type>]` with `"default": null`.
 - **Custom properties** carry what Avro has no attribute for (Avro allows extra attributes and ignores them): `key` on a source record names its primary key, `renamed_to` on a field gives its name in the lake when the source name is misspelled, and `include` composes column groups as above.
 - **A metadata (`_`) column used by several schemas** (such as the Kafka coordinates, in bronze and its quarantine, or `_commit_sequence` in bronze and gold) is defined in each, and a unit test checks that every definition of it, in any `.avsc` under `pipelines/schemas/`, has the same type, nullability and description. Business columns are exempt: a key and the references to it share a name but not a description or nullability.
+- **Gold columns point at the column they come from** instead of repeating its description. A gold table is one record in `gold/` whose fields list every column in table order with its type and nullability in gold; a field has either its own `doc`, for what only gold has (surrogate keys, `line_amount`), or `"from"`, which takes the description of `<source table>.<lake name>` or `gold.<table>.<column>` (a gold field with its own `doc`). The type must match the referenced column's. Metadata columns (`_commit_sequence`, `_changed_at`, `_valid_to`, ...) are defined in full in each gold record, like in the layer templates, and the consistency test keeps every definition of a `_` column the same across all schemas. `doc` describes the table in `gold_internal`, and an optional `public_doc` its view in `gold` when that differs.
 
 `pipelines.schemas.definitions` reads the files with the standard `json` module, so the Spark image needs no Avro library, into frozen dataclasses: `load_entities()` and `load_entity(name)` (`EntityDefinition`: `name`, `key`, `description`, `columns`, `included_columns`, `all_columns`), `load_shared_columns(name)` and `load_table_templates()` (`TableTemplate`, by name without `_template`: `name`, `description`, `include` (`ColumnGroup`s), `fields`, `layer`, `describe(entity)`, `table_name(entity)`, `columns_for(entity)`). A column is a `ColumnDefinition` (`name`, `type`, `description`, `not_null`, `renamed_to`, `lake_name`). The loader refuses, naming the file, a type it does not support, an unknown property, a missing or blank `doc`, a nullable field without `"default": null`, a key that is not a field, an unknown include, a template without columns or whose name does not end in `_template`, a record whose `name` differs from its file name, or two columns with the same lake name. A unit test also checks every file, and every source table with its included fields, with `fastavro.parse_schema` (a development dependency only).
 

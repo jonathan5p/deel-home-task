@@ -1,0 +1,63 @@
+{
+  "type": "record",
+  "name": "dim_product",
+  "namespace": "gold",
+  "doc": "Products, SCD2: one row per product version; a new price is a new version",
+  "fields": [
+    {
+      "name": "product_key",
+      "type": "long",
+      "doc": "Surrogate key of the product version"
+    },
+    {
+      "name": "product_id",
+      "type": "long",
+      "from": "products.product_id"
+    },
+    {
+      "name": "product_name",
+      "type": ["null", "string"],
+      "default": null,
+      "from": "products.product_name"
+    },
+    {
+      "name": "barcode",
+      "type": ["null", "string"],
+      "default": null,
+      "from": "products.barcode"
+    },
+    {
+      "name": "unit_price",
+      "type": ["null", {"type": "bytes", "logicalType": "decimal", "precision": 38, "scale": 10}],
+      "default": null,
+      "doc": "Unit price of the product in this version (source unity_price), kept exact"
+    },
+    {
+      "name": "is_active",
+      "type": ["null", "boolean"],
+      "default": null,
+      "from": "products.is_active"
+    },
+    {
+      "name": "_commit_sequence",
+      "type": "long",
+      "doc": "Position of the change in the source's commit log (Debezium source.lsn); increases in commit order"
+    },
+    {
+      "name": "_valid_from",
+      "type": {"type": "long", "logicalType": "timestamp-millis"},
+      "doc": "Time this version of the row became current: the change's commit time in the source"
+    },
+    {
+      "name": "_valid_to",
+      "type": ["null", {"type": "long", "logicalType": "timestamp-millis"}],
+      "default": null,
+      "doc": "Time the next version of the row replaced this one; null while this version is current"
+    },
+    {
+      "name": "_is_current",
+      "type": "boolean",
+      "doc": "Whether this is the latest version of the row"
+    }
+  ]
+}

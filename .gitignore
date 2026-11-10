@@ -1,6 +1,7 @@
 db-data/
 images/
 target/
+docker/analytics-db/initdb/02-gold-model.sql
 
 # Python tooling
 .venv/

@@ -1,0 +1,65 @@
+{
+  "type": "record",
+  "name": "fact_order_item_history",
+  "namespace": "gold",
+  "doc": "Order item history: one row per change to an order item, partitioned by month of _changed_at",
+  "public_doc": "Order item history: one row per change to an order item, with the range in which it was the latest version",
+  "fields": [
+    {
+      "name": "order_item_id",
+      "type": "long",
+      "from": "order_items.order_item_id"
+    },
+    {
+      "name": "_commit_sequence",
+      "type": "long",
+      "doc": "Position of the change in the source's commit log (Debezium source.lsn); increases in commit order"
+    },
+    {
+      "name": "_changed_at",
+      "type": {"type": "long", "logicalType": "timestamp-millis"},
+      "doc": "Time the change was committed in the source database (Debezium source.ts_ms)"
+    },
+    {
+      "name": "_change_op",
+      "type": "string",
+      "doc": "Kind of change: create, update, delete or snapshot (Debezium op c, u, d or r)"
+    },
+    {
+      "name": "order_id",
+      "type": ["null", "long"],
+      "default": null,
+      "from": "order_items.order_id"
+    },
+    {
+      "name": "product_id",
+      "type": ["null", "long"],
+      "default": null,
+      "from": "order_items.product_id"
+    },
+    {
+      "name": "product_key",
+      "type": ["null", "long"],
+      "default": null,
+      "doc": "Product version valid at _changed_at; null if the product is not known yet"
+    },
+    {
+      "name": "quantity",
+      "type": ["null", "int"],
+      "default": null,
+      "from": "order_items.quantity"
+    },
+    {
+      "name": "unit_price",
+      "type": ["null", {"type": "bytes", "logicalType": "decimal", "precision": 38, "scale": 10}],
+      "default": null,
+      "doc": "Unit price of the product version valid at _changed_at, the price the order was placed at"
+    },
+    {
+      "name": "line_amount",
+      "type": ["null", {"type": "bytes", "logicalType": "decimal", "precision": 38, "scale": 10}],
+      "default": null,
+      "doc": "quantity × unit_price"
+    }
+  ]
+}

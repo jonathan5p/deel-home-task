@@ -16,6 +16,7 @@ from analytics.pipelines.tests.schemas.definitions_setup import (
 )
 from pipelines.schemas.definitions import (
     AVRO_TYPES,
+    POSTGRES_TYPES,
     SCHEMAS,
     ColumnDefinition,
     ColumnGroup,
@@ -32,11 +33,20 @@ from pipelines.schemas.definitions import (
 SHIPPED = schema_files(Path(str(SCHEMAS)))
 
 
-def test_the_schemas_folder_holds_the_shared_sources_and_tables_schemas() -> None:
+def test_the_schemas_folder_holds_the_shared_sources_tables_and_gold_schemas() -> None:
     root = Path(str(SCHEMAS))
 
     assert [str(file.relative_to(root)) for file in SHIPPED] == [
         "audit.avsc",
+        "gold/current_order_items.avsc",
+        "gold/current_orders.avsc",
+        "gold/data_freshness.avsc",
+        "gold/dim_customer.avsc",
+        "gold/dim_date.avsc",
+        "gold/dim_order_status.avsc",
+        "gold/dim_product.avsc",
+        "gold/fact_order_history.avsc",
+        "gold/fact_order_item_history.avsc",
         "sources/customers.avsc",
         "sources/order_items.avsc",
         "sources/orders.avsc",
@@ -66,6 +76,10 @@ def test_a_source_schema_with_its_included_fields_is_one_valid_avro_record(
 
 def test_every_column_type_has_an_avro_type() -> None:
     assert set(AVRO_TYPES) == set(ColumnType)
+
+
+def test_every_column_type_has_a_postgres_type() -> None:
+    assert set(POSTGRES_TYPES) == set(ColumnType)
 
 
 def test_every_source_table_has_an_entity_ordered_by_name() -> None:
