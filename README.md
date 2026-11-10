@@ -53,6 +53,27 @@ The credentials are local development defaults in `.env` (`ANALYTICS_DB_USER`, `
 docker compose exec analytics-db psql -U analytics -d analytics
 ```
 
+#### Read-only service logins
+
+Consumers of gold never use the `analytics` owner. Each one logs in with a service login of its own, a member of the `gold_reader` role, which can read every view in `gold` and nothing else: no access to `gold_internal`, no writes and no new tables. Sessions start read-only and with a statement timeout.
+
+| Login | Used by | Credentials in `.env` | Statement timeout |
+| --- | --- | --- | --- |
+| `api_reader` | the metrics API | `API_READER_USER`, `API_READER_PASSWORD` | 5 s |
+
+```sh
+docker compose exec -e PGPASSWORD=api_reader analytics-db psql -h localhost -U api_reader -d analytics -c "select * from gold.data_freshness"
+```
+
+The gold DDL creates `gold_reader` and its grants, so `make gold-reset` restores them. `docker/analytics-db/initdb/03-service-logins.sh` creates the logins on an empty volume; a new login is one more `create_login <login> <password> <statement timeout>` line in it. On an existing volume, create the logins, or update them after changing their credentials in `.env`, with:
+
+```sh
+make up          # Recreates analytics-db when its credentials changed
+make db-logins   # Creates or updates every service login; safe to repeat
+```
+
+A volume created before `gold_reader` existed needs the gold DDL applied first (`make gold-reset CONFIRM=1`, or the `psql` command in [Gold layer](#gold-layer)).
+
 #### Schemas and init script
 
 `docker/analytics-db/initdb/01-gold-and-catalog.sql` creates:
@@ -957,7 +978,8 @@ They start an isolated Compose project named after the checkout folder (`deel-in
 - the gold DDL applies again to an existing database, describes every schema, table, column and index, creates the staging tables unlogged, keeps only views without the pipeline-only columns (`_commit_sequence`, `_content_hash`, `_is_deleted`, `_is_folded`) in `gold` and hides deleted rows from its current-state views, seeds the date and status dimensions, routes history rows to the default partition, rejects replayed history rows, orders versions by `_commit_sequence` despite late events, creates the business question views with the columns and types of their schemas and the indexes on `current_orders` behind them, and the four business queries return the expected rows from those views on a fixture with a completed order, a deleted order, an unknown status and ties for third place (each test rolls its rows back).
 - gold retention drops only the monthly history partitions that end before the window (orders and order items alike), first gives every month the default partition holds a partition of its own, creates the months ahead, keeps the current-state row of an open order whose history it dropped, and drops nothing more when it runs again (each test rolls its rows back); `make gold-retention` and the first run of the `gold-retention-job` service drop a committed out-of-window month;
 - the rebuild job, run on the gold facts' fixture silver tables, ends with the same dimensions, history and current state as the gold job streaming the same changes, and with a cutoff the same as the gold job streaming only the changes up to it, late ones included (surrogate keys compared by the version they point at); `make gold-rebuild` refuses without `CONFIRM=1`;
-- `make gold-reset` refuses without `CONFIRM=1`, recreates `gold` and `gold_internal` empty, can run again, deletes the gold checkpoints and keeps the silver checkpoints and the Iceberg catalog;
+- the API's service login, connecting with its password, reads every `gold` view, is refused `gold_internal`, starts read-only with a 5 s statement timeout, cannot insert into a view or create a table in `gold` or `public` even after turning read-only off, and `make db-logins` restores a broken login and can run again;
+- `make gold-reset` refuses without `CONFIRM=1`, recreates `gold` and `gold_internal` empty, can run again, deletes the gold checkpoints and keeps the silver checkpoints and the Iceberg catalog, and the service logins can still read the gold views after it;
 - the gold job, run with `--available-now` on silver-shaped fixture tables in a catalog of their own (`gold_fixture`, with its own warehouse), keeps the SCD2 dimensions in PostgreSQL, checked through the versions and public views: a price change closes the previous version and opens a new one, each key has exactly one current version, replaying every batch from a fresh checkpoint changes nothing, a late older version goes into history without becoming current, a re-snapshot or audit-only update is folded and a late differing version between two equal ones unfolds the later one, and a delete leaves no current version that replays or late versions could revive (the test removes its rows afterwards).
 - the bronze replay, in its own Iceberg catalog on the stack, appends nothing for a range the bronze stream already wrote, appends each change of a range the stream never saw exactly once (including a re-sent copy inside the range), and quarantines a failing record once however many times it is replayed.
 - `make lake-maintenance` on a test table built from six one-row commits leaves one data file with the same rows and adds only a `replace` snapshot, skips a namespace that does not exist, and the `maintenance-job` service runs the same maintenance on its first loop.
