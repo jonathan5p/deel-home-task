@@ -9,6 +9,7 @@ The Spark cluster is sized for one developer machine running the whole stack in 
 > | Workers with 5 cores and 5 GiB each | #159 |
 > | Gold job, the fourth streaming application | #139, #141 |
 > | Lake maintenance job | #135 |
+> | Business-question views and their indexes | #142 |
 > | Bronze replay, gold rebuild and the data quality runner | #133, #150, #151 |
 > | Measured values in the metrics table | #58 |
 
@@ -104,6 +105,28 @@ flowchart LR
 - Every hop triggers every 10 seconds, so a change reaches gold after up to four trigger intervals plus each hop's batch duration. #58 measures the real figure.
 - Each batch that has data commits one Iceberg snapshot per table it writes, and adds small files. A shorter trigger lowers latency but adds snapshots and files. A longer one does the opposite.
 - Lake maintenance compacts the files and expires snapshots older than 7 days, keeping the last 10, so the default stays manageable.
+
+## PostgreSQL query cost
+
+The serving side is sized by query plans, not by Spark resources. The gold indexes exist only for the current use cases: the four business-question views and `gold.open_orders`. Each index was chosen by reading that query's EXPLAIN plan (decision D40, #142).
+- `current_orders` stores `is_open`.
+- Two partial indexes `WHERE is_open AND NOT _is_deleted` hold only the open orders:
+  - `current_orders_open_delivery_idx (delivery_date, status_key)`;
+  - `current_orders_open_customer_idx (customer_id)`.
+- `current_order_items_live_order_idx (order_id) INCLUDE (product_id, quantity) WHERE NOT _is_deleted` serves the item lookups.
+- Four current-state indexes that no plan used were dropped.
+
+The scratch columns come from #142: `postgres:18.6` with 1M orders (about 3% open), 3M items and 50k customers, after `VACUUM ANALYZE`, as ranges over three runs. "Before" is without `is_open` and the partial indexes. #58 fills in the last column from the real run, for example with `EXPLAIN (ANALYZE, BUFFERS) SELECT * FROM gold.<view>` while the pipeline runs.
+
+| View | Index the plan uses | Plan with the index | Scratch, before | Scratch, after | Measured on the real run |
+| --- | --- | --- | --- | --- | --- |
+| `open_orders_by_delivery_date_and_status` | `current_orders_open_delivery_idx` | Index Only Scan of the open orders + Hash Join | 31–33 ms | 8–10 ms | #58 |
+| `top_delivery_dates_by_open_orders` | `current_orders_open_delivery_idx` | Index Only Scan of the open orders | 30–35 ms | 3–4 ms | #58 |
+| `pending_items_by_product` | `current_order_items_live_order_idx` | Nested Loop: Bitmap Heap Scan of the open orders → Index Only Scan of their items | 344–380 ms | 37–46 ms | #58 |
+| `top_customers_by_pending_orders` | `current_orders_open_customer_idx` | Index Only Scan of the open orders | 16–21 ms | 12–13 ms | #58 |
+
+- These timings scale with the number of open orders and their items, not with the history: the partial indexes skip completed and deleted orders.
+- A new use case gets its index the same way: write the query, read its plan on representative data, add the index the plan uses, and drop any index no plan uses.
 
 ## Key metrics
 
