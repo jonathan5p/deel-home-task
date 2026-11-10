@@ -7,27 +7,13 @@ from pathlib import Path
 
 from jinja2 import Environment, StrictUndefined
 
-from pipelines.schemas.definitions import (
-    SCHEMAS,
-    ColumnDefinition,
-    ColumnType,
-)
+from pipelines.schemas.definitions import POSTGRES_TYPES, SCHEMAS, ColumnDefinition
 from pipelines.schemas.gold_definitions import GoldTable, load_gold_tables
 
 TEMPLATE: Traversable = files("pipelines.gold") / "ddl.sql.j2"
 INTERNAL_SCHEMA = "gold_internal"
 PUBLIC_SCHEMA = "gold"
 PIPELINE_ONLY_COLUMNS = frozenset({"_commit_sequence", "_is_deleted"})
-POSTGRES_TYPES: Mapping[ColumnType, str] = {
-    ColumnType.LONG: "bigint",
-    ColumnType.INT: "integer",
-    ColumnType.STRING: "varchar",
-    ColumnType.BOOLEAN: "boolean",
-    ColumnType.TIMESTAMP_MILLIS: "timestamp",
-    ColumnType.DATE: "date",
-    # The source DECIMAL has no precision or scale; an unconstrained numeric keeps values exact.
-    ColumnType.DECIMAL: "numeric",
-}
 
 
 class UnknownColumnError(ValueError):
@@ -35,7 +21,7 @@ class UnknownColumnError(ValueError):
         super().__init__(f"{table} has no columns named {', '.join(columns)}")
 
 
-def sql_string(text: str) -> str:
+def postgres_string(text: str) -> str:
     return "'" + text.replace("'", "''") + "'"
 
 
@@ -62,9 +48,9 @@ def column_lines(table: GoldTable, constraints: Mapping[str, str] | None = None)
 def comments(
     kind: str, relation: str, description: str, columns: Iterable[ColumnDefinition]
 ) -> str:
-    statements = [f"COMMENT ON {kind} {relation} IS\n    {sql_string(description)};"]
+    statements = [f"COMMENT ON {kind} {relation} IS\n    {postgres_string(description)};"]
     statements += [
-        f"COMMENT ON COLUMN {relation}.{column.name} IS\n    {sql_string(column.description)};"
+        f"COMMENT ON COLUMN {relation}.{column.name} IS\n    {postgres_string(column.description)};"
         for column in columns
     ]
     return "\n".join(statements)

@@ -5,16 +5,14 @@ from importlib.resources.abc import Traversable
 from pipelines.schemas.definitions import (
     FIELD_PROPERTIES,
     RECORD_PROPERTIES,
-    SCHEMA_SUFFIX,
     SCHEMAS,
     ColumnDefinition,
     DefinitionError,
-    _check_properties,
     _check_unique,
-    _column_type,
-    _read,
+    _record_header,
     _schema_files,
     _text,
+    _typed_field,
     load_entities,
 )
 
@@ -47,22 +45,14 @@ class _Field:
 
 
 def _field(source: str, field: object) -> _Field:
-    if not isinstance(field, dict):
-        raise DefinitionError(source, "every field must be a JSON object")
-    name = _text(source, field, "name", "a field")
-    owner = f"field {name}"
-    _check_properties(source, field, GOLD_FIELD_PROPERTIES, owner)
-    column_type, nullable = _column_type(source, field.get("type"), owner)
-    if nullable and ("default" not in field or field["default"] is not None):
-        raise DefinitionError(source, f'nullable {owner} needs "default": null')
-    if not nullable and "default" in field:
-        raise DefinitionError(source, f"{owner} is not nullable and takes no default")
-    if ("doc" in field) == ("from" in field):
+    typed = _typed_field(source, field, GOLD_FIELD_PROPERTIES)
+    properties, owner = typed.properties, typed.owner
+    if ("doc" in properties) == ("from" in properties):
         raise DefinitionError(source, f"{owner} needs either a doc or a from, not both")
-    reference = _text(source, field, "from", owner) if "from" in field else None
-    description = "" if reference else _text(source, field, "doc", owner)
+    reference = _text(source, properties, "from", owner) if "from" in properties else None
+    description = "" if reference else _text(source, properties, "doc", owner)
     column = ColumnDefinition(
-        name=name, type=column_type, description=description, not_null=not nullable
+        name=typed.name, type=typed.type, description=description, not_null=not typed.nullable
     )
     return _Field(column=column, reference=reference)
 
@@ -75,14 +65,8 @@ class _GoldRecord:
 
 
 def _gold_record(file: Traversable) -> _GoldRecord:
-    source, properties = _read(file)
-    if properties.get("type") != "record":
-        raise DefinitionError(source, 'the schema must be of "type": "record"')
-    name = _text(source, properties, "name", "the record")
+    source, properties, name = _record_header(file, GOLD_RECORD_PROPERTIES)
     owner = f"record {name}"
-    if f"{name}{SCHEMA_SUFFIX}" != file.name:
-        raise DefinitionError(source, f"{owner} must be defined in {name}{SCHEMA_SUFFIX}")
-    _check_properties(source, properties, GOLD_RECORD_PROPERTIES, owner)
     raw_fields = properties.get("fields")
     if not isinstance(raw_fields, list) or not raw_fields:
         raise DefinitionError(source, f"fields of {owner} must be a non-empty list")

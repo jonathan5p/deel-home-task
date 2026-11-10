@@ -33,6 +33,15 @@ AVRO_TYPES: Mapping[ColumnType, object] = {
     ColumnType.DATE: {"type": "int", "logicalType": "date"},
     ColumnType.DECIMAL: {"type": "bytes", "logicalType": "decimal", "precision": 38, "scale": 10},
 }
+POSTGRES_TYPES: Mapping[ColumnType, str] = {
+    ColumnType.LONG: "bigint",
+    ColumnType.INT: "integer",
+    ColumnType.STRING: "varchar",
+    ColumnType.BOOLEAN: "boolean",
+    ColumnType.TIMESTAMP_MILLIS: "timestamp",
+    ColumnType.DATE: "date",
+    ColumnType.DECIMAL: "numeric",
+}
 
 
 class DefinitionError(ValueError):
@@ -199,7 +208,20 @@ def _column_type(source: str, avro_type: object, owner: str) -> tuple[ColumnType
     )
 
 
-def _column(source: str, field: object, allowed: frozenset[str]) -> ColumnDefinition:
+@dataclass(frozen=True, slots=True)
+class _TypedField:
+    properties: Properties
+    name: str
+    type: ColumnType
+    nullable: bool
+
+    @property
+    def owner(self) -> str:
+        return f"field {self.name}"
+
+
+def _typed_field(source: str, field: object, allowed: frozenset[str]) -> _TypedField:
+    """A field's name, type and nullability, once its properties and default are checked."""
     if not isinstance(field, dict):
         raise DefinitionError(source, "every field must be a JSON object")
     name = _text(source, field, "name", "a field")
@@ -210,19 +232,25 @@ def _column(source: str, field: object, allowed: frozenset[str]) -> ColumnDefini
         raise DefinitionError(source, f'nullable {owner} needs "default": null')
     if not nullable and "default" in field:
         raise DefinitionError(source, f"{owner} is not nullable and takes no default")
-    renamed_to = field.get("renamed_to")
+    return _TypedField(properties=field, name=name, type=column_type, nullable=nullable)
+
+
+def _column(source: str, field: object, allowed: frozenset[str]) -> ColumnDefinition:
+    typed = _typed_field(source, field, allowed)
+    renamed_to = typed.properties.get("renamed_to")
     if renamed_to is not None:
-        renamed_to = _text(source, field, "renamed_to", owner)
+        renamed_to = _text(source, typed.properties, "renamed_to", typed.owner)
     return ColumnDefinition(
-        name=name,
-        type=column_type,
-        description=_text(source, field, "doc", owner),
-        not_null=not nullable,
+        name=typed.name,
+        type=typed.type,
+        description=_text(source, typed.properties, "doc", typed.owner),
+        not_null=not typed.nullable,
         renamed_to=renamed_to,
     )
 
 
-def _record(file: Traversable, allowed: frozenset[str], field_allowed: frozenset[str]) -> _Record:
+def _record_header(file: Traversable, allowed: frozenset[str]) -> tuple[str, Properties, str]:
+    """The source, properties and name of a record schema, once its header is checked."""
     source, properties = _read(file)
     if properties.get("type") != "record":
         raise DefinitionError(source, 'the schema must be of "type": "record"')
@@ -231,6 +259,12 @@ def _record(file: Traversable, allowed: frozenset[str], field_allowed: frozenset
     if f"{name}{SCHEMA_SUFFIX}" != file.name:
         raise DefinitionError(source, f"{owner} must be defined in {name}{SCHEMA_SUFFIX}")
     _check_properties(source, properties, allowed, owner)
+    return source, properties, name
+
+
+def _record(file: Traversable, allowed: frozenset[str], field_allowed: frozenset[str]) -> _Record:
+    source, properties, name = _record_header(file, allowed)
+    owner = f"record {name}"
     fields = properties.get("fields")
     if not isinstance(fields, list):
         raise DefinitionError(source, f"fields of {owner} must be a list")

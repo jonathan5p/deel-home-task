@@ -16,6 +16,7 @@ from analytics.pipelines.tests.schemas.definitions_setup import (
 )
 from pipelines.schemas.definitions import (
     AVRO_TYPES,
+    POSTGRES_TYPES,
     SCHEMAS,
     ColumnDefinition,
     ColumnGroup,
@@ -75,6 +76,10 @@ def test_a_source_schema_with_its_included_fields_is_one_valid_avro_record(
 
 def test_every_column_type_has_an_avro_type() -> None:
     assert set(AVRO_TYPES) == set(ColumnType)
+
+
+def test_every_column_type_has_a_postgres_type() -> None:
+    assert set(POSTGRES_TYPES) == set(ColumnType)
 
 
 def test_every_source_table_has_an_entity_ordered_by_name() -> None:

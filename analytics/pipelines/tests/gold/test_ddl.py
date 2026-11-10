@@ -8,24 +8,18 @@ from analytics.pipelines.tests.gold.ddl_setup import THINGS, VALID_TO
 from analytics.pipelines.tests.schemas.definitions_setup import SchemasTree
 from pipelines.gold.ddl import (
     PIPELINE_ONLY_COLUMNS,
-    POSTGRES_TYPES,
     UnknownColumnError,
     column_lines,
     describe_table,
     describe_view,
     main,
+    postgres_string,
     render,
-    sql_string,
 )
-from pipelines.schemas.definitions import ColumnType
 
 
-def test_every_column_type_has_a_postgres_type() -> None:
-    assert set(POSTGRES_TYPES) == set(ColumnType)
-
-
-def test_a_text_becomes_a_sql_string_with_its_quotes_doubled() -> None:
-    assert sql_string("the source's key") == "'the source''s key'"
+def test_a_text_becomes_a_postgres_string_with_its_quotes_doubled() -> None:
+    assert postgres_string("the source's key") == "'the source''s key'"
 
 
 def test_column_lines_carry_the_type_nullability_and_column_constraints() -> None:
