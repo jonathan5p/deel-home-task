@@ -1,6 +1,6 @@
 ## Data Engineering Take-Home Task
 
-This README is the run guide. The [documentation index](docs/README.md) lists the architecture, sizing, design decision and table reference pages.
+This README is the run guide. The [documentation index](docs/README.md) lists the architecture, design decision and table reference pages.
 
 ### Welcome
 

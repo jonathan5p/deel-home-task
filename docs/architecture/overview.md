@@ -115,7 +115,7 @@ flowchart LR
 | `spark-history` | `history` | Spark History Server over the shared `spark-events` volume | 18080 |
 | `conduktor-console`, `conduktor-db` | `monitoring` | Optional Kafka console and its metadata database | 8090 |
 
-Each job's driver runs in its own container in client mode, and its executors run on the shared workers (decision D27). Each application is capped at `spark.cores.max=2`, so the four streaming jobs use 8 of the 10 cores and leave 2 for ad-hoc runs and maintenance.
+Each job's driver runs in its own container in client mode, and its executors run on the shared workers (decision [D27](decisions.md#d27--one-driver-container-per-application-executors-on-shared-workers)). Each application is capped at `spark.cores.max=2`, so the four streaming jobs use 8 of the 10 cores and leave 2 for ad-hoc runs and maintenance.
 
 ## Data flow
 
@@ -153,9 +153,9 @@ flowchart LR
 | --- | --- | --- | --- |
 | Landing | Avro files, one folder per topic, `s3a://lake/landing/<topic>/` | `landing-job`, one query per topic | Every Kafka record stored unchanged (key and value as raw bytes, plus topic, partition, offset and timestamp). The file sink and checkpoint make it exactly once, and it is the replay source for bronze |
 | Bronze | Iceberg `lake.bronze.<entity>`, partitioned by `days(_published_at)` | `bronze-job`, two queries per topic | A typed, faithful log: one row per change event, deletes with their before image, no deduplication. Records that fail validation go to `<entity>_quarantine` with their landing file. Append-only |
-| Silver | Iceberg `lake.silver.<entity>`, partitioned by `days(_changed_at)`, plus the views `<entity>_history` and `<entity>_current` | `silver-job`, one query per topic | One row per change identity (entity key, `_commit_sequence`, `_change_op`), deduplicated with RocksDB state and no watermark, so late changes are appended as history. The views fold versions that change nothing (decision D36). Append-only, so gold can stream it |
-| Gold (PostgreSQL) | Database `analytics`: tables in `gold_internal`, views in `gold` | `gold-job`, one query per silver table | SCD2 dimensions, append-only history facts partitioned by month, and current-state tables that only apply newer versions. Writes are idempotent per micro-batch and serialised by an advisory writer lock. Consumers read the `gold` views, which hide pipeline metadata and soft deletes (decisions D32, D35) |
-| Gold (lake) | Iceberg views `lake.gold.<relation>` | `lake-views` | The same public relations computed at read time from silver, over the full history, with natural keys instead of surrogate keys (decision D39) |
+| Silver | Iceberg `lake.silver.<entity>`, partitioned by `days(_changed_at)`, plus the views `<entity>_history` and `<entity>_current` | `silver-job`, one query per topic | One row per change identity (entity key, `_commit_sequence`, `_change_op`), deduplicated with RocksDB state and no watermark, so late changes are appended as history. The views fold versions that change nothing (decision [D36](decisions.md#d36--silver-deduplication-exact-duplicates-on-write-unchanged-versions-on-read)). Append-only, so gold can stream it |
+| Gold (PostgreSQL) | Database `analytics`: tables in `gold_internal`, views in `gold` | `gold-job`, one query per silver table | SCD2 dimensions, append-only history facts partitioned by month, and current-state tables that only apply newer versions. Writes are idempotent per micro-batch and serialised by an advisory writer lock. Consumers read the `gold` views, which hide pipeline metadata and soft deletes (decisions [D32](decisions.md#d32--the-gold-dimensional-model), [D35](decisions.md#d35--public-views-over-an-internal-schema)) |
+| Gold (lake) | Iceberg views `lake.gold.<relation>` | `lake-views` | The same public relations computed at read time from silver, over the full history, with natural keys instead of surrogate keys (decision [D39](decisions.md#d39--gold-in-the-lake-as-iceberg-views-over-silver)) |
 
 The gold model, its rules and the business-question views are described in [the gold model](gold-model.md), and every table and column in the [table reference](../reference/index.md), which the docs site renders from the Avro schemas.
 
@@ -221,10 +221,10 @@ flowchart TB
 
 ```
 
-- **Bronze replay** (decision D31, #85): re-reads a landing range in batch and appends only the change identities bronze does not hold yet. Records that fail validation go to quarantine once. It writes only `append` snapshots, so silver keeps streaming.
+- **Bronze replay** (decision [D31](decisions.md#d31--late-arrivals-are-history-deduplication-happens-in-silver), #85): re-reads a landing range in batch and appends only the change identities bronze does not hold yet. Records that fail validation go to quarantine once. It writes only `append` snapshots, so silver keeps streaming.
 - **Lake maintenance** (#26, #77): compaction writes `replace` snapshots, which Iceberg's streaming reader skips. Snapshot expiry keeps 7 days and the last 10 snapshots. Before expiring a table, the guard reads the last committed batch of every downstream stream from its checkpoint, and skips expiry when that snapshot would be lost. Orphan files older than 3 days are removed.
-- **Gold rebuild** (decision D38, #49): resets gold, reloads it from the silver tables in one batch up to an optional `_changed_at` cutoff, and applies retention. Restarting the gold job on fresh checkpoints then replays silver idempotently and continues past the cutoff.
-- **Gold retention** (decision D37, #48): history facts keep 36 months (`GOLD_RETENTION_MONTHS`). Whole monthly partitions are dropped, after the rows in the default partition are moved into partitions of their own. Current state and dimensions are never trimmed, and the lake keeps the full history.
+- **Gold rebuild** (decision [D38](decisions.md#d38--rebuild-gold-from-silver-with-an-optional-cutoff), #49): resets gold, reloads it from the silver tables in one batch up to an optional `_changed_at` cutoff, and applies retention. Restarting the gold job on fresh checkpoints then replays silver idempotently and continues past the cutoff.
+- **Gold retention** (decision [D37](decisions.md#d37--gold-retention-by-monthly-partitions), #48): history facts keep 36 months (`GOLD_RETENTION_MONTHS`). Whole monthly partitions are dropped, after the rows in the default partition are moved into partitions of their own. Current state and dimensions are never trimmed, and the lake keeps the full history.
 
 ## Data quality chain
 

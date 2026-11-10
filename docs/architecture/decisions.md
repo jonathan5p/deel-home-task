@@ -2,8 +2,6 @@
 
 The design decisions a reviewer should know about, with the alternatives that were weighed. The numbers (D3, D13, ...) are the project's decision log numbers; other pages cite them. The issues and pull requests linked under each decision hold the discussion and the change.
 
-> **Status.** A few decisions describe work in open pull requests: the business-question views and their indexes (#142), retention (#149), rebuild (#150), gold in the lake (#152) and lake maintenance (#135). Those entries describe the design those pull requests implement.
-
 ## Platform
 
 ### D8 · Fully local, no cloud services
@@ -41,7 +39,7 @@ The design decisions a reviewer should know about, with the alternatives that we
   - On EMR, a step in YARN cluster mode runs the driver inside the cluster, or EMR Serverless runs the job.
   - On Kubernetes, the Spark Operator gives each application its own driver and executor pods, with restart policies.
 
-  The local setup isolates drivers but shares executors. See [the sizing strategy](sizing.md).
+  The local setup isolates drivers but shares executors.
 
 ### D23 · Event logs always written, optional history server
 
@@ -165,7 +163,7 @@ The design decisions a reviewer should know about, with the alternatives that we
 
   - With `rank()`, both top-3 views still read their partial index with an index-only scan, and PostgreSQL stops ranking early (`Run Condition: rank() <= 3`).
   - The plans keep these indexes with a stale visibility map: 10% of rows updated and no vacuum.
-- **New use cases** get their indexes the same way: write the query, read its plan on representative data, add the index the plan uses, and drop the indexes no plan uses any more. [The sizing strategy](sizing.md) tracks the same queries on the real run.
+- **New use cases** get their indexes the same way: write the query, read its plan on representative data, add the index the plan uses, and drop the indexes no plan uses any more.
 
 ### D37 · Gold retention by monthly partitions
 
@@ -186,7 +184,7 @@ The design decisions a reviewer should know about, with the alternatives that we
 
 - **Decision:** `lake.gold` holds one Iceberg view per public gold relation. Each view is computed at read time from silver, with the same rules as PostgreSQL gold. The gold job writes PostgreSQL only (#86, #152).
   - The lake uses natural keys, because PostgreSQL's surrogate keys cannot be reproduced there.
-  - A data quality check compares both sides at the silver snapshots gold committed (#154).
+  - A data quality check that compares both sides at the silver snapshots gold committed is in progress (#154).
 - **Alternatives:**
   - a second sink with MERGE-maintained Iceberg tables: duplicates the incremental SQL and adds cross-stream conflicts;
   - mirroring PostgreSQL into the lake: a CDC-like flow out of the analytics database;
