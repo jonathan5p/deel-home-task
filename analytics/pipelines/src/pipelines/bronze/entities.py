@@ -50,7 +50,7 @@ class Entity:
         return self.definition.key
 
     @property
-    def key_column(self) -> str:
+    def lake_key(self) -> str:
         return next(column.lake_name for column in self.columns if column.name == self.key)
 
     @property

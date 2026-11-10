@@ -23,8 +23,6 @@ from pipelines.silver.versions import versions
 STATE_STORE_PROVIDER = "spark.sql.streaming.stateStore.providerClass"
 ROCKSDB_STATE_STORE = "org.apache.spark.sql.execution.streaming.state.RocksDBStateStoreProvider"
 SHUFFLE_PARTITIONS = "spark.sql.shuffle.partitions"
-# One state partition per core the job gets; Spark's default of 200 would save 200 state stores
-# per entity on every micro-batch. The checkpoint fixes the number at the query's first run.
 STATE_PARTITIONS = 2
 JOB_SESSION_CONF = (STATE_STORE_PROVIDER, SHUFFLE_PARTITIONS)
 
@@ -56,7 +54,6 @@ def run(
     sink: TableSink = append_to_iceberg,
     available_now: bool = False,
 ) -> list[StreamingQuery]:
-    # The deduplication state is never cleaned, so it lives in RocksDB on disk, not in the heap.
     spark.conf.set(STATE_STORE_PROVIDER, ROCKSDB_STATE_STORE)
     spark.conf.set(SHUFFLE_PARTITIONS, STATE_PARTITIONS)
     streams = [entity_stream(spark, settings, topic, read) for topic in settings.topics]

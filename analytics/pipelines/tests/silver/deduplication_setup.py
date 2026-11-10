@@ -15,7 +15,7 @@ from pipelines.bronze.entities import CUSTOMERS
 from pipelines.lake.columns import ChangeOp, MetadataColumn
 
 ENTITY = CUSTOMERS
-KEY = ENTITY.key_column
+KEY = ENTITY.lake_key
 
 type Transform = Callable[[DataFrame], DataFrame]
 type ChangeIdentity = tuple[int, int, str]
