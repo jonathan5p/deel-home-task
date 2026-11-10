@@ -29,6 +29,7 @@ class GoldTable:
     description: str
     columns: tuple[ColumnDefinition, ...]
     public_description: str | None = None
+    references: tuple[tuple[str, str], ...] = ()
 
     @property
     def view_description(self) -> str:
@@ -36,6 +37,10 @@ class GoldTable:
 
     def column(self, name: str) -> ColumnDefinition:
         return {column.name: column for column in self.columns}[name]
+
+    def reference(self, name: str) -> str | None:
+        """The `from` of a column: `<source table>.<lake name>` or `gold.<table>.<column>`."""
+        return dict(self.references).get(name)
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,7 +122,12 @@ def _resolved(record: _GoldRecord, referable: Mapping[str, ColumnDefinition]) ->
                 )
             column = replace(column, description=referenced.description)
         columns.append(column)
-    return replace(record.table, columns=tuple(columns))
+    references = tuple(
+        (field.column.name, field.reference)
+        for field in record.fields
+        if field.reference is not None
+    )
+    return replace(record.table, columns=tuple(columns), references=references)
 
 
 def load_gold_tables(root: Traversable = SCHEMAS) -> Mapping[str, GoldTable]:

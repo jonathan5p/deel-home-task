@@ -7,13 +7,21 @@ from pathlib import Path
 
 from jinja2 import Environment, StrictUndefined
 
-from pipelines.schemas.definitions import POSTGRES_TYPES, SCHEMAS, ColumnDefinition
+from pipelines.gold.dimensions import scd2_dimensions
+from pipelines.gold.scd2 import INTERNAL_SCHEMA
+from pipelines.schemas.definitions import (
+    POSTGRES_TYPES,
+    SCHEMAS,
+    ColumnDefinition,
+    load_entities,
+)
 from pipelines.schemas.gold_definitions import GoldTable, load_gold_tables
 
 TEMPLATE: Traversable = files("pipelines.gold") / "ddl.sql.j2"
-INTERNAL_SCHEMA = "gold_internal"
 PUBLIC_SCHEMA = "gold"
-PIPELINE_ONLY_COLUMNS = frozenset({"_commit_sequence", "_is_deleted"})
+PIPELINE_ONLY_COLUMNS = frozenset(
+    {"_commit_sequence", "_content_hash", "_is_deleted", "_is_folded"}
+)
 
 
 class UnknownColumnError(ValueError):
@@ -25,24 +33,32 @@ def postgres_string(text: str) -> str:
     return "'" + text.replace("'", "''") + "'"
 
 
-def column_lines(table: GoldTable, constraints: Mapping[str, str] | None = None) -> str:
-    """The column lines of a CREATE TABLE, each ending with a comma for the table constraints.
-
-    `constraints` adds column constraints by column name, such as an identity or a reference.
-    """
-    constraints = constraints or {}
+def _column_definitions(table: GoldTable, constraints: Mapping[str, str]) -> list[str]:
     unknown = sorted(set(constraints) - {column.name for column in table.columns})
     if unknown:
         raise UnknownColumnError(table.name, unknown)
-    lines = []
+    definitions = []
     for column in table.columns:
         parts = [column.name, POSTGRES_TYPES[column.type]]
         if column.not_null:
             parts.append("NOT NULL")
         if column.name in constraints:
             parts.append(constraints[column.name])
-        lines.append(f"    {' '.join(parts)},")
-    return "\n".join(lines)
+        definitions.append(" ".join(parts))
+    return definitions
+
+
+def column_lines(table: GoldTable, constraints: Mapping[str, str] | None = None) -> str:
+    """The column lines of a CREATE TABLE, each ending with a comma for the table constraints.
+
+    `constraints` adds column constraints by column name, such as an identity or a reference.
+    """
+    return "\n".join(f"    {line}," for line in _column_definitions(table, constraints or {}))
+
+
+def column_list(table: GoldTable) -> str:
+    """The column lines of a CREATE TABLE without table constraints."""
+    return ",\n".join(f"    {line}" for line in _column_definitions(table, {}))
 
 
 def comments(
@@ -56,8 +72,9 @@ def comments(
     return "\n".join(statements)
 
 
-def describe_table(table: GoldTable) -> str:
-    return comments("TABLE", f"{INTERNAL_SCHEMA}.{table.name}", table.description, table.columns)
+def describe_table(table: GoldTable, kind: str = "TABLE") -> str:
+    """The comments of a table in gold_internal, or of a view there with `kind` VIEW."""
+    return comments(kind, f"{INTERNAL_SCHEMA}.{table.name}", table.description, table.columns)
 
 
 def describe_view(table: GoldTable, *added: ColumnDefinition) -> str:
@@ -75,9 +92,12 @@ def render(root: Traversable = SCHEMAS, template: Traversable = TEMPLATE) -> str
         trim_blocks=True,
         lstrip_blocks=True,
     )
+    tables = load_gold_tables(root)
     return environment.from_string(template.read_text(encoding="utf-8")).render(
-        tables=load_gold_tables(root),
+        tables=tables,
+        dimensions=scd2_dimensions(tables, load_entities(root)),
         column_lines=column_lines,
+        column_list=column_list,
         describe_table=describe_table,
         describe_view=describe_view,
     )

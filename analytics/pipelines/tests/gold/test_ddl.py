@@ -10,12 +10,14 @@ from pipelines.gold.ddl import (
     PIPELINE_ONLY_COLUMNS,
     UnknownColumnError,
     column_lines,
+    column_list,
     describe_table,
     describe_view,
     main,
     postgres_string,
     render,
 )
+from pipelines.gold.dimensions import DIMENSIONS
 
 
 def test_a_text_becomes_a_postgres_string_with_its_quotes_doubled() -> None:
@@ -30,6 +32,15 @@ def test_column_lines_carry_the_type_nullability_and_column_constraints() -> Non
         "    label varchar,",
         "    _commit_sequence bigint NOT NULL,",
         "    _is_deleted boolean NOT NULL,",
+    ]
+
+
+def test_a_column_list_has_no_trailing_comma_for_a_table_without_constraints() -> None:
+    assert column_list(THINGS).splitlines() == [
+        "    thing_id bigint NOT NULL,",
+        "    label varchar,",
+        "    _commit_sequence bigint NOT NULL,",
+        "    _is_deleted boolean NOT NULL",
     ]
 
 
@@ -93,3 +104,46 @@ def test_main_writes_the_rendered_ddl_to_the_given_file(tmp_path: Path) -> None:
     main([str(output)])
 
     assert output.read_text(encoding="utf-8") == render()
+
+
+@pytest.mark.parametrize("dimension", ["dim_customer", "dim_product"])
+def test_each_scd2_dimension_has_an_unlogged_staging_table_described_like_it(
+    dimension: str,
+) -> None:
+    ddl = render()
+
+    assert f"CREATE UNLOGGED TABLE IF NOT EXISTS gold_internal.stage_{dimension} (" in ddl
+    assert f"COMMENT ON TABLE gold_internal.stage_{dimension} IS" in ddl
+    assert f"COMMENT ON COLUMN gold_internal.stage_{dimension}._valid_from IS" in ddl
+    assert f"COMMENT ON COLUMN gold_internal.stage_{dimension}._is_current IS" not in ddl
+
+
+@pytest.mark.parametrize("dimension", ["dim_customer", "dim_product"])
+def test_the_public_dimension_views_leave_out_folded_and_deleted_versions(dimension: str) -> None:
+    view = render().split(f"CREATE OR REPLACE VIEW gold.{dimension} AS", 1)[1]
+
+    assert view.split(";", 1)[0].endswith(
+        f"FROM gold_internal.{dimension}_versions\nWHERE NOT _is_folded AND NOT _is_deleted"
+    )
+
+
+@pytest.mark.parametrize("dimension", ["dim_customer", "dim_product"])
+def test_each_scd2_dimension_has_a_described_versions_view_with_its_query(dimension: str) -> None:
+    ddl = render()
+    (scd2,) = (d for d in DIMENSIONS if d.name == dimension)
+
+    assert f"CREATE OR REPLACE VIEW gold_internal.{dimension}_versions AS\n" in ddl
+    assert f"{scd2.versions_query()};\n" in ddl
+    assert f"COMMENT ON VIEW gold_internal.{dimension}_versions IS" in ddl
+    assert f"COMMENT ON COLUMN gold_internal.{dimension}_versions._is_folded IS" in ddl
+
+
+@pytest.mark.parametrize("dimension", ["dim_customer", "dim_product"])
+def test_the_dimension_tables_store_no_derived_flags_or_current_constraint(dimension: str) -> None:
+    table = render().split(f"CREATE TABLE IF NOT EXISTS gold_internal.{dimension} (", 1)[1]
+    definition = table.split(");", 1)[0]
+
+    assert "_is_folded" not in definition
+    assert "_is_current" not in definition
+    assert "CHECK" not in definition
+    assert f"{dimension}_current_idx" not in render()

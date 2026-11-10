@@ -8,14 +8,15 @@ from tests.infra.gold_fixtures import (
     FRESHNESS,
     FRESHNESS_FIXTURE,
     GOLD_DDL,
-    HISTORY_PARTITIONS,
     INTERNAL_TABLES,
     PUBLIC_PIPELINE_ONLY_COLUMNS,
     PUBLIC_VIEWS,
+    STAGING_TABLES,
     TIES_AT_THE_TOP,
     UNDESCRIBED_COLUMNS,
     UNDESCRIBED_RELATIONS,
     UNDESCRIBED_SCHEMAS,
+    VERSIONS_VIEWS,
     answer,
     item_change,
     order_change,
@@ -27,9 +28,6 @@ from tests.infra.gold_fixtures import (
 from tests.infra.stack import Stack
 
 NEXT_MONTH = "date_trunc('month', localtimestamp) + interval '1 month 2 days'"
-IN_TWO_MONTHS = "date_trunc('month', localtimestamp) + interval '2 months 2 days'"
-IN_SIX_MONTHS = "date_trunc('month', localtimestamp) + interval '6 months 2 days'"
-BEFORE_ANY_PARTITION = "timestamp '2001-01-01 00:00'"
 
 
 @pytest.fixture(scope="module")
@@ -53,11 +51,25 @@ def test_ddl_applies_again_to_an_existing_database(
         assert "ERROR" not in run.stderr
 
 
-def test_internal_schema_holds_the_model_tables(gold: Stack) -> None:
-    relations = rows(gold, top_level_relations("gold_internal"))
+def test_internal_schema_holds_the_model_tables_and_the_dimension_versions_views(
+    gold: Stack,
+) -> None:
+    relations = dict(rows(gold, top_level_relations("gold_internal")))
 
-    assert {name for name, _ in relations} == INTERNAL_TABLES
-    assert {kind for _, kind in relations} <= {"r", "p"}
+    assert set(relations) == INTERNAL_TABLES | STAGING_TABLES | VERSIONS_VIEWS
+    assert {relations[name] for name in INTERNAL_TABLES | STAGING_TABLES} <= {"r", "p"}
+    assert {relations[name] for name in VERSIONS_VIEWS} == {"v"}
+
+
+def test_staging_tables_are_unlogged(gold: Stack) -> None:
+    persistence = rows(
+        gold,
+        "SELECT relname, relpersistence FROM pg_class"
+        " WHERE relnamespace = 'gold_internal'::regnamespace AND relname LIKE 'stage_%'"
+        " ORDER BY 1;",
+    )
+
+    assert persistence == [[name, "u"] for name in sorted(STAGING_TABLES)]
 
 
 def test_public_schema_holds_only_views(gold: Stack) -> None:
@@ -135,56 +147,21 @@ def test_date_attributes(gold: Stack, date_key: int, expected: list[str]) -> Non
     assert day == [expected]
 
 
-def test_history_has_monthly_partitions_for_this_month_and_the_next_two(gold: Stack) -> None:
-    months = rows(
-        gold,
-        "SELECT to_char(date_trunc('month', localtimestamp) + make_interval(months => n),"
-        " 'YYYY_MM') FROM generate_series(0, 2) AS n;",
-    )
-    expected = [
-        [fact, f"{fact}_{suffix}"]
-        for fact in ("fact_order_history", "fact_order_item_history")
-        for suffix in [*(month[0] for month in months), "default"]
-    ]
-
-    assert rows(gold, HISTORY_PARTITIONS) == expected
-
-
-def test_history_rows_land_in_their_month_or_the_default_partition(gold: Stack) -> None:
+def test_history_rows_land_in_the_default_partition(gold: Stack) -> None:
     placed = rows(
         gold,
         rolled_back(
             order_change(1, 10, NEXT_MONTH),
-            order_change(2, 10, BEFORE_ANY_PARTITION),
-            item_change(1, 10, IN_TWO_MONTHS, quantity=1),
-            "SELECT order_id, tableoid::regclass, to_char(_changed_at, 'YYYY_MM')"
-            " FROM gold_internal.fact_order_history ORDER BY 1;",
-            "SELECT order_item_id, tableoid::regclass, to_char(_changed_at, 'YYYY_MM')"
-            " FROM gold_internal.fact_order_item_history;",
-        ),
-    )
-    first, out_of_range, item = placed
-
-    assert first[1] == f"gold_internal.fact_order_history_{first[2]}"
-    assert out_of_range[1] == "gold_internal.fact_order_history_default"
-    assert item[1] == f"gold_internal.fact_order_item_history_{item[2]}"
-
-
-def test_new_partition_takes_over_rows_from_the_default_partition(gold: Stack) -> None:
-    placed = rows(
-        gold,
-        rolled_back(
-            order_change(1, 10, IN_SIX_MONTHS),
+            item_change(1, 10, NEXT_MONTH, quantity=1),
             "SELECT tableoid::regclass FROM gold_internal.fact_order_history;",
-            "DO $$ BEGIN PERFORM gold_internal.ensure_history_partitions(6); END $$;",
-            "SELECT tableoid::regclass, to_char(_changed_at, 'YYYY_MM')"
-            " FROM gold_internal.fact_order_history;",
+            "SELECT tableoid::regclass FROM gold_internal.fact_order_item_history;",
         ),
     )
-    before, after = placed
 
-    assert before == ["gold_internal.fact_order_history_default"]
-    assert after[0] == f"gold_internal.fact_order_history_{after[1]}"
+    assert placed == [
+        ["gold_internal.fact_order_history_default"],
+        ["gold_internal.fact_order_item_history_default"],
+    ]
 
 
 def test_a_replayed_history_row_is_rejected(gold: Stack) -> None:

@@ -35,7 +35,7 @@ def write_bronze(
     spark: SparkSession, settings: SilverSettings, entity: Entity, changes: list[BronzeChange]
 ) -> None:
     """Append changes to the entity's bronze table, created the way the bronze job creates it."""
-    table = settings.bronze_table(entity.name)
+    table = settings.source_table(entity.name)
     definition = table_definition(BRONZE, entity.definition)
     ensure_table(
         spark, table, described_schema(table, bronze_schema(entity), definition), definition

@@ -12,29 +12,45 @@ COMMENT ON SCHEMA gold_internal IS
 COMMENT ON SCHEMA gold IS
     'Gold star schema for consumers: views over gold_internal without the pipeline-only metadata.';
 
+-- The dimensions are only ever appended to; their *_versions views derive the fold flag, the
+-- validity and the current version, and the (key, _commit_sequence) index serves their windows.
 CREATE TABLE IF NOT EXISTS gold_internal.dim_customer (
 {{ column_lines(tables.dim_customer, {"customer_key": "GENERATED ALWAYS AS IDENTITY"}) }}
     PRIMARY KEY (customer_key),
-    UNIQUE (customer_id, _commit_sequence),
-    CHECK (_is_current = (_valid_to IS NULL))
+    UNIQUE (customer_id, _commit_sequence)
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS dim_customer_current_idx
-    ON gold_internal.dim_customer (customer_id) WHERE _is_current;
-
 {{ describe_table(tables.dim_customer) }}
+
+CREATE UNLOGGED TABLE IF NOT EXISTS gold_internal.stage_dim_customer (
+{{ column_list(dimensions.dim_customer.staging_table) }}
+);
+
+{{ describe_table(dimensions.dim_customer.staging_table) }}
+
+CREATE OR REPLACE VIEW {{ dimensions.dim_customer.versions_relation }} AS
+{{ dimensions.dim_customer.versions_query() }};
+
+{{ describe_table(tables.dim_customer_versions, "VIEW") }}
 
 CREATE TABLE IF NOT EXISTS gold_internal.dim_product (
 {{ column_lines(tables.dim_product, {"product_key": "GENERATED ALWAYS AS IDENTITY"}) }}
     PRIMARY KEY (product_key),
-    UNIQUE (product_id, _commit_sequence),
-    CHECK (_is_current = (_valid_to IS NULL))
+    UNIQUE (product_id, _commit_sequence)
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS dim_product_current_idx
-    ON gold_internal.dim_product (product_id) WHERE _is_current;
-
 {{ describe_table(tables.dim_product) }}
+
+CREATE UNLOGGED TABLE IF NOT EXISTS gold_internal.stage_dim_product (
+{{ column_list(dimensions.dim_product.staging_table) }}
+);
+
+{{ describe_table(dimensions.dim_product.staging_table) }}
+
+CREATE OR REPLACE VIEW {{ dimensions.dim_product.versions_relation }} AS
+{{ dimensions.dim_product.versions_query() }};
+
+{{ describe_table(tables.dim_product_versions, "VIEW") }}
 
 CREATE TABLE IF NOT EXISTS gold_internal.dim_date (
 {{ column_lines(tables.dim_date, {"calendar_date": "UNIQUE"}) }}
@@ -110,54 +126,6 @@ CREATE TABLE IF NOT EXISTS gold_internal.fact_order_item_history_default
 COMMENT ON TABLE gold_internal.fact_order_item_history_default IS
     'Order item history rows outside every monthly partition.';
 
--- Rows the default partition already holds for a new month are moved into it, because a
--- partition cannot be added while the default partition holds rows in its range.
-CREATE OR REPLACE FUNCTION gold_internal.ensure_history_partitions(months_ahead int DEFAULT 2)
-RETURNS void
-LANGUAGE plpgsql
-AS $$
-DECLARE
-    fact text;
-    month_start date;
-    month_end date;
-    partition_name text;
-BEGIN
-    FOREACH fact IN ARRAY ARRAY['fact_order_history', 'fact_order_item_history'] LOOP
-        FOR offset_months IN 0..months_ahead LOOP
-            month_start := date_trunc('month', localtimestamp)::date
-                + make_interval(months => offset_months);
-            month_end := month_start + interval '1 month';
-            partition_name := format('%s_%s', fact, to_char(month_start, 'YYYY_MM'));
-            CONTINUE WHEN to_regclass(format('gold_internal.%I', partition_name)) IS NOT NULL;
-
-            EXECUTE format(
-                'CREATE TABLE gold_internal.%I (LIKE gold_internal.%I INCLUDING DEFAULTS INCLUDING CONSTRAINTS)',
-                partition_name, fact
-            );
-            EXECUTE format(
-                'WITH moved AS (DELETE FROM gold_internal.%I WHERE _changed_at >= $1 AND _changed_at < $2'
-                ' RETURNING *) INSERT INTO gold_internal.%I SELECT * FROM moved',
-                fact || '_default', partition_name
-            ) USING month_start, month_end;
-            EXECUTE format(
-                'ALTER TABLE gold_internal.%I ATTACH PARTITION gold_internal.%I FOR VALUES FROM (%L) TO (%L)',
-                fact, partition_name, month_start, month_end
-            );
-            EXECUTE format(
-                'COMMENT ON TABLE gold_internal.%I IS %L',
-                partition_name,
-                format('Partition of %s for %s.', fact, to_char(month_start, 'YYYY-MM'))
-            );
-        END LOOP;
-    END LOOP;
-END;
-$$;
-
-COMMENT ON FUNCTION gold_internal.ensure_history_partitions(int) IS
-    'Creates the monthly history partitions from the current month to months_ahead months ahead.';
-
-SELECT gold_internal.ensure_history_partitions(2);
-
 CREATE TABLE IF NOT EXISTS gold_internal.current_orders (
 {{ column_lines(tables.current_orders, {
     "status_key": "REFERENCES gold_internal.dim_order_status (status_key)",
@@ -198,9 +166,14 @@ SELECT
     _valid_from,
     _valid_to,
     _is_current
-FROM gold_internal.dim_customer;
+FROM {{ dimensions.dim_customer.versions_relation }}
+WHERE NOT _is_folded AND NOT _is_deleted;
 
-{{ describe_view(tables.dim_customer) }}
+{{ describe_view(
+    tables.dim_customer,
+    tables.dim_customer_versions.column("_valid_to"),
+    tables.dim_customer_versions.column("_is_current"),
+) }}
 
 CREATE OR REPLACE VIEW gold.dim_product AS
 SELECT
@@ -213,9 +186,14 @@ SELECT
     _valid_from,
     _valid_to,
     _is_current
-FROM gold_internal.dim_product;
+FROM {{ dimensions.dim_product.versions_relation }}
+WHERE NOT _is_folded AND NOT _is_deleted;
 
-{{ describe_view(tables.dim_product) }}
+{{ describe_view(
+    tables.dim_product,
+    tables.dim_product_versions.column("_valid_to"),
+    tables.dim_product_versions.column("_is_current"),
+) }}
 
 CREATE OR REPLACE VIEW gold.dim_date AS
 SELECT
@@ -254,8 +232,8 @@ WINDOW versions AS (PARTITION BY order_id ORDER BY _commit_sequence);
 
 {{ describe_view(
     tables.fact_order_history,
-    tables.dim_customer.column("_valid_to"),
-    tables.dim_customer.column("_is_current"),
+    tables.dim_customer_versions.column("_valid_to"),
+    tables.dim_customer_versions.column("_is_current"),
 ) }}
 
 CREATE OR REPLACE VIEW gold.fact_order_item_history AS
@@ -276,8 +254,8 @@ WINDOW versions AS (PARTITION BY order_item_id ORDER BY _commit_sequence);
 
 {{ describe_view(
     tables.fact_order_item_history,
-    tables.dim_customer.column("_valid_to"),
-    tables.dim_customer.column("_is_current"),
+    tables.dim_customer_versions.column("_valid_to"),
+    tables.dim_customer_versions.column("_is_current"),
 ) }}
 
 CREATE OR REPLACE VIEW gold.current_orders AS

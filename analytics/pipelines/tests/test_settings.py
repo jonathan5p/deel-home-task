@@ -3,6 +3,7 @@ import pytest
 from common.settings import AnalyticsDbSettings, InvalidSettingError, MissingSettingsError
 from pipelines.settings import (
     BronzeSettings,
+    GoldSettings,
     KafkaSettings,
     LakeSettings,
     LandingQualitySettings,
@@ -163,7 +164,7 @@ def test_silver_settings_report_every_missing_variable_at_once() -> None:
 def test_silver_reads_the_bronze_tables_and_writes_its_own_namespace() -> None:
     settings = SilverSettings.from_env(KAFKA | LAKE)
 
-    assert settings.bronze_table("customers") == BronzeSettings.from_env(KAFKA | LAKE).table(
+    assert settings.source_table("customers") == BronzeSettings.from_env(KAFKA | LAKE).table(
         "customers"
     )
     assert settings.table("customers") == "catalog.silver.customers"
@@ -200,3 +201,34 @@ def test_landing_quality_window_can_be_limited_to_the_latest_offsets() -> None:
     )
 
     assert settings.last_offsets == 1000
+
+
+def test_gold_settings_read_the_lake_the_database_and_the_trigger() -> None:
+    settings = GoldSettings.from_env(LAKE | DATABASE | {"GOLD_TRIGGER_SECONDS": "30"})
+
+    assert settings.lake == LakeSettings.from_env(LAKE)
+    assert settings.analytics_db == AnalyticsDbSettings.from_env(DATABASE)
+    assert settings.trigger_seconds == 30
+
+
+def test_gold_settings_trigger_every_ten_seconds_by_default() -> None:
+    assert GoldSettings.from_env(LAKE | DATABASE).trigger_seconds == 10
+
+
+def test_gold_settings_require_the_lake_and_the_database() -> None:
+    with pytest.raises(MissingSettingsError) as error:
+        GoldSettings.from_env({})
+
+    assert error.value.names == (*LakeSettings.REQUIRED, *AnalyticsDbSettings.REQUIRED)
+
+
+def test_gold_settings_reject_a_trigger_that_is_not_a_positive_integer() -> None:
+    with pytest.raises(InvalidSettingError, match="GOLD_TRIGGER_SECONDS"):
+        GoldSettings.from_env(LAKE | DATABASE | {"GOLD_TRIGGER_SECONDS": "0"})
+
+
+def test_gold_reads_silver_tables_and_keeps_checkpoints_per_gold_table() -> None:
+    settings = GoldSettings.from_env(LAKE | DATABASE)
+
+    assert settings.source_table("customers") == "catalog.silver.customers"
+    assert settings.checkpoint_path("dim_customer") == "s3a://bucket/checkpoints/gold/dim_customer"

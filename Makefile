@@ -8,7 +8,8 @@ SPARK_SQL_VARS ?=
 LANDING_ROOT ?= s3a://lake/landing
 PROFILES ?=
 PIPELINE ?=
-PIPELINES = landing bronze silver
+PIPELINES = landing bronze silver gold
+GOLD_CHECKPOINTS ?= /buckets/lake/checkpoints/gold
 .DEFAULT_GOAL := help
 
 export BUILDX_NO_DEFAULT_ATTESTATIONS ?= 1
@@ -37,21 +38,22 @@ PIPELINE_JOBS = $(addsuffix -job,$(if $(filter all,$(PIPELINE)),$(PIPELINES),$(f
 PIPELINE_SERVICES = $(PIPELINE_JOBS) $(if $(filter silver all,$(PIPELINE)),lake-views)
 CHECK_PIPELINE = $(if $(and $(PIPELINE_JOBS),$(filter 1,$(words $(PIPELINE)))),,$(error Set PIPELINE to one of: $(PIPELINES) all (got "$(PIPELINE)"), e.g. make $@ PIPELINE=landing))
 
-.PHONY: help up down clean spark-submit spark-sql spark-history data-quality pipeline pipeline-logs pipeline-stop lake-views test lint format typecheck schemas test-infra hooks
+.PHONY: help up down clean gold-reset spark-submit spark-sql spark-history data-quality pipeline pipeline-logs pipeline-stop lake-views test lint format typecheck schemas test-infra hooks
 
 help:
 	@printf '%s\n' \
 		'up             Render the gold DDL, build changed local images and start the default stack; add optional services with PROFILES (e.g. PROFILES="monitoring history").' \
 		'down           Stop all project services, including optional profiles; keep volumes.' \
 		'clean          Delete project containers and volumes (DATA LOSS); requires CONFIRM=1.' \
+		'gold-reset     Stop the gold job, recreate the gold schemas from the rendered DDL and delete the gold checkpoints (gold DATA LOSS; the lake is kept); requires CONFIRM=1.' \
 		'spark-submit   Run SPARK_APP (repo path; default: UI check job) in its own driver container; options SPARK_APP_ARGS, SPARK_CONF, SPARK_UI_PORT.' \
 		'spark-sql      Open the Spark SQL shell in its own driver container; SPARK_SQL_FILE runs a file instead; SPARK_SQL_VARS (key=value ...) and LANDING_ROOT set its variables.' \
 		'spark-history  Toggle the optional Spark History Server (localhost:18080): start it if stopped, stop it if running.' \
 		'data-quality   Run the data quality checks against the running stack (landing versus Kafka); fails if any check fails.' \
-		'pipeline       Start the stack, the History Server and the PIPELINE job (landing, bronze, silver or all) as a long-running service.' \
+		'pipeline       Start the stack, the History Server and the PIPELINE job (landing, bronze, silver, gold or all) as a long-running service.' \
 		'               silver and all also run lake-views once the silver tables exist.' \
-		'pipeline-logs  Follow the logs of the PIPELINE job (landing, bronze, silver or all).' \
-		'pipeline-stop  Stop and remove the PIPELINE job (landing, bronze, silver or all); the rest of the stack keeps running.' \
+		'pipeline-logs  Follow the logs of the PIPELINE job (landing, bronze, silver, gold or all).' \
+		'pipeline-stop  Stop and remove the PIPELINE job (landing, bronze, silver, gold or all); the rest of the stack keeps running.' \
 		'lake-views     Create the silver views, or replace those whose query or descriptions changed; fails while a silver table is missing.' \
 		'test           Run the unit tests with coverage (fails below 90%) in the app container.' \
 		'lint           Check linting and formatting with ruff in the app container.' \
@@ -132,6 +134,19 @@ test-infra:
 
 hooks:
 	@uv run --frozen pre-commit install
+
+gold-reset:
+ifeq ($(CONFIRM),1)
+	@$(RENDER_GOLD_DDL)
+	@$(COMPOSE) --profile pipeline rm -sf gold-job
+	@awk '{ print } /^BEGIN;$$/ && !dropped { print "DROP SCHEMA IF EXISTS gold, gold_internal CASCADE;"; dropped = 1 }' \
+		docker/analytics-db/initdb/02-gold-model.sql \
+		| $(COMPOSE) exec -T analytics-db sh -c 'psql -q -o /dev/null -v ON_ERROR_STOP=1 -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -f -'
+	@$(COMPOSE) exec -T seaweedfs curl -sf -X DELETE "http://localhost:8888$(GOLD_CHECKPOINTS)?recursive=true"
+else
+	@printf '%s\n' "Refusing gold reset: this deletes all gold data and the gold checkpoints. Run make gold-reset CONFIRM=1 to confirm." >&2
+	@exit 1
+endif
 
 clean:
 ifeq ($(CONFIRM),1)
