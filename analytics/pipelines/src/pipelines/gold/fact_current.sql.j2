@@ -22,5 +22,5 @@ WHEN NOT MATCHED THEN
         {{ targets | join(",\n        ") }}
     )
     VALUES (
-        {{ targets | prefixed("source") | join(",\n        ") }}
+        {{ targets | prefix_columns("source") | join(",\n        ") }}
     )

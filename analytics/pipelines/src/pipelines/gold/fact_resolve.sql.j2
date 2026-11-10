@@ -1,6 +1,6 @@
 WITH resolved AS (
     SELECT
-        {{ ((history_key | prefixed(row)) + looked_up) | join(",\n        ") }}
+        {{ ((history_key | prefix_columns(row)) + looked_up) | join(",\n        ") }}
     FROM {{ relation }} AS {{ row }}
 {{ join | indent(4, first=true) }}
     WHERE {{ row }}.{{ business_key }} IN (SELECT {{ dimension_key }} FROM {{ dimension_staging }})
@@ -12,4 +12,4 @@ SET
 {% endfor %}
 FROM resolved
 WHERE {% for column in history_key %}stored.{{ column }} = resolved.{{ column }}
-  AND {% endfor %}({{ columns | prefixed("stored") | join(", ") }}) IS DISTINCT FROM ({{ columns | prefixed("resolved") | join(", ") }})
+  AND {% endfor %}({{ columns | prefix_columns("stored") | join(", ") }}) IS DISTINCT FROM ({{ columns | prefix_columns("resolved") | join(", ") }})

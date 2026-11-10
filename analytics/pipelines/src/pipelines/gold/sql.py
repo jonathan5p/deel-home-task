@@ -5,12 +5,12 @@ from importlib.resources import files
 from jinja2 import Environment, StrictUndefined, Template
 
 
-def prefixed(columns: Iterable[str], alias: str) -> list[str]:
+def prefix_columns(columns: Iterable[str], alias: str) -> list[str]:
     return [f"{alias}.{column}" for column in columns]
 
 
 SQL = Environment(autoescape=False, undefined=StrictUndefined, trim_blocks=True, lstrip_blocks=True)
-SQL.filters["prefixed"] = prefixed
+SQL.filters["prefix_columns"] = prefix_columns
 
 
 @cache

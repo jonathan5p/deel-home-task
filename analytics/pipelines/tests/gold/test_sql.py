@@ -1,7 +1,7 @@
 import pytest
 from jinja2 import UndefinedError
 
-from pipelines.gold.sql import prefixed, render_sql
+from pipelines.gold.sql import prefix_columns, render_sql
 
 
 def test_a_template_is_rendered_without_a_trailing_newline() -> None:
@@ -16,4 +16,4 @@ def test_a_template_value_that_is_not_given_is_refused() -> None:
 
 
 def test_columns_are_prefixed_with_a_relation_alias_in_templates() -> None:
-    assert prefixed(["a", "b"], "stored") == ["stored.a", "stored.b"]
+    assert prefix_columns(["a", "b"], "stored") == ["stored.a", "stored.b"]
