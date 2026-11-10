@@ -503,10 +503,6 @@ WHERE top_customers.place <= 3;
 
 {{ describe_view(tables.top_customers_by_pending_orders) }}
 
--- Consumers log in with a service login of their own that is a member of gold_reader
--- (docker/analytics-db/initdb/03-service-logins.sh). The views run with their owner's rights,
--- so reading them needs no access to gold_internal. The grants come last so they cover every
--- view, and dropping the gold schema drops them, which is why they live here.
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'gold_reader') THEN

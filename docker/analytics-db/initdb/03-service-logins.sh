@@ -1,9 +1,6 @@
 #!/bin/sh
-# Runs after the gold DDL, which creates the gold_reader role, on an empty volume, and again
-# with `make db-logins` on an existing one, so every statement must be safe to repeat.
 set -eu
 
-# create_login <login> <password> <statement timeout>
 create_login() {
     psql --no-psqlrc --quiet -v ON_ERROR_STOP=1 \
         --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
