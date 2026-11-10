@@ -787,6 +787,35 @@ make spark-submit SPARK_APP=analytics/pipelines/src/pipelines/gold/job.py SPARK_
 
 The details, with the fold rule, the transactions and the dimension keys of the facts, are in [Writing gold](docs/architecture/gold-model.md#writing-gold).
 
+#### Replaying a landing range into bronze
+
+`analytics/pipelines/src/pipelines/bronze/replay.py` is a one-shot batch job that re-feeds a range of one landing topic into bronze, for example after a fix to a record that was quarantined, or to fill a gap. It reads the topic's landing files in batch (only the files the landing sink's commit log records), keeps the records in the range, parses them with the same `parse_changes` as the bronze stream, and appends only what bronze does not hold yet:
+
+```sh
+make bronze-replay TOPIC=finance_db.operations.orders FROM_OFFSET=120 TO_OFFSET=180               # offsets, both ends included
+make bronze-replay TOPIC=finance_db.operations.orders FROM_OFFSET=0 TO_OFFSET=50 PARTITION=0      # one Kafka partition only
+make bronze-replay TOPIC=finance_db.operations.orders FROM_TIME=2026-11-08T14:00:00 TO_TIME=2026-11-08T15:00:00   # Kafka publish time, UTC unless the time has an offset
+```
+
+It prints one summary line: records in range, changes appended, changes already in bronze, records quarantined and records already quarantined. It runs in its own driver container like `make spark-submit` (Spark UI on port 4043, `REPLAY_UI_PORT` to change it, capped at two cores), and reads the same settings as the bronze job.
+
+- **Idempotent by change identity:** a bronze row is appended only when its entity key, `_commit_sequence` and `_change_op` are not already in `lake.bronze.<entity>`, and once even if the range holds the same change twice (a Debezium re-send). Replaying a range that bronze already holds appends nothing.
+- **Quarantine without duplicates:** a record that fails validation is appended to `<entity>_quarantine` unless the same source record (`_record_source`, `_source_partition`, `_source_offset`) is already there.
+- **Append-only:** it only appends (`writeTo(...).append()`), so the silver stream reading bronze keeps running and sees the replayed changes as new data: its deduplication drops a change it has already versioned, and a replayed change older than what silver holds lands as a late version.
+- **Safe next to the running stream** for ranges the stream has already passed. A range the stream has not reached yet may be appended twice, once by each, because the stream does not check what bronze holds; replay those ranges with the stream stopped, or wait until it has passed them.
+- **Missing tables are created** like the stream creates them, so a replay into an empty catalog works.
+
+#### Rebuilding bronze from landing
+
+When bronze's parsing changes (a new column, a fixed conversion), bronze can be rebuilt from the landing zone, which keeps every record as published:
+
+1. Stop the bronze job and everything that streams from bronze (silver, and gold after it).
+2. Keep the old tables aside instead of dropping them: in `make spark-sql`, `ALTER TABLE lake.bronze.<entity> RENAME TO lake.bronze.<entity>_before_rebuild` for each entity and its `_quarantine` table.
+3. Delete the bronze checkpoints under `<CHECKPOINT_ROOT>/bronze/` so the job starts again from the first landed file.
+4. Run the bronze job with `--available-now` until it has caught up; it creates fresh tables and processes the whole landing zone. Then start it again as a stream.
+5. Reset silver as in [Silver layer](#silver-layer) (drop its tables and delete `<CHECKPOINT_ROOT>/silver/`), so it versions the new bronze tables from their first snapshot instead of appending every change again, and restart it. Gold, which reads silver, needs the same reset after it.
+6. Once the new tables are checked, drop the old ones (`DROP TABLE lake.bronze.<entity>_before_rebuild PURGE`).
+
 #### Tests, lint and format
 
 The checks run in a throwaway container from the `app` image, with `analytics/` and `tests/` mounted, so they use the cluster's exact Spark and Python versions and pick up edits without a rebuild. They use their own Compose project, named after the checkout folder (`deel-checks-<folder>`, lowercased, with every character other than letters, digits, `_` and `-` replaced by `-`), with one app image (`<project>-spark-app`), so checks in different checkouts or worktrees never share an image and can run in parallel:
@@ -825,6 +854,7 @@ They start an isolated Compose project named after the checkout folder (`deel-in
 - the gold DDL applies again to an existing database, describes every schema, table, column and index, creates the staging tables unlogged, keeps only views without the pipeline-only columns (`_commit_sequence`, `_content_hash`, `_is_deleted`, `_is_folded`) in `gold` and hides deleted rows from its current-state views, seeds the date and status dimensions, routes history rows to the default partition, rejects replayed history rows, orders versions by `_commit_sequence` despite late events, creates the business question views with the columns and types of their schemas and the indexes on `current_orders` behind them, and the four business queries return the expected rows from those views on a fixture with a completed order, a deleted order, an unknown status and ties for third place (each test rolls its rows back).
 - `make gold-reset` refuses without `CONFIRM=1`, recreates `gold` and `gold_internal` empty, can run again, deletes the gold checkpoints and keeps the silver checkpoints and the Iceberg catalog;
 - the gold job, run with `--available-now` on silver-shaped fixture tables in a catalog of their own (`gold_fixture`, with its own warehouse), keeps the SCD2 dimensions in PostgreSQL, checked through the versions and public views: a price change closes the previous version and opens a new one, each key has exactly one current version, replaying every batch from a fresh checkpoint changes nothing, a late older version goes into history without becoming current, a re-snapshot or audit-only update is folded and a late differing version between two equal ones unfolds the later one, and a delete leaves no current version that replays or late versions could revive (the test removes its rows afterwards).
+- the bronze replay, in its own Iceberg catalog on the stack, appends nothing for a range the bronze stream already wrote, appends each change of a range the stream never saw exactly once (including a re-sent copy inside the range), and quarantines a failing record once however many times it is replayed.
 
 #### Pre-commit hooks
 

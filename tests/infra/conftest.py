@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from tests.infra.bronze_replay_setup import ReplayRuns, run_replay_scenario
 from tests.infra.bronze_setup import BronzeRuns, run_bronze_scenario
 from tests.infra.gold_dimensions_setup import GoldRuns, remove_fixture_rows, run_gold_scenario
 from tests.infra.gold_facts_setup import FactRuns, remove_fact_rows, run_fact_scenario
@@ -99,3 +100,8 @@ def fact_runs(stack: Stack) -> Iterator[FactRuns]:
         yield run_fact_scenario(stack)
     finally:
         remove_fact_rows(stack)
+
+
+@pytest.fixture(scope="module")
+def replay_runs(stack: Stack) -> ReplayRuns:
+    return run_replay_scenario(stack)

@@ -38,7 +38,7 @@ PIPELINE_JOBS = $(addsuffix -job,$(if $(filter all,$(PIPELINE)),$(PIPELINES),$(f
 PIPELINE_SERVICES = $(PIPELINE_JOBS) $(if $(filter silver all,$(PIPELINE)),lake-views)
 CHECK_PIPELINE = $(if $(and $(PIPELINE_JOBS),$(filter 1,$(words $(PIPELINE)))),,$(error Set PIPELINE to one of: $(PIPELINES) all (got "$(PIPELINE)"), e.g. make $@ PIPELINE=landing))
 
-.PHONY: help up down clean gold-reset spark-submit spark-sql spark-history data-quality pipeline pipeline-logs pipeline-stop lake-views test lint format typecheck schemas test-infra hooks
+.PHONY: help up down clean gold-reset spark-submit bronze-replay spark-sql spark-history data-quality pipeline pipeline-logs pipeline-stop lake-views test lint format typecheck schemas test-infra hooks
 
 help:
 	@printf '%s\n' \
@@ -47,6 +47,7 @@ help:
 		'clean          Delete project containers and volumes (DATA LOSS); requires CONFIRM=1.' \
 		'gold-reset     Stop the gold job, recreate the gold schemas from the rendered DDL and delete the gold checkpoints (gold DATA LOSS; the lake is kept); requires CONFIRM=1.' \
 		'spark-submit   Run SPARK_APP (repo path; default: UI check job) in its own driver container; options SPARK_APP_ARGS, SPARK_CONF, SPARK_UI_PORT.' \
+		'bronze-replay  Append the changes of a landing range that bronze lacks: TOPIC plus FROM_OFFSET and TO_OFFSET (optional PARTITION) or FROM_TIME and TO_TIME.' \
 		'spark-sql      Open the Spark SQL shell in its own driver container; SPARK_SQL_FILE runs a file instead; SPARK_SQL_VARS (key=value ...) and LANDING_ROOT set its variables.' \
 		'spark-history  Toggle the optional Spark History Server (localhost:18080): start it if stopped, stop it if running.' \
 		'data-quality   Run the data quality checks against the running stack (landing versus Kafka); fails if any check fails.' \
@@ -76,6 +77,15 @@ spark-submit:
 	@$(DRIVER_RUN) spark-app sh -c 'exec /opt/spark/bin/spark-submit $(DRIVER_CONF) \
 		--py-files /opt/app/packages.zip \
 		"$$@"' spark-submit $(SPARK_APP) $(SPARK_APP_ARGS)
+
+REPLAY_UI_PORT ?= 4043
+REPLAY_ARGS = --topic "$(TOPIC)" $(if $(PARTITION),--partition $(PARTITION)) \
+	$(if $(FROM_OFFSET),--from-offset $(FROM_OFFSET)) $(if $(TO_OFFSET),--to-offset $(TO_OFFSET)) \
+	$(if $(FROM_TIME),--from-time $(FROM_TIME)) $(if $(TO_TIME),--to-time $(TO_TIME))
+
+bronze-replay:
+	@$(MAKE) --no-print-directory spark-submit SPARK_APP=analytics/pipelines/src/pipelines/bronze/replay.py \
+		SPARK_UI_PORT=$(REPLAY_UI_PORT) SPARK_CONF="spark.cores.max=2 $(SPARK_CONF)" SPARK_APP_ARGS='$(strip $(REPLAY_ARGS))'
 
 spark-sql:
 	@$(DRIVER_RUN) -v "$(CURDIR)/tools:/opt/app/tools:ro" spark-app sh -c 'exec /opt/spark/bin/spark-sql $(DRIVER_CONF) \
