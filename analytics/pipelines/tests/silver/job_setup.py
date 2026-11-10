@@ -3,6 +3,7 @@ from typing import Protocol
 from urllib.parse import urlparse
 
 from pyspark.sql import DataFrame, Row, SparkSession
+from pyspark.sql.streaming import StreamingQuery
 
 from analytics.pipelines.tests.silver.versions_samples import (
     BronzeChange,
@@ -42,8 +43,10 @@ def write_bronze(
     bronze_frame(spark, entity, changes).writeTo(table).append()
 
 
-def run_until_caught_up(spark: SparkSession, settings: SilverSettings) -> None:
-    await_queries(spark.streams, run(spark, settings, available_now=True), available_now=True)
+def run_until_caught_up(spark: SparkSession, settings: SilverSettings) -> list[StreamingQuery]:
+    queries = run(spark, settings, available_now=True)
+    await_queries(spark.streams, queries, available_now=True)
+    return queries
 
 
 def silver_rows(spark: SparkSession, settings: SilverSettings, entity: Entity) -> list[Row]:

@@ -23,7 +23,12 @@ from pipelines.bronze.entities import (
     UnknownEntityError,
     entity_for_topic,
 )
-from pipelines.schemas.definitions import load_entity
+from pipelines.schemas.definitions import (
+    ColumnDefinition,
+    ColumnType,
+    EntityDefinition,
+    load_entity,
+)
 
 
 def test_there_is_one_entity_per_source_table() -> None:
@@ -55,6 +60,18 @@ def test_each_entity_splits_its_columns_into_key_content_and_audit(
     assert entity.key == key
     assert entity.content_columns == content
     assert entity.audit_columns == tuple(AUDIT_JSON)
+
+
+@pytest.mark.parametrize("entity", ENTITIES, ids=lambda entity: entity.name)
+def test_the_key_column_of_every_entity_keeps_its_source_name(entity: Entity) -> None:
+    assert entity.key_column == entity.key
+
+
+def test_the_key_column_is_the_lake_name_of_the_key() -> None:
+    key = ColumnDefinition("idd", ColumnType.LONG, "Identifier", renamed_to="id")
+    entity = Entity(EntityDefinition(name="things", key="idd", description="", columns=(key,)))
+
+    assert entity.key_column == "id"
 
 
 @pytest.mark.parametrize(

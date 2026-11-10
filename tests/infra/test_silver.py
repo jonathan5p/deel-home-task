@@ -9,6 +9,7 @@ from tests.infra.silver_setup import (
     commit_sequence,
     commit_sequences,
     run_silver_without_bronze_tables,
+    state_store_files,
 )
 from tests.infra.stack import Stack
 
@@ -55,6 +56,27 @@ def test_a_restart_appends_only_the_changes_bronze_appended_since(
         ChangeOp.UPDATE,
         "false",
     )
+
+
+@pytest.mark.parametrize("entity", ENTITIES)
+def test_a_change_bronze_holds_twice_becomes_one_version_row(
+    silver_runs: SilverRuns, entity: str
+) -> None:
+    bronze = silver_runs.bronze_extended[f"lake.bronze.{entity}"]
+    silver = silver_runs.restarted[f"lake.silver.{entity}"]
+
+    assert sorted(commit_sequences(bronze)) == [100, 101, 101, 103, 104, 104]
+    assert commit_sequences(silver) == [100, 101, 103, 104]
+
+
+@pytest.mark.parametrize("entity", ENTITIES)
+def test_the_job_keeps_its_deduplication_state_in_rocksdb(
+    stack: Stack, silver_runs: SilverRuns, entity: str
+) -> None:
+    files = state_store_files(stack, entity)
+
+    assert any(name.endswith(".zip") for name in files)
+    assert not any(name.endswith(".delta") for name in files)
 
 
 def test_a_run_with_nothing_new_appends_nothing(silver_runs: SilverRuns) -> None:
