@@ -8,7 +8,8 @@ from pyspark.sql import functions as F
 from pyspark.sql.streaming import DataStreamWriter, StreamingQuery
 from pyspark.sql.types import StructType
 
-from analytics.pipelines.tests.bronze.parse_samples import Json, change, landing
+from analytics.pipelines.tests.bronze.parse_samples import Json, change, landing, landing_records
+from pipelines.bronze.columns import MetadataColumn
 from pipelines.bronze.entities import Entity
 from pipelines.bronze.job import TableSink, await_queries, run
 from pipelines.schemas import KAFKA_RECORD_SCHEMA
@@ -16,7 +17,7 @@ from pipelines.settings import BronzeSettings
 
 
 def record(entity: Entity, offset: int, value: Json | str | None) -> Row:
-    """A Kafka record as the landing job writes it, without the reader's `landing_file`."""
+    """A Kafka record as the landing job writes it, without the reader's `_landing_file`."""
     landed = landing(entity, value, offset=offset)
     return Row(**{name: landed[name] for name in KAFKA_RECORD_SCHEMA.fieldNames()})
 
@@ -67,9 +68,11 @@ class FakeCatalog:
     def __init__(self, root: Path) -> None:
         self.root = root
         self.schemas: dict[str, StructType] = {}
+        self.comments: dict[str, str] = {}
 
-    def create(self, spark: SparkSession, table: str, schema: StructType) -> None:
+    def create(self, spark: SparkSession, table: str, schema: StructType, comment: str) -> None:
         self.schemas[table] = schema
+        self.comments[table] = comment
 
     def sink(self) -> TableSink:
         def append(writer: DataStreamWriter, table: str) -> StreamingQuery:
@@ -79,7 +82,10 @@ class FakeCatalog:
 
     def rows(self, spark: SparkSession, table: str) -> list[Row]:
         stored = spark.read.schema(self.schemas[table]).parquet(str(self.root / table))
-        return sorted(stored.collect(), key=lambda row: (row.record_source, row.source_offset))
+        return sorted(
+            stored.collect(),
+            key=lambda row: (row[MetadataColumn.RECORD_SOURCE], row[MetadataColumn.SOURCE_OFFSET]),
+        )
 
 
 def run_until_caught_up(
@@ -90,7 +96,7 @@ def run_until_caught_up(
 
 
 def offsets(rows: list[Row]) -> list[int]:
-    return [row.source_offset for row in rows]
+    return [row[MetadataColumn.SOURCE_OFFSET] for row in rows]
 
 
 def numbers(spark: SparkSession, folder: Path, count: int) -> DataFrame:
@@ -117,3 +123,8 @@ def start(rows: DataFrame, name: str, tmp_path: Path, *, available_now: bool) ->
     if available_now:
         return writer.trigger(availableNow=True).start()
     return writer.trigger(processingTime="1 second").start()
+
+
+def no_landed_records(spark: SparkSession, path: str) -> DataFrame:
+    """A landing reader that finds nothing, for checks that only need the parsed schemas."""
+    return landing_records(spark)

@@ -1,6 +1,5 @@
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from enum import StrEnum
 
 from pyspark.sql.types import (
     BooleanType,
@@ -12,79 +11,69 @@ from pyspark.sql.types import (
     StructType,
 )
 
-AUDIT_COLUMNS = ("updated_at", "updated_by", "created_at", "created_by")
-
-
-class SourceType(StrEnum):
-    BIGINT = "bigint"
-    INTEGER = "integer"
-    VARCHAR = "varchar"
-    BOOLEAN = "boolean"
-    TIMESTAMP = "timestamp"
-    DATE = "date"
-    DECIMAL = "decimal"
-
+from pipelines.schemas.definitions import (
+    ColumnDefinition,
+    ColumnType,
+    EntityDefinition,
+    load_entities,
+)
 
 VARIABLE_SCALE_DECIMAL = StructType(
     [StructField("scale", IntegerType()), StructField("value", StringType())]
 )
 
-JSON_TYPES: Mapping[SourceType, DataType] = {
-    SourceType.BIGINT: LongType(),
-    SourceType.INTEGER: IntegerType(),
-    SourceType.VARCHAR: StringType(),
-    SourceType.BOOLEAN: BooleanType(),
-    SourceType.TIMESTAMP: LongType(),
-    SourceType.DATE: IntegerType(),
-    SourceType.DECIMAL: VARIABLE_SCALE_DECIMAL,
+JSON_TYPES: Mapping[ColumnType, DataType] = {
+    ColumnType.LONG: LongType(),
+    ColumnType.INT: IntegerType(),
+    ColumnType.STRING: StringType(),
+    ColumnType.BOOLEAN: BooleanType(),
+    ColumnType.TIMESTAMP_MILLIS: LongType(),
+    ColumnType.DATE: IntegerType(),
+    ColumnType.DECIMAL: VARIABLE_SCALE_DECIMAL,
 }
 
 
-@dataclass(frozen=True, slots=True)
-class SourceColumn:
-    name: str
-    type: SourceType
-    not_null: bool = False
-    renamed_to: str | None = None
-
-    @property
-    def bronze_name(self) -> str:
-        return self.renamed_to or self.name
-
-    @property
-    def json_field(self) -> StructField:
-        return StructField(self.name, JSON_TYPES[self.type])
+def json_field(column: ColumnDefinition) -> StructField:
+    return StructField(column.name, JSON_TYPES[column.type])
 
 
 @dataclass(frozen=True, slots=True)
 class Entity:
-    name: str
-    key: str
-    columns: tuple[SourceColumn, ...]
+    definition: EntityDefinition
 
-    def __post_init__(self) -> None:
-        if self.key not in {column.name for column in self.columns}:
-            raise ValueError(f"Key column {self.key!r} is not a column of entity {self.name!r}")
+    @property
+    def name(self) -> str:
+        return self.definition.name
+
+    @property
+    def key(self) -> str:
+        return self.definition.key
+
+    @property
+    def columns(self) -> tuple[ColumnDefinition, ...]:
+        return self.definition.all_columns
 
     @property
     def row_schema(self) -> StructType:
         """The row image (`before` / `after`) as Debezium emits it in JSON."""
-        return StructType([column.json_field for column in self.columns])
+        return StructType([json_field(column) for column in self.columns])
 
     @property
     def audit_columns(self) -> tuple[str, ...]:
-        return tuple(c.bronze_name for c in self.columns if c.name in AUDIT_COLUMNS)
+        """Lake names of the shared columns the source table includes (`audit.avsc`)."""
+        return tuple(column.lake_name for column in self.definition.included_columns)
 
     @property
     def content_columns(self) -> tuple[str, ...]:
-        """Bronze names of every column except the key and the audit columns."""
-        excluded = {self.key, *AUDIT_COLUMNS}
-        return tuple(c.bronze_name for c in self.columns if c.name not in excluded)
+        """Lake names of every column except the key and the audit columns."""
+        return tuple(
+            column.lake_name for column in self.definition.columns if column.name != self.key
+        )
 
     @property
     def not_null_columns(self) -> tuple[str, ...]:
         """Source names of the columns declared NOT NULL in the source DDL."""
-        return tuple(c.name for c in self.columns if c.not_null)
+        return tuple(column.name for column in self.columns if column.not_null)
 
 
 class UnknownEntityError(LookupError):
@@ -94,64 +83,12 @@ class UnknownEntityError(LookupError):
         )
 
 
-AUDIT = (
-    SourceColumn("updated_at", SourceType.TIMESTAMP),
-    SourceColumn("updated_by", SourceType.BIGINT),
-    SourceColumn("created_at", SourceType.TIMESTAMP),
-    SourceColumn("created_by", SourceType.BIGINT),
-)
-
-CUSTOMERS = Entity(
-    name="customers",
-    key="customer_id",
-    columns=(
-        SourceColumn("customer_id", SourceType.BIGINT, not_null=True),
-        SourceColumn("customer_name", SourceType.VARCHAR, not_null=True),
-        SourceColumn("is_active", SourceType.BOOLEAN, not_null=True),
-        SourceColumn("customer_address", SourceType.VARCHAR),
-        *AUDIT,
-    ),
-)
-
-PRODUCTS = Entity(
-    name="products",
-    key="product_id",
-    columns=(
-        SourceColumn("product_id", SourceType.BIGINT, not_null=True),
-        SourceColumn("product_name", SourceType.VARCHAR, not_null=True),
-        SourceColumn("barcode", SourceType.VARCHAR, not_null=True),
-        SourceColumn("unity_price", SourceType.DECIMAL, not_null=True),
-        SourceColumn("is_active", SourceType.BOOLEAN),
-        *AUDIT,
-    ),
-)
-
-ORDERS = Entity(
-    name="orders",
-    key="order_id",
-    columns=(
-        SourceColumn("order_id", SourceType.BIGINT, not_null=True),
-        SourceColumn("order_date", SourceType.DATE),
-        SourceColumn("delivery_date", SourceType.DATE),
-        SourceColumn("customer_id", SourceType.BIGINT),
-        SourceColumn("status", SourceType.VARCHAR),
-        *AUDIT,
-    ),
-)
-
-ORDER_ITEMS = Entity(
-    name="order_items",
-    key="order_item_id",
-    columns=(
-        SourceColumn("order_item_id", SourceType.BIGINT, not_null=True),
-        SourceColumn("order_id", SourceType.BIGINT),
-        SourceColumn("product_id", SourceType.BIGINT),
-        SourceColumn("quanity", SourceType.INTEGER, renamed_to="quantity"),
-        *AUDIT,
-    ),
-)
-
-ENTITIES = (CUSTOMERS, PRODUCTS, ORDERS, ORDER_ITEMS)
+ENTITIES = tuple(Entity(definition) for definition in load_entities())
+_BY_NAME = {entity.name: entity for entity in ENTITIES}
+CUSTOMERS = _BY_NAME["customers"]
+PRODUCTS = _BY_NAME["products"]
+ORDERS = _BY_NAME["orders"]
+ORDER_ITEMS = _BY_NAME["order_items"]
 
 
 def entity_for_topic(topic: str, entities: Iterable[Entity] = ENTITIES) -> Entity:

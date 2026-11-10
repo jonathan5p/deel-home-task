@@ -35,7 +35,7 @@ APP_RUN = COMPOSE_PROJECT_NAME=$(CHECKS_PROJECT) $(COMPOSE) run --rm $(APP_BUILD
 PIPELINE_JOBS = $(addsuffix -job,$(if $(filter all,$(PIPELINE)),$(PIPELINES),$(filter $(PIPELINES),$(PIPELINE))))
 CHECK_PIPELINE = $(if $(and $(PIPELINE_JOBS),$(filter 1,$(words $(PIPELINE)))),,$(error Set PIPELINE to one of: $(PIPELINES) all (got "$(PIPELINE)"), e.g. make $@ PIPELINE=landing))
 
-.PHONY: help up down clean spark-submit spark-sql spark-history data-quality pipeline pipeline-logs pipeline-stop test lint format typecheck test-infra hooks
+.PHONY: help up down clean spark-submit spark-sql spark-history data-quality pipeline pipeline-logs pipeline-stop test lint format typecheck schemas test-infra hooks
 
 help:
 	@printf '%s\n' \
@@ -53,6 +53,8 @@ help:
 		'lint           Check linting and formatting with ruff in the app container.' \
 		'format         Format the code and apply safe lint fixes with ruff.' \
 		'typecheck      Check types with ty in the app container; any diagnostic fails.' \
+		'schemas        Render the full flat Avro schema of every lake table to target/schemas/<layer>/<table>.avsc, for reading.' \
+		'               Build output: git-ignored, regenerated each run; edit analytics/pipelines/src/pipelines/schemas/ instead.' \
 		'test-infra     Run the infra tests against an isolated copy of the stack (local only, a few minutes).' \
 		'hooks          Install the pre-commit hooks in this clone (once).' \
 		'Optional profiles: monitoring (Conduktor), history (Spark History Server). See README.md.'
@@ -110,6 +112,9 @@ format:
 
 typecheck:
 	@$(APP_RUN) spark-app ty check
+
+schemas:
+	@uv run --frozen python -m pipelines.schemas.render target/schemas
 
 test-infra:
 	@uv run --frozen pytest tests/infra --no-cov -p no:cacheprovider -v

@@ -1,0 +1,39 @@
+{
+  "type": "record",
+  "name": "orders",
+  "namespace": "operations",
+  "doc": "Orders placed by customers, with their status and dates",
+  "key": "order_id",
+  "include": ["audit"],
+  "fields": [
+    {
+      "name": "order_id",
+      "type": "long",
+      "doc": "Order identifier, the source table's primary key"
+    },
+    {
+      "name": "order_date",
+      "type": ["null", {"type": "int", "logicalType": "date"}],
+      "default": null,
+      "doc": "Date the order was placed"
+    },
+    {
+      "name": "delivery_date",
+      "type": ["null", {"type": "int", "logicalType": "date"}],
+      "default": null,
+      "doc": "Date the order is or was delivered"
+    },
+    {
+      "name": "customer_id",
+      "type": ["null", "long"],
+      "default": null,
+      "doc": "Customer who placed the order (customers.customer_id)"
+    },
+    {
+      "name": "status",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Order status as recorded in the source, for example PENDING or COMPLETED"
+    }
+  ]
+}

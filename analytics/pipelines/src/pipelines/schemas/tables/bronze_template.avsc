@@ -1,0 +1,54 @@
+{
+  "type": "record",
+  "name": "bronze_template",
+  "namespace": "lake",
+  "doc": "{entity_description}. Change log of source table {entity}: one typed row per Debezium change event (create, update, delete or snapshot), append-only and not deduplicated",
+  "include": ["source", "audit"],
+  "fields": [
+    {
+      "name": "_record_source",
+      "type": "string",
+      "doc": "Kafka topic the change event was read from"
+    },
+    {
+      "name": "_source_partition",
+      "type": "int",
+      "doc": "Kafka partition of the record"
+    },
+    {
+      "name": "_source_offset",
+      "type": "long",
+      "doc": "Offset of the record in its Kafka partition"
+    },
+    {
+      "name": "_published_at",
+      "type": {"type": "long", "logicalType": "timestamp-millis"},
+      "doc": "Kafka record timestamp (UTC); the table is partitioned by its day"
+    },
+    {
+      "name": "_change_op",
+      "type": "string",
+      "doc": "Kind of change: create, update, delete or snapshot (Debezium op c, u, d or r)"
+    },
+    {
+      "name": "_commit_sequence",
+      "type": "long",
+      "doc": "Position of the change in the source's commit log (Debezium source.lsn); increases in commit order"
+    },
+    {
+      "name": "_changed_at",
+      "type": {"type": "long", "logicalType": "timestamp-millis"},
+      "doc": "Time the change was committed in the source database (Debezium source.ts_ms)"
+    },
+    {
+      "name": "_captured_at",
+      "type": {"type": "long", "logicalType": "timestamp-millis"},
+      "doc": "Time Debezium processed the change (envelope ts_ms)"
+    },
+    {
+      "name": "_content_hash",
+      "type": "string",
+      "doc": "Hex SHA-256 of the content columns (key and audit columns excluded); unchanged content keeps its hash"
+    }
+  ]
+}

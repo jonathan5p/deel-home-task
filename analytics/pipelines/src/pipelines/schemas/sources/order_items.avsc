@@ -1,0 +1,34 @@
+{
+  "type": "record",
+  "name": "order_items",
+  "namespace": "operations",
+  "doc": "Line items of orders: a product and the quantity ordered",
+  "key": "order_item_id",
+  "include": ["audit"],
+  "fields": [
+    {
+      "name": "order_item_id",
+      "type": "long",
+      "doc": "Order item identifier, the source table's primary key"
+    },
+    {
+      "name": "order_id",
+      "type": ["null", "long"],
+      "default": null,
+      "doc": "Order the item belongs to (orders.order_id)"
+    },
+    {
+      "name": "product_id",
+      "type": ["null", "long"],
+      "default": null,
+      "doc": "Product ordered (products.product_id)"
+    },
+    {
+      "name": "quanity",
+      "type": ["null", "int"],
+      "default": null,
+      "doc": "Number of units ordered (source column quanity)",
+      "renamed_to": "quantity"
+    }
+  ]
+}

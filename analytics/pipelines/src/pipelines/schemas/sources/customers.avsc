@@ -1,0 +1,31 @@
+{
+  "type": "record",
+  "name": "customers",
+  "namespace": "operations",
+  "doc": "Customers who place orders",
+  "key": "customer_id",
+  "include": ["audit"],
+  "fields": [
+    {
+      "name": "customer_id",
+      "type": "long",
+      "doc": "Customer identifier, the source table's primary key"
+    },
+    {
+      "name": "customer_name",
+      "type": "string",
+      "doc": "Name of the customer"
+    },
+    {
+      "name": "is_active",
+      "type": "boolean",
+      "doc": "Whether the customer is active"
+    },
+    {
+      "name": "customer_address",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Address of the customer"
+    }
+  ]
+}

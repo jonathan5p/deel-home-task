@@ -1,0 +1,32 @@
+{
+  "type": "record",
+  "name": "audit",
+  "namespace": "operations",
+  "doc": "Audit columns every source table ends with; a source schema takes them with \"include\": [\"audit\"]",
+  "fields": [
+    {
+      "name": "updated_at",
+      "type": ["null", {"type": "long", "logicalType": "timestamp-millis"}],
+      "default": null,
+      "doc": "Time the source row was last updated (source wall clock read as UTC)"
+    },
+    {
+      "name": "updated_by",
+      "type": ["null", "long"],
+      "default": null,
+      "doc": "Identifier of the user who last updated the source row"
+    },
+    {
+      "name": "created_at",
+      "type": ["null", {"type": "long", "logicalType": "timestamp-millis"}],
+      "default": null,
+      "doc": "Time the source row was created (source wall clock read as UTC)"
+    },
+    {
+      "name": "created_by",
+      "type": ["null", "long"],
+      "default": null,
+      "doc": "Identifier of the user who created the source row"
+    }
+  ]
+}

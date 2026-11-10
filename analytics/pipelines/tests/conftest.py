@@ -1,7 +1,10 @@
 from collections.abc import Iterator
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
+
+from analytics.pipelines.tests.schemas.definitions_setup import SchemasTree
 
 if TYPE_CHECKING:
     from pyspark.sql import SparkSession
@@ -21,3 +24,8 @@ def spark() -> Iterator[SparkSession]:
     )
     yield session
     session.stop()
+
+
+@pytest.fixture
+def schemas(tmp_path: Path) -> SchemasTree:
+    return SchemasTree(tmp_path / "schemas")

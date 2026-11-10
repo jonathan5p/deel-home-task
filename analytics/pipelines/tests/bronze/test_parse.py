@@ -34,10 +34,14 @@ from analytics.pipelines.tests.bronze.parse_samples import (
     source_row,
     without,
 )
-from pipelines.bronze.entities import CUSTOMERS, ENTITIES, ORDER_ITEMS, ORDERS, PRODUCTS, Entity
-from pipelines.bronze.parse import (
+from pipelines.bronze.columns import (
     BRONZE_METADATA_COLUMNS,
     QUARANTINE_COLUMNS,
+    MetadataColumn,
+    RawColumn,
+)
+from pipelines.bronze.entities import CUSTOMERS, ENTITIES, ORDER_ITEMS, ORDERS, PRODUCTS, Entity
+from pipelines.bronze.parse import (
     FailureReason,
     parse_changes,
 )
@@ -54,7 +58,7 @@ def test_every_op_becomes_one_typed_bronze_row(
 
     row = only_row(parsed.bronze)
     assert business(row, entity) == expected_bronze(entity)
-    assert row.change_op == change_op
+    assert row[MetadataColumn.CHANGE_OP] == change_op
     assert parsed.quarantine.count() == 0
 
 
@@ -86,7 +90,7 @@ def test_an_update_takes_its_values_from_after(spark: SparkSession, entity: Enti
 def test_tombstones_are_dropped_not_quarantined(spark: SparkSession, entity: Entity) -> None:
     parsed = parse(spark, entity, change(entity, "d"), None)
 
-    assert [row.source_offset for row in parsed.bronze.collect()] == [0]
+    assert [row[MetadataColumn.SOURCE_OFFSET] for row in parsed.bronze.collect()] == [0]
     assert parsed.quarantine.count() == 0
 
 
@@ -97,13 +101,13 @@ def test_bronze_rows_carry_the_source_coordinates_and_change_metadata(
 
     row = only_row(parse_changes(records, CUSTOMERS).bronze)
 
-    assert row.record_source == "test.operations.customers"
-    assert row.source_partition == 0
-    assert row.source_offset == 41
-    assert row.published_at == PUBLISHED
-    assert row.change_position == LSN
-    assert row.changed_at == datetime(2026, 11, 8, 14, 21, 0, 25000)
-    assert row.captured_at == datetime(2026, 11, 8, 14, 21, 0, 561000)
+    assert row[MetadataColumn.RECORD_SOURCE] == "test.operations.customers"
+    assert row[MetadataColumn.SOURCE_PARTITION] == 0
+    assert row[MetadataColumn.SOURCE_OFFSET] == 41
+    assert row[MetadataColumn.PUBLISHED_AT] == PUBLISHED
+    assert row[MetadataColumn.COMMIT_SEQUENCE] == LSN
+    assert row[MetadataColumn.CHANGED_AT] == datetime(2026, 11, 8, 14, 21, 0, 25000)
+    assert row[MetadataColumn.CAPTURED_AT] == datetime(2026, 11, 8, 14, 21, 0, 561000)
 
 
 @pytest.mark.parametrize("entity", ENTITIES, ids=ENTITY_IDS)
@@ -112,7 +116,7 @@ def test_bronze_columns_are_the_business_columns_then_the_metadata(
 ) -> None:
     parsed = parse(spark, entity)
 
-    business_columns = [column.bronze_name for column in entity.columns]
+    business_columns = [column.lake_name for column in entity.columns]
     assert parsed.bronze.columns == [*business_columns, *BRONZE_METADATA_COLUMNS]
     assert tuple(parsed.quarantine.columns) == QUARANTINE_COLUMNS
 
@@ -128,9 +132,9 @@ def test_source_encodings_become_typed_columns(spark: SparkSession) -> None:
     assert types["products"]["unity_price"] == DecimalType(38, 10)
     assert types["orders"]["order_date"] == DateType()
     assert types["order_items"]["quantity"] == IntegerType()
-    assert types["customers"]["change_position"] == LongType()
-    assert types["customers"]["changed_at"] == TimestampType()
-    assert types["customers"]["content_hash"] == StringType()
+    assert types["customers"][MetadataColumn.COMMIT_SEQUENCE] == LongType()
+    assert types["customers"][MetadataColumn.CHANGED_AT] == TimestampType()
+    assert types["customers"][MetadataColumn.CONTENT_HASH] == StringType()
 
 
 @pytest.mark.parametrize("entity", ENTITIES, ids=ENTITY_IDS)
@@ -146,7 +150,7 @@ def test_the_content_hash_ignores_audit_columns_and_the_op(
         change(entity, "d"),
     )
 
-    assert len({row.content_hash for row in parsed.bronze.collect()}) == 1
+    assert len({row[MetadataColumn.CONTENT_HASH] for row in parsed.bronze.collect()}) == 1
 
 
 @pytest.mark.parametrize("entity", ENTITIES, ids=ENTITY_IDS)
@@ -155,7 +159,7 @@ def test_a_content_change_changes_the_hash(spark: SparkSession, entity: Entity) 
 
     parsed = parse(spark, entity, change(entity, "c"), change(entity, "u", changed))
 
-    first, second = (row.content_hash for row in parsed.bronze.collect())
+    first, second = (row[MetadataColumn.CONTENT_HASH] for row in parsed.bronze.collect())
     assert first != second
 
 
@@ -226,8 +230,8 @@ def test_invalid_records_are_quarantined_with_their_reason(
     parsed = parse(spark, entity, value)
 
     row = only_row(parsed.quarantine)
-    assert row.failure_reason == reason
-    assert row.landing_file == landing_file(entity)
+    assert row[MetadataColumn.FAILURE_REASON] == reason
+    assert row[MetadataColumn.LANDING_FILE] == landing_file(entity)
     assert parsed.bronze.count() == 0
 
 
@@ -236,16 +240,16 @@ def test_quarantine_rows_keep_the_raw_record_and_its_coordinates(spark: SparkSes
 
     row = only_row(parsed.quarantine)
     assert row.asDict() == {
-        "record_source": "test.operations.orders",
-        "source_partition": 0,
-        "source_offset": 1,
-        "published_at": PUBLISHED,
-        "landing_file": "s3a://lake/landing/test.operations.orders/part-00000.avro",
-        "key": '{"order_id": 1}',
-        "value": "not json",
-        "failure_reason": str(FailureReason.NOT_AN_ENVELOPE),
+        MetadataColumn.RECORD_SOURCE: "test.operations.orders",
+        MetadataColumn.SOURCE_PARTITION: 0,
+        MetadataColumn.SOURCE_OFFSET: 1,
+        MetadataColumn.PUBLISHED_AT: PUBLISHED,
+        MetadataColumn.LANDING_FILE: "s3a://lake/landing/test.operations.orders/part-00000.avro",
+        RawColumn.KEY: '{"order_id": 1}',
+        RawColumn.VALUE: "not json",
+        MetadataColumn.FAILURE_REASON: str(FailureReason.NOT_AN_ENVELOPE),
     }
-    assert [row.source_offset for row in parsed.bronze.collect()] == [0]
+    assert [row[MetadataColumn.SOURCE_OFFSET] for row in parsed.bronze.collect()] == [0]
 
 
 def test_the_first_failed_check_is_the_reason(spark: SparkSession) -> None:
@@ -253,4 +257,7 @@ def test_the_first_failed_check_is_the_reason(spark: SparkSession) -> None:
 
     parsed = parse(spark, CUSTOMERS, envelope("c", after=row_without_key_or_name))
 
-    assert only_row(parsed.quarantine).failure_reason == f"{FailureReason.MISSING_KEY}: customer_id"
+    assert (
+        only_row(parsed.quarantine)[MetadataColumn.FAILURE_REASON]
+        == f"{FailureReason.MISSING_KEY}: customer_id"
+    )

@@ -7,6 +7,7 @@ from typing import NamedTuple
 from pyspark.sql import DataFrame, Row, SparkSession
 from pyspark.sql.types import StringType, StructField, StructType
 
+from pipelines.bronze.columns import MetadataColumn
 from pipelines.bronze.entities import ENTITIES, Entity
 from pipelines.bronze.parse import ParsedChanges, parse_changes
 from pipelines.schemas import KAFKA_RECORD_SCHEMA
@@ -16,7 +17,7 @@ LSN = 26767664
 SOURCE_TS_MS = 1794147660025
 CAPTURED_TS_MS = 1794147660561
 LANDING_SCHEMA = StructType(
-    [*KAFKA_RECORD_SCHEMA.fields, StructField("landing_file", StringType())]
+    [*KAFKA_RECORD_SCHEMA.fields, StructField(MetadataColumn.LANDING_FILE, StringType())]
 )
 
 type Json = dict[str, object]
@@ -158,7 +159,7 @@ def landing(entity: Entity, value: Json | str | None, *, offset: int = 0) -> Row
         offset=offset,
         timestamp=PUBLISHED,
         timestampType=0,
-        landing_file=landing_file(entity),
+        **{MetadataColumn.LANDING_FILE: landing_file(entity)},
     )
 
 
