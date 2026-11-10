@@ -1,0 +1,19 @@
+{
+  "type": "record",
+  "name": "top_delivery_dates_by_open_orders",
+  "namespace": "gold",
+  "doc": "The 3 delivery dates with the most open orders, more when several share the third place",
+  "fields": [
+    {
+      "name": "delivery_date",
+      "type": ["null", {"type": "int", "logicalType": "date"}],
+      "default": null,
+      "from": "orders.delivery_date"
+    },
+    {
+      "name": "open_orders",
+      "type": "long",
+      "doc": "Number of open orders with this delivery date"
+    }
+  ]
+}

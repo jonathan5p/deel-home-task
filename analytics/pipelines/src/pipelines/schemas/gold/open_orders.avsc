@@ -1,0 +1,53 @@
+{
+  "type": "record",
+  "name": "open_orders",
+  "namespace": "gold",
+  "doc": "Current orders that are open: not deleted in the source and in a status whose is_open is true; read by the business questions",
+  "fields": [
+    {
+      "name": "order_id",
+      "type": "long",
+      "from": "orders.order_id"
+    },
+    {
+      "name": "status_key",
+      "type": "int",
+      "from": "gold.current_orders.status_key"
+    },
+    {
+      "name": "customer_id",
+      "type": ["null", "long"],
+      "default": null,
+      "from": "orders.customer_id"
+    },
+    {
+      "name": "order_date",
+      "type": ["null", {"type": "int", "logicalType": "date"}],
+      "default": null,
+      "from": "orders.order_date"
+    },
+    {
+      "name": "delivery_date",
+      "type": ["null", {"type": "int", "logicalType": "date"}],
+      "default": null,
+      "from": "orders.delivery_date"
+    },
+    {
+      "name": "order_date_key",
+      "type": ["null", "int"],
+      "default": null,
+      "from": "gold.fact_order_history.order_date_key"
+    },
+    {
+      "name": "delivery_date_key",
+      "type": ["null", "int"],
+      "default": null,
+      "from": "gold.fact_order_history.delivery_date_key"
+    },
+    {
+      "name": "_changed_at",
+      "type": {"type": "long", "logicalType": "timestamp-millis"},
+      "doc": "Time the change was committed in the source database (Debezium source.ts_ms)"
+    }
+  ]
+}

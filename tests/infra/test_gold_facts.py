@@ -11,6 +11,7 @@ from tests.infra.gold_facts_setup import (
     IN_UNFOLDED_VERSION,
     ITEMS_FIRST,
     OUT_OF_ORDER,
+    REOPENED,
     RESNAPSHOT,
     UNFOLDED_ORDER,
     FactRuns,
@@ -36,7 +37,7 @@ def test_the_current_state_holds_the_latest_version_of_each_order(fact_runs: Fac
     assert by_key(current, CHANGE_SEQUENCE) == [
         ["9501", COMPLETED, "9401", ORDER_DAY, DELIVERY_DAY, "60", at(60), "f"]
     ]
-    assert [row[5] for row in current] == ["60", "100", "120", "140", "395", "300", "550"]
+    assert [row[5] for row in current] == ["60", "100", "120", "140", "395", "300", "550", "720"]
 
 
 def test_replaying_every_change_from_a_fresh_checkpoint_changes_nothing(
@@ -137,3 +138,23 @@ def test_an_item_snapshotted_just_before_its_product_takes_the_first_product_ver
         assert by_key(state.item_history, BEFORE_ITS_PRODUCT) == [
             ["9606", "600", "600", "7.0000000000", "14.0000000000"]
         ]
+
+
+def test_an_order_is_open_again_after_each_status_change_and_not_after_a_late_one(
+    fact_runs: FactRuns,
+) -> None:
+    flags = [
+        by_key(state.open_flags, REOPENED)
+        for state in (fact_runs.first, fact_runs.second, fact_runs.replayed, fact_runs.late)
+    ]
+
+    assert flags == [[["9508", "t"]], [["9508", "f"]], [["9508", "f"]], [["9508", "t"]]]
+    assert by_key(fact_runs.second.open_orders, REOPENED) == []
+    assert by_key(fact_runs.late.open_orders, REOPENED) == [["9508"]]
+    assert by_key(fact_runs.late.open_flags, CHANGE_SEQUENCE) == [["9501", "f"]]
+
+
+def test_a_deleted_order_is_never_an_open_order(fact_runs: FactRuns) -> None:
+    for state in (fact_runs.first, fact_runs.replayed, fact_runs.late):
+        assert by_key(state.open_flags, DELETED) == [["9503", "t"]]
+        assert by_key(state.open_orders, DELETED) == []

@@ -1,4 +1,5 @@
 import subprocess
+from collections.abc import Iterable
 
 from tests.infra.stack import REPO_ROOT, Stack
 
@@ -22,7 +23,14 @@ STAGING_TABLES = {
     "stage_fact_order_item_history",
 }
 VERSIONS_VIEWS = {"dim_customer_versions", "dim_product_versions"}
-PUBLIC_VIEWS = INTERNAL_TABLES | {"data_freshness"}
+BUSINESS_VIEWS = (
+    "open_orders_by_delivery_date_and_status",
+    "top_delivery_dates_by_open_orders",
+    "pending_items_by_product",
+    "top_customers_by_pending_orders",
+)
+VIEWS_WITHOUT_TABLE = ("open_orders", *BUSINESS_VIEWS)
+PUBLIC_VIEWS = INTERNAL_TABLES | {"data_freshness", *VIEWS_WITHOUT_TABLE}
 
 UNDESCRIBED_RELATIONS = """
 SELECT n.nspname || '.' || c.relname
@@ -49,6 +57,30 @@ WHERE n.nspname IN ('gold', 'gold_internal')
 ORDER BY 1;
 """
 
+# Indexes behind a constraint are named and described by it, and partition indexes by their
+# parent's index.
+UNDESCRIBED_INDEXES = """
+SELECT n.nspname || '.' || c.relname
+FROM pg_index AS i
+JOIN pg_class AS c ON c.oid = i.indexrelid
+JOIN pg_namespace AS n ON n.oid = c.relnamespace
+WHERE n.nspname IN ('gold', 'gold_internal')
+  AND NOT c.relispartition
+  AND NOT EXISTS (
+      SELECT FROM pg_constraint AS k
+      WHERE k.conindid = i.indexrelid AND k.contype IN ('p', 'u', 'x')
+  )
+  AND coalesce(obj_description(c.oid, 'pg_class'), '') = ''
+ORDER BY 1;
+"""
+
+CURRENT_STATE_INDEXES = """
+SELECT indexname, indexdef
+FROM pg_indexes
+WHERE schemaname = 'gold_internal' AND tablename IN ('current_orders', 'current_order_items')
+ORDER BY 1;
+"""
+
 UNDESCRIBED_SCHEMAS = """
 SELECT nspname
 FROM pg_namespace
@@ -66,6 +98,21 @@ FROM pg_class AS c
 JOIN pg_namespace AS n ON n.oid = c.relnamespace
 WHERE n.nspname = '{schema}' AND c.relkind IN ('r', 'p', 'v') AND NOT c.relispartition;
 """
+
+
+def column_types(relation: str) -> str:
+    """The columns of a relation in order, as name|type rows."""
+    return f"""
+SELECT attname, atttypid::regtype::text
+FROM pg_attribute
+WHERE attrelid = '{relation}'::regclass AND attnum > 0 AND NOT attisdropped
+ORDER BY attnum;
+"""
+
+
+def type_names(types: Iterable[str]) -> str:
+    """One row with the canonical name of each type, as `column_types` shows it."""
+    return "SELECT " + ", ".join(f"'{name}'::regtype::text" for name in types) + ";"
 
 
 PUBLIC_PIPELINE_ONLY_COLUMNS = """
@@ -95,11 +142,11 @@ VALUES
     (3, 'Alan Turing', 'Side Street 4', true, 120, 't1', false, '2026-11-01 08:00');
 
 INSERT INTO gold_internal.current_orders (
-    order_id, status_key, customer_id, order_date, delivery_date,
+    order_id, status_key, is_open, customer_id, order_date, delivery_date,
     order_date_key, delivery_date_key, _commit_sequence, _changed_at, _is_deleted
 )
 SELECT
-    o.order_id, s.status_key, o.customer_id, date '2026-11-09', o.delivery_date,
+    o.order_id, s.status_key, s.is_open, o.customer_id, date '2026-11-09', o.delivery_date,
     20261109, to_char(o.delivery_date, 'YYYYMMDD')::int, 400 + o.order_id,
     timestamp '2026-11-09 09:00', o.is_deleted
 FROM (
@@ -142,11 +189,11 @@ FROM (
 # is the one with 2, and the one with 1 (fourth) is left out.
 TIES_AT_THE_TOP = """
 INSERT INTO gold_internal.current_orders (
-    order_id, status_key, customer_id, order_date, delivery_date,
+    order_id, status_key, is_open, customer_id, order_date, delivery_date,
     order_date_key, delivery_date_key, _commit_sequence, _changed_at, _is_deleted
 )
 SELECT
-    o.order_id, s.status_key, o.customer_id, date '2026-11-09', o.delivery_date,
+    o.order_id, s.status_key, s.is_open, o.customer_id, date '2026-11-09', o.delivery_date,
     20261109, to_char(o.delivery_date, 'YYYYMMDD')::int, 800 + o.order_id,
     timestamp '2026-11-09 09:00', false
 FROM (
@@ -247,8 +294,12 @@ INSERT INTO gold_internal.dim_customer (
 VALUES
     (1, 10, 'a1', false, timestamp '2026-11-08 10:00'),
     (1, 20, 'a2', false, timestamp '2026-11-09 08:00');
-INSERT INTO gold_internal.current_orders (order_id, status_key, _commit_sequence, _changed_at)
-VALUES (1, 1, 30, timestamp '2026-11-09 09:00'), (2, 1, 40, timestamp '2026-11-09 09:30');
+INSERT INTO gold_internal.current_orders (
+    order_id, status_key, is_open, _commit_sequence, _changed_at
+)
+VALUES
+    (1, 1, true, 30, timestamp '2026-11-09 09:00'),
+    (2, 1, true, 40, timestamp '2026-11-09 09:30');
 """
 
 FRESHNESS = (

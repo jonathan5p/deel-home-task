@@ -3,7 +3,7 @@
   "name": "current_orders",
   "namespace": "gold",
   "doc": "Latest version of every order, deleted ones included",
-  "public_doc": "Latest version of every order not deleted in the source; read by the business questions",
+  "public_doc": "Latest version of every order not deleted in the source",
   "fields": [
     {
       "name": "order_id",
@@ -14,6 +14,11 @@
       "name": "status_key",
       "type": "int",
       "doc": "Current order status (dim_order_status key)"
+    },
+    {
+      "name": "is_open",
+      "type": "boolean",
+      "from": "gold.dim_order_status.is_open"
     },
     {
       "name": "customer_id",

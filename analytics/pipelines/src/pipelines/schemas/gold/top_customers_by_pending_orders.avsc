@@ -1,0 +1,25 @@
+{
+  "type": "record",
+  "name": "top_customers_by_pending_orders",
+  "namespace": "gold",
+  "doc": "The 3 customers with the most pending (open) orders, more when several share the third place; a customer not in dim_customer yet has a null name",
+  "fields": [
+    {
+      "name": "customer_id",
+      "type": ["null", "long"],
+      "default": null,
+      "from": "orders.customer_id"
+    },
+    {
+      "name": "customer_name",
+      "type": ["null", "string"],
+      "default": null,
+      "from": "customers.customer_name"
+    },
+    {
+      "name": "pending_orders",
+      "type": "long",
+      "doc": "Number of pending (open) orders of the customer"
+    }
+  ]
+}

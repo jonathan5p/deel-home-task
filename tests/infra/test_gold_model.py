@@ -2,8 +2,11 @@ import subprocess
 
 import pytest
 
+from pipelines.schemas.definitions import POSTGRES_TYPES
+from pipelines.schemas.gold_definitions import load_gold_tables
 from tests.infra.gold_fixtures import (
     CURRENT_STATE,
+    CURRENT_STATE_INDEXES,
     DELETED_ROWS,
     FRESHNESS,
     FRESHNESS_FIXTURE,
@@ -14,16 +17,20 @@ from tests.infra.gold_fixtures import (
     STAGING_TABLES,
     TIES_AT_THE_TOP,
     UNDESCRIBED_COLUMNS,
+    UNDESCRIBED_INDEXES,
     UNDESCRIBED_RELATIONS,
     UNDESCRIBED_SCHEMAS,
     VERSIONS_VIEWS,
+    VIEWS_WITHOUT_TABLE,
     answer,
+    column_types,
     item_change,
     order_change,
     psql,
     rolled_back,
     rows,
     top_level_relations,
+    type_names,
 )
 from tests.infra.stack import Stack
 
@@ -94,6 +101,51 @@ def test_every_schema_table_and_column_has_a_description(gold: Stack) -> None:
     assert rows(gold, UNDESCRIBED_SCHEMAS) == []
     assert rows(gold, UNDESCRIBED_RELATIONS) == []
     assert rows(gold, UNDESCRIBED_COLUMNS) == []
+
+
+def test_every_index_outside_a_constraint_has_a_description(gold: Stack) -> None:
+    assert rows(gold, UNDESCRIBED_INDEXES) == []
+
+
+@pytest.mark.parametrize("view", VIEWS_WITHOUT_TABLE)
+def test_business_views_have_the_columns_and_types_of_their_schema(gold: Stack, view: str) -> None:
+    columns = load_gold_tables()[view].columns
+    types = rows(gold, type_names(POSTGRES_TYPES[column.type] for column in columns))[0]
+
+    assert rows(gold, column_types(f"gold.{view}")) == [
+        [column.name, type_name] for column, type_name in zip(columns, types, strict=True)
+    ]
+
+
+def test_current_state_tables_have_the_indexes_of_the_business_views(gold: Stack) -> None:
+    orders = "ON gold_internal.current_orders USING btree"
+    items = "ON gold_internal.current_order_items USING btree"
+    open_orders = "WHERE (is_open AND (NOT _is_deleted))"
+
+    assert rows(gold, CURRENT_STATE_INDEXES) == [
+        [
+            "current_order_items_live_order_idx",
+            "CREATE INDEX current_order_items_live_order_idx"
+            f" {items} (order_id) INCLUDE (product_id, quantity) WHERE (NOT _is_deleted)",
+        ],
+        [
+            "current_order_items_pkey",
+            f"CREATE UNIQUE INDEX current_order_items_pkey {items} (order_item_id)",
+        ],
+        [
+            "current_orders_open_customer_idx",
+            f"CREATE INDEX current_orders_open_customer_idx {orders} (customer_id) {open_orders}",
+        ],
+        [
+            "current_orders_open_delivery_idx",
+            "CREATE INDEX current_orders_open_delivery_idx"
+            f" {orders} (delivery_date, status_key) {open_orders}",
+        ],
+        [
+            "current_orders_pkey",
+            f"CREATE UNIQUE INDEX current_orders_pkey {orders} (order_id)",
+        ],
+    ]
 
 
 def test_order_statuses_are_seeded_with_their_open_flag(gold: Stack) -> None:

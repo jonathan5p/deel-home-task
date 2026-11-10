@@ -1,0 +1,24 @@
+{
+  "type": "record",
+  "name": "open_orders_by_delivery_date_and_status",
+  "namespace": "gold",
+  "doc": "Number of open orders by delivery date and status: one row per delivery date and open status with at least one open order",
+  "fields": [
+    {
+      "name": "delivery_date",
+      "type": ["null", {"type": "int", "logicalType": "date"}],
+      "default": null,
+      "from": "orders.delivery_date"
+    },
+    {
+      "name": "status_code",
+      "type": "string",
+      "from": "gold.dim_order_status.status_code"
+    },
+    {
+      "name": "open_orders",
+      "type": "long",
+      "doc": "Number of open orders with this delivery date and status"
+    }
+  ]
+}

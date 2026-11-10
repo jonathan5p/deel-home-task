@@ -5,6 +5,7 @@ import pytest
 from analytics.pipelines.tests.gold.facts_setup import (
     CUSTOMER,
     DELIVERY_DATE,
+    IS_OPEN,
     ITEMS,
     ORDERS,
     PRODUCT,
@@ -69,7 +70,13 @@ def test_the_key_and_the_history_key_come_from_the_entity_key() -> None:
 
 
 def test_the_lookups_fill_the_derived_columns() -> None:
-    assert ORDERS.derived == {"status_key", "order_date_key", "delivery_date_key", "customer_key"}
+    assert ORDERS.derived == {
+        "status_key",
+        "is_open",
+        "order_date_key",
+        "delivery_date_key",
+        "customer_key",
+    }
     assert ITEMS.derived == {"product_key", "unit_price", "line_amount"}
 
 
@@ -303,3 +310,21 @@ def test_a_column_without_a_silver_column_or_a_lookup_is_refused() -> None:
 def test_the_current_state_table_must_hold_the_key() -> None:
     with pytest.raises(FactDefinitionError, match=r"must come from order_items\.order_item_id"):
         replace(ITEMS, current=without(ITEMS.current, "order_item_id"))
+
+
+def test_an_order_is_open_when_its_status_is_open_and_unknown_statuses_count_as_open() -> None:
+    assert IS_OPEN.expression("fact_row") == (
+        "coalesce((SELECT lookup.is_open FROM gold_internal.dim_order_status AS lookup"
+        " WHERE lookup.status_code = fact_row.status),"
+        " (SELECT lookup.is_open FROM gold_internal.dim_order_status AS lookup"
+        " WHERE lookup.status_code = 'UNKNOWN'))"
+    )
+
+
+def test_the_open_flag_is_kept_only_with_the_current_state_and_follows_each_newer_change() -> None:
+    current = ORDERS.current_statement()
+
+    assert f"        {IS_OPEN.expression('fact_row')} AS is_open,\n" in current
+    assert "        is_open = source.is_open,\n" in current
+    assert "is_open" not in ORDERS.history_statement()
+    assert "is_open" not in {column.name for column in ORDERS.staged_columns}
