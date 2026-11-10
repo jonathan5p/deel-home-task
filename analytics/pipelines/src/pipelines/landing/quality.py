@@ -1,4 +1,4 @@
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from functools import reduce
 
 from pyspark.errors import AnalysisException
@@ -8,7 +8,7 @@ from pyspark.sql.types import DataType, StructType
 
 from pipelines.quality.checks import Check, CheckResult
 from pipelines.schemas import KAFKA_RECORD_SCHEMA
-from pipelines.settings import KafkaSettings, LandingSettings
+from pipelines.settings import KafkaSettings, LandingQualitySettings, LandingSettings
 
 PARTITION = ["topic", "partition"]
 
@@ -269,3 +269,26 @@ def partition_results(stats: Row, *, check_start: bool) -> list[CheckResult]:
         )
     )
     return results
+
+
+type LandingReader = Callable[[SparkSession, LandingSettings], DataFrame]
+type RecordReader = Callable[[SparkSession, KafkaSettings], DataFrame]
+
+
+def run_checks(
+    spark: SparkSession,
+    settings: LandingQualitySettings,
+    *,
+    read_landed: LandingReader = read_landing,
+    read_records: RecordReader = read_kafka,
+) -> list[CheckResult]:
+    landed = read_landed(spark, settings.landing)
+    # Kafka keeps receiving records while the checks run; one materialised snapshot keeps the
+    # partition bounds and the record comparison consistent with each other.
+    kafka = read_records(spark, settings.landing.kafka).localCheckpoint(eager=True)
+    return reconcile(
+        landed,
+        kafka,
+        topics=settings.landing.kafka.topics,
+        last_offsets=settings.last_offsets,
+    )

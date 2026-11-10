@@ -8,6 +8,7 @@ SPARK_SQL_VARS ?=
 LANDING_ROOT ?= s3a://lake/landing
 PROFILES ?=
 PIPELINE ?=
+CHECK ?= all
 PIPELINES = landing bronze silver gold
 GOLD_CHECKPOINTS ?= /buckets/lake/checkpoints/gold
 MAINTENANCE_UI_PORT ?= 4044
@@ -54,7 +55,7 @@ help:
 		'bronze-replay  Append the changes of a landing range that bronze lacks: TOPIC plus FROM_OFFSET and TO_OFFSET (optional PARTITION) or FROM_TIME and TO_TIME.' \
 		'spark-sql      Open the Spark SQL shell in its own driver container; SPARK_SQL_FILE runs a file instead; SPARK_SQL_VARS (key=value ...) and LANDING_ROOT set its variables.' \
 		'spark-history  Toggle the optional Spark History Server (localhost:18080): start it if stopped, stop it if running.' \
-		'data-quality   Run the data quality checks against the running stack (landing versus Kafka); fails if any check fails.' \
+		'data-quality   Run the CHECK data quality checks against the running stack (landing, bronze or all); fails if any check fails.' \
 		'lake-maintenance  Compact the bronze and silver Iceberg tables, expire old snapshots and remove orphan files; fails if any table fails.' \
 		'pipeline       Start the stack, the History Server and the PIPELINE job (landing, bronze, silver, gold or all) as a long-running service.' \
 		'               silver and all also run lake-views once the silver tables exist.' \
@@ -111,8 +112,8 @@ spark-history:
 	fi
 
 data-quality:
-	@$(MAKE) --no-print-directory spark-submit SPARK_APP=analytics/pipelines/src/pipelines/landing/quality_job.py \
-		SPARK_UI_PORT=0 SPARK_CONF="spark.cores.max=2 $(SPARK_CONF)"
+	@$(MAKE) --no-print-directory spark-submit SPARK_APP=analytics/pipelines/src/pipelines/quality/job.py \
+		SPARK_APP_ARGS="$(CHECK)" SPARK_UI_PORT=0 SPARK_CONF="spark.cores.max=2 $(SPARK_CONF)"
 
 lake-maintenance:
 	@$(MAKE) --no-print-directory spark-submit SPARK_APP=analytics/pipelines/src/pipelines/maintenance/job.py \
