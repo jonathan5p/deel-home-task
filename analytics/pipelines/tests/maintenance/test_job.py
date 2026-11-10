@@ -4,21 +4,24 @@ from pathlib import Path
 import pytest
 from pyspark.sql import SparkSession
 
-from analytics.pipelines.tests.maintenance.job_setup import (
+from analytics.pipelines.tests.lake.checkpoints_setup import (
     FakeCheckpoints,
+    offsets,
+    snapshot_offset,
+)
+from analytics.pipelines.tests.maintenance.job_setup import (
     FakeSql,
     data_files,
     downstream,
     hours_from_now,
     leave_file,
     maintenance_settings,
-    offsets,
     small_appends,
     snapshot_operations,
     stream_into,
     table_rows,
 )
-from pipelines.maintenance.checkpoints import HadoopCheckpointFiles
+from pipelines.lake.checkpoints import HadoopCheckpointFiles
 from pipelines.maintenance.job import (
     MaintenanceFailedError,
     TableMaintenance,
@@ -205,9 +208,9 @@ def test_a_stream_whose_snapshot_is_already_gone_blocks_expiry(
 def test_expiry_waits_for_every_stream_reading_the_table() -> None:
     files = {
         "s3a://lake/checkpoints/a/commits/0": "",
-        "s3a://lake/checkpoints/a/offsets/0": offsets(11),
+        "s3a://lake/checkpoints/a/offsets/0": offsets(snapshot_offset(11)),
         "s3a://lake/checkpoints/b/commits/0": "",
-        "s3a://lake/checkpoints/b/offsets/0": offsets(12),
+        "s3a://lake/checkpoints/b/offsets/0": offsets(snapshot_offset(12)),
     }
     sql = FakeSql({"bronze": ["orders"]}, expiring={11: False, 12: True})
     settings = maintenance_settings(

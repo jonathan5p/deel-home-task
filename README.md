@@ -409,10 +409,10 @@ analytics/
     src/pipelines/
       settings.py           pipeline settings (Kafka, lake, analytics database)
       schemas/              the Avro table and column schemas, their loader, and the landing record schema
-      quality/checks.py     the data quality check framework
-      landing/              landing layer: job.py (streaming job), quality.py and quality_job.py (data quality checks)
-      lake/                 code the lake layers share: metadata column names, Spark types, Iceberg table creation and description sync, Iceberg view creation and sync, starting and awaiting streaming queries
-      bronze/               bronze layer: source entities, the transforms from landing records to bronze rows, and job.py (streaming job)
+      quality/              data quality: checks.py (the check framework), job.py (runs the checks named in CHECK), report.py (the JSON report)
+      landing/              landing layer: job.py (streaming job), quality.py (data quality checks)
+      lake/                 code the lake layers share: metadata column names, Spark types, Iceberg table creation and description sync, Iceberg view creation and sync, checkpoint and snapshot bounds, starting and awaiting streaming queries
+      bronze/               bronze layer: source entities, the transforms from landing records to bronze rows, job.py (streaming job) and quality.py (data quality checks)
       silver/               silver layer: the transform from bronze rows to version rows, the history and current views, and job.py (streaming job)
       gold/                 gold layer: ddl.py and ddl.sql.j2 (the gold DDL from the gold Avro schemas), scd2.py (the SCD2 SQL),
                             facts.py (the history fact and current-state SQL), dimensions.py (the dimensions and facts
@@ -611,11 +611,17 @@ The cluster has two workers with 5 cores and 5 GiB each, and each job takes at m
 
 #### Data quality checks
 
-Data quality checks verify the data itself, on the running stack. They are separate from unit tests (the code, on synthetic data) and from infra tests (the platform, on a throwaway stack), and run on demand. The framework lives in `analytics/pipelines/src/pipelines/quality/`, and each layer's checks next to its code (`pipelines/landing/quality.py`); they run as a Spark job:
+Data quality checks verify the data itself, on the running stack. They are separate from unit tests (the code, on synthetic data) and from infra tests (the platform, on a throwaway stack), and run on demand. Each check compares one layer with its upstream layer only, never with the source database, so the checks form a chain from Kafka to the lake. The framework lives in `analytics/pipelines/src/pipelines/quality/`, and each layer's checks next to its code (`pipelines/landing/quality.py`, `pipelines/bronze/quality.py`). They run as one Spark job, `pipelines/quality/job.py`:
 
 ```sh
-make data-quality
+make data-quality                 # every check (CHECK=all)
+make data-quality CHECK=landing   # Kafka -> landing
+make data-quality CHECK=bronze    # landing -> bronze and its quarantine
 ```
+
+- **Output:** each check prints one JSON line per result, prefixed with `<CHECK> QUALITY` (`LANDING QUALITY`, `BRONZE QUALITY`), then a summary line of its own, and the run ends with a `DATA QUALITY` summary of every check that names the run's report. The job exits with code 1 if any check fails.
+- **Report:** every run also writes one JSON file, `<LAKE_ROOT>/quality/reports/<UTC time>.json` (locally `s3a://lake/quality/reports/20261110T151803Z.json`), with each check's results and summary and the run's summary, so the results persist and can be inspected later (`curl http://localhost:8888/buckets/lake/quality/reports/` lists them).
+- **Bounded by what the downstream layer committed:** a check reads the upstream position the downstream stream's checkpoint committed (`pipelines/lake/checkpoints.py`), and the downstream table as of the newest snapshot that holds no later batch of that stream (`pipelines/lake/snapshots.py`; Iceberg's streaming sink records the query and batch, `spark.sql.streaming.queryId` and `spark.sql.streaming.epochId`, in each append's snapshot summary). A batch whose rows are in the table but whose checkpoint commit is not written yet does not count, so the result does not depend on pipeline lag.
 
 The landing checks reconcile the landing zone with Kafka for every configured topic and every topic partition. Landed records are read through Spark, so only files committed by the file sink count; files in a topic folder that `_spark_metadata` does not record are ignored. Kafka is the reference, and it is read once per run into one snapshot, so every check sees the same records:
 
@@ -633,9 +639,19 @@ The landing checks reconcile the landing zone with Kafka for every configured to
 - **Empty runs fail:** a configured topic with no records anywhere fails `topic_found`, and a run with no results fails.
 - **Schema drift fails loudly:** a topic folder whose committed files do not hold the Kafka record columns and types raises an error instead of reading as empty. Only a missing folder, or one without committed files, reads as no records.
 
-Each result is printed as one JSON line prefixed with `LANDING QUALITY`, with the check's description, followed by a summary line, and the job exits with code 1 if any check fails. The `partition_landed` result also reports the row count, the offset range, the number of tombstones, Kafka's offset range (`kafka_min_offset`, `kafka_max_offset`) and the lag behind Kafka; lag is expected while landing runs and is not a failure. The `contiguous_offsets` result reports the compared range (`from_offset`, `to_offset`) and the number of `missing_offsets`.
+The `partition_landed` result also reports the row count, the offset range, the number of tombstones, Kafka's offset range (`kafka_min_offset`, `kafka_max_offset`) and the lag behind Kafka; lag is expected while landing runs and is not a failure. The `contiguous_offsets` result reports the compared range (`from_offset`, `to_offset`) and the number of `missing_offsets`.
 
-By default every landed offset is compared, from the first to the last landed offset of each partition. For large topics, `LANDING_CHECK_LAST_OFFSETS=<n> make data-quality` limits the comparison to a window of the last `n` offsets up to the last landed offset of each partition, and skips `starts_at_kafka_min_offset`. The window limits what is compared; Kafka is still read in full. The job runs with `spark.cores.max=2` and a random UI port, so it can run while the landing job is running.
+By default every landed offset is compared, from the first to the last landed offset of each partition. For large topics, `LANDING_CHECK_LAST_OFFSETS=<n> make data-quality` limits the comparison to a window of the last `n` offsets up to the last landed offset of each partition, and skips `starts_at_kafka_min_offset`. The window limits what is compared; Kafka is still read in full. The job runs with `spark.cores.max=2` and a random UI port, so it can run while the pipeline jobs are running.
+
+The bronze checks reconcile each topic's landing records with bronze and its quarantine, by Kafka coordinates (topic, partition and offset; `_record_source`, `_source_partition` and `_source_offset` in the tables). Bronze and quarantine are written by two queries with separate checkpoints, so each side is bounded by its own query: the landing files the query's file-source log lists up to its committed batch (`<CHECKPOINT_ROOT>/bronze/<entity>/sources/0/`, including the `.compact` files), and its table as of its committed batch. Tombstones are left out, because bronze drops them.
+
+| Check | Checks that |
+| --- | --- |
+| `landed_records_held` | every landed record whose file both queries committed is in bronze or in the quarantine |
+| `held_exactly_once` | no record is in both tables, or twice in either |
+| `committed_records_only` | each table holds only records of the landing files its own query committed |
+
+A record whose file only one of the two queries has committed so far is not missing yet: the other query has not read it. The results report the counts (`committed_records`, `missing`, `held_records`, `duplicated`, `unexpected`) and the committed batch of each query; a topic whose queries have not committed a batch yet has nothing to check and passes.
 
 #### Bronze layer
 
