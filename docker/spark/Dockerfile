@@ -74,14 +74,15 @@ ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
 
 COPY pyproject.toml uv.lock .python-version ./
 COPY analytics/common/pyproject.toml analytics/common/
+COPY analytics/api/pyproject.toml analytics/api/
 COPY analytics/pipelines/pyproject.toml analytics/pipelines/
 RUN --mount=from=ghcr.io/astral-sh/uv:0.13.7,source=/uv,target=/usr/local/bin/uv \
-    uv sync --frozen --package pipelines --group dev --no-install-workspace
+    uv sync --frozen --all-packages --group dev --no-install-workspace
 
 COPY analytics/ analytics/
 COPY tests/ tests/
 RUN --mount=from=ghcr.io/astral-sh/uv:0.13.7,source=/uv,target=/usr/local/bin/uv \
-    uv sync --frozen --package pipelines --group dev \
+    uv sync --frozen --all-packages --group dev \
     && python3.14 -m zipfile -c /opt/app/packages.zip \
         analytics/common/src/common analytics/pipelines/src/pipelines
 

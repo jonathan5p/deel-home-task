@@ -1,0 +1,18 @@
+[project]
+name = "api"
+version = "0.1.0"
+description = "HTTP API that serves the gold metrics and freshness from the analytics database."
+requires-python = ">=3.14,<3.15"
+dependencies = [
+    "common",
+    "fastapi>=0.162",
+    "psycopg[binary,pool]>=3.3",
+    "uvicorn>=0.54",
+]
+
+[tool.uv.sources]
+common = { workspace = true }
+
+[build-system]
+requires = ["uv_build>=0.13.7,<0.14"]
+build-backend = "uv_build"
