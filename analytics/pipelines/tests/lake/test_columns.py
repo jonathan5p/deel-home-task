@@ -15,7 +15,7 @@ def test_metadata_columns_start_with_an_underscore() -> None:
     assert all(column.startswith("_") for column in MetadataColumn)
 
 
-@pytest.mark.parametrize("template", ["bronze", "silver"])
+@pytest.mark.parametrize("template", ["bronze", "silver", "silver_history", "silver_current"])
 def test_the_change_op_description_names_every_kind_of_change(template: str) -> None:
     (change_op,) = (
         field for field in TEMPLATES[template].fields if field.name == MetadataColumn.CHANGE_OP

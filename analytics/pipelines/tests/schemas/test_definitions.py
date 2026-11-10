@@ -43,6 +43,8 @@ def test_the_schemas_folder_holds_the_shared_sources_and_tables_schemas() -> Non
         "sources/products.avsc",
         "tables/bronze_quarantine_template.avsc",
         "tables/bronze_template.avsc",
+        "tables/silver_current_template.avsc",
+        "tables/silver_history_template.avsc",
         "tables/silver_template.avsc",
     ]
 
@@ -205,7 +207,13 @@ def test_table_templates_describe_the_tables_of_an_entity() -> None:
     templates = load_table_templates()
     orders = load_entity("orders")
 
-    assert set(templates) == {"bronze", "bronze_quarantine", "silver"}
+    assert set(templates) == {
+        "bronze",
+        "bronze_quarantine",
+        "silver",
+        "silver_history",
+        "silver_current",
+    }
     assert templates["bronze"].describe(orders).startswith(f"{orders.description}. Change log")
     assert "source table orders" in templates["bronze_quarantine"].describe(orders)
 
@@ -270,6 +278,10 @@ def test_a_template_names_the_table_of_each_entity_in_its_layer() -> None:
         templates["bronze_quarantine"].layer,
         templates["bronze_quarantine"].table_name(orders),
     ) == ("bronze", "orders_quarantine")
+    assert [
+        (templates[name].layer, templates[name].table_name(orders))
+        for name in ("silver_history", "silver_current")
+    ] == [("silver", "orders_history"), ("silver", "orders_current")]
 
 
 def test_a_template_fills_in_the_entity_name_and_description() -> None:

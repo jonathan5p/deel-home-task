@@ -43,6 +43,21 @@ def iceberg_catalog(spark: SparkSession, tmp_path: Path) -> str:
 
 
 @pytest.fixture
+def iceberg_view_catalog(spark: SparkSession, tmp_path: Path) -> str:
+    """Register an in-memory Iceberg catalog, which unlike the Hadoop catalog stores views.
+
+    Without the caching wrapper, tests can reach the catalog's own view API.
+    """
+    name = f"iceberg_views_{tmp_path.name.replace('-', '_')}"
+    prefix = f"spark.sql.catalog.{name}"
+    spark.conf.set(prefix, "org.apache.iceberg.spark.SparkCatalog")
+    spark.conf.set(f"{prefix}.catalog-impl", "org.apache.iceberg.inmemory.InMemoryCatalog")
+    spark.conf.set(f"{prefix}.cache-enabled", "false")
+    spark.conf.set(f"{prefix}.warehouse", f"file://{tmp_path}/warehouse")
+    return name
+
+
+@pytest.fixture
 def streams(spark: SparkSession) -> StreamingQueryManager:
     """The session's query manager, forgetting queries that earlier tests terminated."""
     spark.streams.resetTerminated()

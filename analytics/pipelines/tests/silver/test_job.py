@@ -6,6 +6,7 @@ from pyspark.errors import AnalysisException
 from pyspark.sql import SparkSession
 
 from analytics.pipelines.tests.lake.tables_setup import stored_description, table_ddl
+from analytics.pipelines.tests.lake.views_setup import view_metadata_file
 from analytics.pipelines.tests.silver.deduplication_setup import redelivered
 from analytics.pipelines.tests.silver.job_setup import (
     SilverSettingsFactory,
@@ -24,6 +25,7 @@ from pipelines.lake.tables import TABLE_TEMPLATES, table_definition
 from pipelines.lake.types import SPARK_TYPES
 from pipelines.schemas.render import avro_field, render_table_schema
 from pipelines.silver.job import SILVER, STATE_PARTITIONS, entity_stream, run
+from pipelines.silver.views import silver_views
 
 pytestmark = pytest.mark.usefixtures("job_session_conf")
 
@@ -61,9 +63,9 @@ def test_the_published_table_schemas_have_the_columns_and_types_the_job_writes(
 
 
 def test_each_bronze_change_becomes_one_version_row(
-    spark: SparkSession, silver_settings: SilverSettingsFactory, iceberg_catalog: str
+    spark: SparkSession, silver_settings: SilverSettingsFactory, iceberg_view_catalog: str
 ) -> None:
-    settings = silver_settings(CUSTOMERS, catalog=iceberg_catalog)
+    settings = silver_settings(CUSTOMERS, catalog=iceberg_view_catalog)
     changes = [
         bronze_change(CUSTOMERS, 1, ChangeOp.SNAPSHOT),
         bronze_change(CUSTOMERS, 2, ChangeOp.UPDATE),
@@ -81,9 +83,9 @@ def test_each_bronze_change_becomes_one_version_row(
 
 
 def test_each_entity_gets_its_own_silver_table_and_checkpoint(
-    spark: SparkSession, silver_settings: SilverSettingsFactory, iceberg_catalog: str
+    spark: SparkSession, silver_settings: SilverSettingsFactory, iceberg_view_catalog: str
 ) -> None:
-    settings = silver_settings(CUSTOMERS, PRODUCTS, catalog=iceberg_catalog)
+    settings = silver_settings(CUSTOMERS, PRODUCTS, catalog=iceberg_view_catalog)
     for entity in (CUSTOMERS, PRODUCTS):
         write_bronze(spark, settings, entity, [bronze_change(entity, 1, ChangeOp.CREATE)])
 
@@ -97,9 +99,9 @@ def test_each_entity_gets_its_own_silver_table_and_checkpoint(
 
 
 def test_a_restart_appends_only_the_changes_since(
-    spark: SparkSession, silver_settings: SilverSettingsFactory, iceberg_catalog: str
+    spark: SparkSession, silver_settings: SilverSettingsFactory, iceberg_view_catalog: str
 ) -> None:
-    settings = silver_settings(CUSTOMERS, catalog=iceberg_catalog)
+    settings = silver_settings(CUSTOMERS, catalog=iceberg_view_catalog)
     write_bronze(spark, settings, CUSTOMERS, [bronze_change(CUSTOMERS, 1, ChangeOp.CREATE)])
     run_until_caught_up(spark, settings)
 
@@ -111,9 +113,9 @@ def test_a_restart_appends_only_the_changes_since(
 
 
 def test_a_change_bronze_holds_twice_becomes_one_version_row_even_across_restarts(
-    spark: SparkSession, silver_settings: SilverSettingsFactory, iceberg_catalog: str
+    spark: SparkSession, silver_settings: SilverSettingsFactory, iceberg_view_catalog: str
 ) -> None:
-    settings = silver_settings(CUSTOMERS, catalog=iceberg_catalog)
+    settings = silver_settings(CUSTOMERS, catalog=iceberg_view_catalog)
     created = bronze_change(CUSTOMERS, 1, ChangeOp.CREATE)
     write_bronze(spark, settings, CUSTOMERS, [created, redelivered(created, 50)])
     run_until_caught_up(spark, settings)
@@ -126,9 +128,9 @@ def test_a_change_bronze_holds_twice_becomes_one_version_row_even_across_restart
 
 
 def test_the_deduplication_state_is_in_rocksdb_with_one_partition_per_core_the_job_gets(
-    spark: SparkSession, silver_settings: SilverSettingsFactory, iceberg_catalog: str
+    spark: SparkSession, silver_settings: SilverSettingsFactory, iceberg_view_catalog: str
 ) -> None:
-    settings = silver_settings(CUSTOMERS, catalog=iceberg_catalog)
+    settings = silver_settings(CUSTOMERS, catalog=iceberg_view_catalog)
     write_bronze(spark, settings, CUSTOMERS, [bronze_change(CUSTOMERS, 1, ChangeOp.CREATE)])
 
     (query,) = run_until_caught_up(spark, settings)
@@ -142,9 +144,9 @@ def test_the_deduplication_state_is_in_rocksdb_with_one_partition_per_core_the_j
 
 
 def test_silver_tables_are_partitioned_by_change_day_and_store_every_description(
-    spark: SparkSession, silver_settings: SilverSettingsFactory, iceberg_catalog: str
+    spark: SparkSession, silver_settings: SilverSettingsFactory, iceberg_view_catalog: str
 ) -> None:
-    settings = silver_settings(PRODUCTS, catalog=iceberg_catalog)
+    settings = silver_settings(PRODUCTS, catalog=iceberg_view_catalog)
     write_bronze(spark, settings, PRODUCTS, [bronze_change(PRODUCTS, 1, ChangeOp.CREATE)])
 
     run_until_caught_up(spark, settings)
@@ -162,9 +164,9 @@ def test_silver_tables_are_partitioned_by_change_day_and_store_every_description
 
 
 def test_the_job_fails_before_creating_any_table_while_a_bronze_table_is_missing(
-    spark: SparkSession, silver_settings: SilverSettingsFactory, iceberg_catalog: str
+    spark: SparkSession, silver_settings: SilverSettingsFactory, iceberg_view_catalog: str
 ) -> None:
-    settings = silver_settings(CUSTOMERS, PRODUCTS, catalog=iceberg_catalog)
+    settings = silver_settings(CUSTOMERS, PRODUCTS, catalog=iceberg_view_catalog)
     write_bronze(spark, settings, CUSTOMERS, [bronze_change(CUSTOMERS, 1, ChangeOp.CREATE)])
 
     with pytest.raises(AnalysisException, match="products"):
@@ -174,9 +176,9 @@ def test_the_job_fails_before_creating_any_table_while_a_bronze_table_is_missing
 
 
 def test_the_job_keeps_running_on_its_processing_time_trigger(
-    spark: SparkSession, silver_settings: SilverSettingsFactory, iceberg_catalog: str
+    spark: SparkSession, silver_settings: SilverSettingsFactory, iceberg_view_catalog: str
 ) -> None:
-    settings = silver_settings(CUSTOMERS, catalog=iceberg_catalog)
+    settings = silver_settings(CUSTOMERS, catalog=iceberg_view_catalog)
     write_bronze(spark, settings, CUSTOMERS, [bronze_change(CUSTOMERS, 1, ChangeOp.CREATE)])
 
     queries = run(spark, settings)
@@ -186,3 +188,36 @@ def test_the_job_keeps_running_on_its_processing_time_trigger(
     finally:
         for query in queries:
             query.stop()
+
+
+def test_the_job_creates_the_history_and_current_views_of_each_entity(
+    spark: SparkSession, silver_settings: SilverSettingsFactory, iceberg_view_catalog: str
+) -> None:
+    settings = silver_settings(CUSTOMERS, PRODUCTS, catalog=iceberg_view_catalog)
+    for entity in (CUSTOMERS, PRODUCTS):
+        created = bronze_change(entity, 1, ChangeOp.CREATE)
+        deleted = bronze_change(entity, 2, ChangeOp.DELETE) | {entity.key_column: 1}
+        write_bronze(spark, settings, entity, [created, deleted])
+
+    run_until_caught_up(spark, settings)
+
+    for entity in (CUSTOMERS, PRODUCTS):
+        history = spark.table(settings.table(f"{entity.name}_history"))
+        assert commit_sequences(history.orderBy(MetadataColumn.COMMIT_SEQUENCE).collect()) == [1, 2]
+        assert spark.table(settings.table(f"{entity.name}_current")).count() == 0
+
+
+def test_a_restart_leaves_the_unchanged_views_as_they_are(
+    spark: SparkSession, silver_settings: SilverSettingsFactory, iceberg_view_catalog: str
+) -> None:
+    settings = silver_settings(CUSTOMERS, catalog=iceberg_view_catalog)
+    write_bronze(spark, settings, CUSTOMERS, [bronze_change(CUSTOMERS, 1, ChangeOp.CREATE)])
+    run_until_caught_up(spark, settings)
+    views = silver_views(CUSTOMERS, settings)
+    metadata_files = [view_metadata_file(spark, iceberg_view_catalog, view) for view in views]
+
+    run_until_caught_up(spark, settings)
+
+    assert [
+        view_metadata_file(spark, iceberg_view_catalog, view) for view in views
+    ] == metadata_files
