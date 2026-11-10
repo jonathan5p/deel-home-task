@@ -125,7 +125,7 @@ def test_a_change_bronze_holds_twice_becomes_one_version_row_even_across_restart
     assert commit_sequences(silver_rows(spark, settings, CUSTOMERS)) == [1, 2]
 
 
-def test_the_job_keeps_its_deduplication_state_in_rocksdb(
+def test_the_deduplication_state_is_in_rocksdb_with_one_partition_per_core_the_job_gets(
     spark: SparkSession, silver_settings: SilverSettingsFactory, iceberg_catalog: str
 ) -> None:
     settings = silver_settings(CUSTOMERS, catalog=iceberg_catalog)
@@ -138,19 +138,6 @@ def test_the_job_keeps_its_deduplication_state_in_rocksdb(
     (operator,) = progress["stateOperators"]
     assert operator["operatorName"] == "dedupe"
     assert any(metric.startswith("rocksdb") for metric in operator["customMetrics"])
-
-
-def test_the_deduplication_state_has_one_partition_per_core_the_job_gets(
-    spark: SparkSession, silver_settings: SilverSettingsFactory, iceberg_catalog: str
-) -> None:
-    settings = silver_settings(CUSTOMERS, catalog=iceberg_catalog)
-    write_bronze(spark, settings, CUSTOMERS, [bronze_change(CUSTOMERS, 1, ChangeOp.CREATE)])
-
-    (query,) = run_until_caught_up(spark, settings)
-
-    progress = query.lastProgress
-    assert progress is not None
-    (operator,) = progress["stateOperators"]
     assert operator["numShufflePartitions"] == STATE_PARTITIONS
 
 
