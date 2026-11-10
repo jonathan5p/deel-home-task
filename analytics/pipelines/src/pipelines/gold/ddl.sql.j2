@@ -158,8 +158,6 @@ CREATE TABLE IF NOT EXISTS gold_internal.current_orders (
     PRIMARY KEY (order_id)
 );
 
--- is_open is stored with the order so the planner can see how few orders are open; partial
--- indexes on open orders keep only those, with the columns the business views read.
 CREATE INDEX IF NOT EXISTS current_orders_open_delivery_idx
     ON gold_internal.current_orders (delivery_date, status_key) WHERE is_open AND NOT _is_deleted;
 CREATE INDEX IF NOT EXISTS current_orders_open_customer_idx
@@ -323,8 +321,6 @@ WHERE NOT _is_deleted;
 
 {{ describe_view(tables.current_orders, hidden=["is_open"]) }}
 
--- The one definition of an open order; the partial indexes on current_orders use the same
--- predicate, so the business views that read this view can use them.
 CREATE OR REPLACE VIEW gold.open_orders AS
 SELECT
     order_id,
@@ -364,8 +360,6 @@ SELECT 'order_items', max(_changed_at) FROM gold_internal.current_order_items;
 
 {{ describe_view(tables.data_freshness) }}
 
--- The business questions. A view keeps no row order, so consumers add the ORDER BY they need,
--- as the queries in analytics/sql/gold/ do.
 CREATE OR REPLACE VIEW gold.open_orders_by_delivery_date_and_status AS
 SELECT
     o.delivery_date,
@@ -377,9 +371,6 @@ GROUP BY o.delivery_date, s.status_code;
 
 {{ describe_view(tables.open_orders_by_delivery_date_and_status) }}
 
--- RANK gives tied rows the same place and skips the places after them, so every row tied
--- for third is kept and no more than three places are reported. The same holds for the top
--- customers below.
 CREATE OR REPLACE VIEW gold.top_delivery_dates_by_open_orders AS
 SELECT delivery_date, open_orders
 FROM (
@@ -405,7 +396,6 @@ GROUP BY i.product_id;
 
 {{ describe_view(tables.pending_items_by_product) }}
 
--- The left join keeps a customer that is not in dim_customer yet, with a null name.
 CREATE OR REPLACE VIEW gold.top_customers_by_pending_orders AS
 SELECT
     top_customers.customer_id,
