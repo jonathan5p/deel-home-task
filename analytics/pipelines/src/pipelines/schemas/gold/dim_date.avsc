@@ -1,0 +1,48 @@
+{
+  "type": "record",
+  "name": "dim_date",
+  "namespace": "gold",
+  "doc": "Calendar days from 2000-01-01 to 2099-12-31, one row per day",
+  "fields": [
+    {
+      "name": "date_key",
+      "type": "int",
+      "doc": "Day as an integer yyyymmdd"
+    },
+    {
+      "name": "calendar_date",
+      "type": {"type": "int", "logicalType": "date"},
+      "doc": "The calendar day"
+    },
+    {
+      "name": "year",
+      "type": "int",
+      "doc": "Calendar year"
+    },
+    {
+      "name": "quarter",
+      "type": "int",
+      "doc": "Calendar quarter, 1 to 4"
+    },
+    {
+      "name": "month",
+      "type": "int",
+      "doc": "Calendar month, 1 to 12"
+    },
+    {
+      "name": "day_of_month",
+      "type": "int",
+      "doc": "Day of the month, 1 to 31"
+    },
+    {
+      "name": "day_of_week",
+      "type": "int",
+      "doc": "ISO day of the week, 1 (Monday) to 7 (Sunday)"
+    },
+    {
+      "name": "is_weekend",
+      "type": "boolean",
+      "doc": "Whether the day is a Saturday or a Sunday"
+    }
+  ]
+}

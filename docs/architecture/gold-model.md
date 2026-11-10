@@ -37,6 +37,12 @@ Consumers never need to know how the pipeline orders or deduplicates changes, an
 | `_is_deleted` | `current_orders`, `current_order_items` | left out; deleted rows are filtered |
 | `_valid_to`, `_is_current` of history facts | not stored | computed from the next version by `_commit_sequence` |
 
+## Where the definitions live
+
+Every gold table's columns, their types and nullability, and every table, view and column description are defined once, in the gold Avro schemas in `analytics/pipelines/src/pipelines/schemas/gold/`, one `<table>.avsc` per table (plus `data_freshness.avsc` for that view). A column that comes from a source table takes its description from there with `"from"` (for example `"from": "orders.delivery_date"`), so the lake and gold describe it the same way; a metadata column such as `_commit_sequence` is defined in full, exactly like in the bronze template, and a unit test keeps every definition of a `_` column the same across all schemas; a column only gold has, such as a surrogate key or `line_amount`, has its own `doc`. The record's `doc` describes the table in `gold_internal` and `public_doc` its view in `gold` when that differs.
+
+The DDL itself is the Jinja template `analytics/pipelines/src/pipelines/gold/ddl.sql.j2`: it keeps the keys, constraints, partitions, indexes, seeds and view queries, and takes the column lists and the descriptions from the schemas. The public views are described like their tables, without the pipeline-only columns, plus the columns they add (`_valid_to` and `_is_current`, described like the dimensions' columns of the same name). `make up` renders it to the git-ignored `docker/analytics-db/initdb/02-gold-model.sql`, which PostgreSQL runs on an empty volume.
+
 ## Model
 
 The diagram shows the `gold` views in the PostgreSQL `analytics` database; the keys and relations are enforced on the `gold_internal` tables.
@@ -88,7 +94,7 @@ erDiagram
         boolean is_weekend
     }
     dim_order_status {
-        smallint status_key PK
+        int status_key PK
         varchar status_code
         boolean is_open
     }
@@ -96,7 +102,7 @@ erDiagram
         bigint order_id
         timestamp _changed_at
         varchar _change_op
-        smallint status_key FK
+        int status_key FK
         bigint customer_id
         bigint customer_key FK
         int order_date_key FK
@@ -119,7 +125,7 @@ erDiagram
     }
     current_orders {
         bigint order_id PK
-        smallint status_key FK
+        int status_key FK
         bigint customer_id
         date order_date
         date delivery_date

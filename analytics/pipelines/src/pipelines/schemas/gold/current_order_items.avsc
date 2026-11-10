@@ -1,0 +1,47 @@
+{
+  "type": "record",
+  "name": "current_order_items",
+  "namespace": "gold",
+  "doc": "Latest version of every order item, deleted ones included",
+  "public_doc": "Latest version of every order item not deleted in the source; read by the business questions",
+  "fields": [
+    {
+      "name": "order_item_id",
+      "type": "long",
+      "from": "order_items.order_item_id"
+    },
+    {
+      "name": "order_id",
+      "type": ["null", "long"],
+      "default": null,
+      "from": "order_items.order_id"
+    },
+    {
+      "name": "product_id",
+      "type": ["null", "long"],
+      "default": null,
+      "from": "order_items.product_id"
+    },
+    {
+      "name": "quantity",
+      "type": ["null", "int"],
+      "default": null,
+      "from": "order_items.quantity"
+    },
+    {
+      "name": "_commit_sequence",
+      "type": "long",
+      "doc": "Position of the change in the source's commit log (Debezium source.lsn); increases in commit order"
+    },
+    {
+      "name": "_changed_at",
+      "type": {"type": "long", "logicalType": "timestamp-millis"},
+      "doc": "Time the change was committed in the source database (Debezium source.ts_ms)"
+    },
+    {
+      "name": "_is_deleted",
+      "type": "boolean",
+      "doc": "Whether the row was deleted in the source; the version keeps its last known values"
+    }
+  ]
+}

@@ -1,0 +1,57 @@
+{
+  "type": "record",
+  "name": "dim_customer",
+  "namespace": "gold",
+  "doc": "Customers, SCD2: one row per customer version",
+  "fields": [
+    {
+      "name": "customer_key",
+      "type": "long",
+      "doc": "Surrogate key of the customer version"
+    },
+    {
+      "name": "customer_id",
+      "type": "long",
+      "from": "customers.customer_id"
+    },
+    {
+      "name": "customer_name",
+      "type": ["null", "string"],
+      "default": null,
+      "from": "customers.customer_name"
+    },
+    {
+      "name": "customer_address",
+      "type": ["null", "string"],
+      "default": null,
+      "from": "customers.customer_address"
+    },
+    {
+      "name": "is_active",
+      "type": ["null", "boolean"],
+      "default": null,
+      "from": "customers.is_active"
+    },
+    {
+      "name": "_commit_sequence",
+      "type": "long",
+      "doc": "Position of the change in the source's commit log (Debezium source.lsn); increases in commit order"
+    },
+    {
+      "name": "_valid_from",
+      "type": {"type": "long", "logicalType": "timestamp-millis"},
+      "doc": "Time this version of the row became current: the change's commit time in the source"
+    },
+    {
+      "name": "_valid_to",
+      "type": ["null", {"type": "long", "logicalType": "timestamp-millis"}],
+      "default": null,
+      "doc": "Time the next version of the row replaced this one; null while this version is current"
+    },
+    {
+      "name": "_is_current",
+      "type": "boolean",
+      "doc": "Whether this is the latest version of the row"
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "type": "record",
+  "name": "data_freshness",
+  "namespace": "gold",
+  "doc": "How up to date gold is: the newest source change time gold holds for each entity",
+  "fields": [
+    {
+      "name": "entity",
+      "type": "string",
+      "doc": "Source entity: customers, products, orders or order_items"
+    },
+    {
+      "name": "last_changed_at",
+      "type": ["null", {"type": "long", "logicalType": "timestamp-millis"}],
+      "default": null,
+      "doc": "Source commit time of the newest change of the entity stored in gold; null while the entity is empty"
+    }
+  ]
+}

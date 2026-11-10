@@ -1,0 +1,23 @@
+{
+  "type": "record",
+  "name": "dim_order_status",
+  "namespace": "gold",
+  "doc": "Order statuses; a null or unexpected source status maps to UNKNOWN",
+  "fields": [
+    {
+      "name": "status_key",
+      "type": "int",
+      "doc": "Stable key of the status"
+    },
+    {
+      "name": "status_code",
+      "type": "string",
+      "doc": "Status as written in the source, or UNKNOWN"
+    },
+    {
+      "name": "is_open",
+      "type": "boolean",
+      "doc": "Whether an order in this status is open; every status except COMPLETED is"
+    }
+  ]
+}

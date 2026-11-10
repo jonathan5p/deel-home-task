@@ -30,6 +30,7 @@ DRIVER_CONF = --master "$$SPARK_MASTER_URL" \
 CHECKS_PROJECT ?= deel-checks-$(shell basename "$(CURDIR)" | LC_ALL=C tr 'A-Z' 'a-z' | LC_ALL=C sed 's/[^a-z0-9_-]/-/g')
 APP_BUILD ?= --build
 CODE_MOUNTS = -v "$(CURDIR)/analytics:/opt/app/analytics" -v "$(CURDIR)/tests:/opt/app/tests"
+RENDER_GOLD_DDL = uv run --frozen python -m pipelines.gold.ddl docker/analytics-db/initdb/02-gold-model.sql
 APP_RUN = COMPOSE_PROJECT_NAME=$(CHECKS_PROJECT) $(COMPOSE) run --rm $(APP_BUILD) --no-deps $(CODE_MOUNTS)
 
 PIPELINE_JOBS = $(addsuffix -job,$(if $(filter all,$(PIPELINE)),$(PIPELINES),$(filter $(PIPELINES),$(PIPELINE))))
@@ -40,7 +41,7 @@ CHECK_PIPELINE = $(if $(and $(PIPELINE_JOBS),$(filter 1,$(words $(PIPELINE)))),,
 
 help:
 	@printf '%s\n' \
-		'up             Build changed local images and start the default stack; add optional services with PROFILES (e.g. PROFILES="monitoring history").' \
+		'up             Render the gold DDL, build changed local images and start the default stack; add optional services with PROFILES (e.g. PROFILES="monitoring history").' \
 		'down           Stop all project services, including optional profiles; keep volumes.' \
 		'clean          Delete project containers and volumes (DATA LOSS); requires CONFIRM=1.' \
 		'spark-submit   Run SPARK_APP (repo path; default: UI check job) in its own driver container; options SPARK_APP_ARGS, SPARK_CONF, SPARK_UI_PORT.' \
@@ -63,6 +64,7 @@ help:
 		'Optional profiles: monitoring (Conduktor), history (Spark History Server). See README.md.'
 
 up:
+	@$(RENDER_GOLD_DDL)
 	@$(COMPOSE) $(addprefix --profile ,$(PROFILES)) up -d --build
 
 down:
@@ -94,7 +96,8 @@ data-quality:
 		SPARK_UI_PORT=0 SPARK_CONF="spark.cores.max=2 $(SPARK_CONF)"
 
 pipeline:
-	$(CHECK_PIPELINE)@$(COMPOSE) --profile history up -d --build
+	$(CHECK_PIPELINE)@$(RENDER_GOLD_DDL)
+	@$(COMPOSE) --profile history up -d --build
 	@$(COMPOSE) --profile app build spark-app
 	@$(COMPOSE) --profile pipeline up -d $(PIPELINE_SERVICES)
 
@@ -124,6 +127,7 @@ schemas:
 	@uv run --frozen python -m pipelines.schemas.render target/schemas
 
 test-infra:
+	@$(RENDER_GOLD_DDL)
 	@uv run --frozen pytest tests/infra --no-cov -p no:cacheprovider -v
 
 hooks:

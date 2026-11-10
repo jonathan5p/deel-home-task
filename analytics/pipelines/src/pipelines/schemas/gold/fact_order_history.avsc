@@ -1,0 +1,58 @@
+{
+  "type": "record",
+  "name": "fact_order_history",
+  "namespace": "gold",
+  "doc": "Order history: one row per change to an order, partitioned by month of _changed_at",
+  "public_doc": "Order history: one row per change to an order, with the range in which it was the latest version",
+  "fields": [
+    {
+      "name": "order_id",
+      "type": "long",
+      "from": "orders.order_id"
+    },
+    {
+      "name": "_commit_sequence",
+      "type": "long",
+      "doc": "Position of the change in the source's commit log (Debezium source.lsn); increases in commit order"
+    },
+    {
+      "name": "_changed_at",
+      "type": {"type": "long", "logicalType": "timestamp-millis"},
+      "doc": "Time the change was committed in the source database (Debezium source.ts_ms)"
+    },
+    {
+      "name": "_change_op",
+      "type": "string",
+      "doc": "Kind of change: create, update, delete or snapshot (Debezium op c, u, d or r)"
+    },
+    {
+      "name": "status_key",
+      "type": "int",
+      "doc": "Order status after the change (dim_order_status key)"
+    },
+    {
+      "name": "customer_id",
+      "type": ["null", "long"],
+      "default": null,
+      "from": "orders.customer_id"
+    },
+    {
+      "name": "customer_key",
+      "type": ["null", "long"],
+      "default": null,
+      "doc": "Customer version valid at _changed_at; null if the customer is not known yet"
+    },
+    {
+      "name": "order_date_key",
+      "type": ["null", "int"],
+      "default": null,
+      "doc": "Order date as a dim_date key"
+    },
+    {
+      "name": "delivery_date_key",
+      "type": ["null", "int"],
+      "default": null,
+      "doc": "Delivery date as a dim_date key"
+    }
+  ]
+}

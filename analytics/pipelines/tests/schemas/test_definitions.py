@@ -32,11 +32,20 @@ from pipelines.schemas.definitions import (
 SHIPPED = schema_files(Path(str(SCHEMAS)))
 
 
-def test_the_schemas_folder_holds_the_shared_sources_and_tables_schemas() -> None:
+def test_the_schemas_folder_holds_the_shared_sources_tables_and_gold_schemas() -> None:
     root = Path(str(SCHEMAS))
 
     assert [str(file.relative_to(root)) for file in SHIPPED] == [
         "audit.avsc",
+        "gold/current_order_items.avsc",
+        "gold/current_orders.avsc",
+        "gold/data_freshness.avsc",
+        "gold/dim_customer.avsc",
+        "gold/dim_date.avsc",
+        "gold/dim_order_status.avsc",
+        "gold/dim_product.avsc",
+        "gold/fact_order_history.avsc",
+        "gold/fact_order_item_history.avsc",
         "sources/customers.avsc",
         "sources/order_items.avsc",
         "sources/orders.avsc",
