@@ -13,6 +13,5 @@ STATUS_PATHS = ("/health", "/freshness")
 
 
 def client(repository: FakeRepository | None = None) -> TestClient:
-    """A client of the app over the fake repository; server errors become 500 responses."""
     app = create_app(repository or FakeRepository())
     return TestClient(app, raise_server_exceptions=False)

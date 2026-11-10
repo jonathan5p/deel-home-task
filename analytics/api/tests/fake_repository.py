@@ -18,8 +18,6 @@ from api.models import (
 
 @dataclass
 class FakeRepository:
-    """Answers with the sample rows, or raises `error` from every method when it is set."""
-
     open_orders: list[OpenOrdersByDeliveryDateAndStatus] = field(
         default_factory=lambda: list(OPEN_ORDERS)
     )

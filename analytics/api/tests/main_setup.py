@@ -14,8 +14,6 @@ DATABASE = {
 
 @dataclass
 class ManagedFakePool:
-    """Records how the app opens and closes it, and answers every query with one row."""
-
     events: list[str] = field(default_factory=list)
     queries: FakePool = field(default_factory=lambda: FakePool(rows=[{"reachable": 1}]))
 

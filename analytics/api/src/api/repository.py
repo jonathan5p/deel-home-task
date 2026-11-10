@@ -10,12 +10,10 @@ from api.models import (
 
 
 class RepositoryUnavailableError(Exception):
-    """The analytics database cannot answer now; the message is safe to show to clients."""
+    pass
 
 
 class MetricsRepository(Protocol):
-    """Reads the gold views; rows come back in the order the business questions report them."""
-
     async def ping(self) -> None: ...
 
     async def freshness(self) -> Freshness: ...

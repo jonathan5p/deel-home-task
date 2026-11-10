@@ -28,7 +28,7 @@ def status_router(repository: MetricsRepository) -> APIRouter:
     @router.get("/freshness", summary="How up to date gold is", responses=UNAVAILABLE)
     async def freshness() -> Freshness:
         """Per entity, the source commit time of the newest change gold holds and its age at the
-        database's clock. It grows while the source is idle, even when the pipeline is healthy."""
+        database's clock."""
         return await repository.freshness()
 
     return router

@@ -23,8 +23,6 @@ type PoolFactory = Callable[[ApiSettings], ManagedPool]
 
 
 async def check_connection(connection: AsyncConnection[DictRow]) -> None:
-    """Run before handing out a connection, so one broken by a database restart is replaced
-    instead of failing a request."""
     await connection.execute("SELECT 1")
 
 
@@ -52,8 +50,6 @@ def create_app_from_settings(
 ) -> FastAPI:
     pool = pool_factory(settings)
 
-    # Opening without waiting lets the API start, and report itself unhealthy, while the
-    # database is still down; the pool keeps trying to connect in the background.
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         await pool.open(wait=False)

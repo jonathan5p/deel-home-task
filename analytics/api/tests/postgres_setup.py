@@ -52,9 +52,6 @@ class FakeConnection:
 
 @dataclass
 class FakePool:
-    """Hands out one fake connection; `connect_error` fails the checkout, `query_error` the
-    query."""
-
     rows: Sequence[Mapping[str, object]] = ()
     connect_error: Exception | None = None
     query_error: Exception | None = None

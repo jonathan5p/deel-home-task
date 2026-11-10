@@ -32,6 +32,5 @@ def create_app(repository: MetricsRepository, lifespan: Lifespan[FastAPI] | None
     app.include_router(metrics_router(repository))
     app.include_router(status_router(repository))
     app.add_exception_handler(RepositoryUnavailableError, unavailable)
-    # Starlette still re-raises the error after this handler, so the server logs its traceback.
     app.add_exception_handler(Exception, internal_error)
     return app

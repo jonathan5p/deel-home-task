@@ -20,7 +20,6 @@ GOLD_UNREADABLE = "The gold views cannot be read in the analytics database"
 
 PING = "SELECT 1 AS reachable"
 
-# Each order matches the business question's query in analytics/sql/gold/.
 OPEN_ORDERS_BY_DELIVERY_DATE_AND_STATUS = """
 SELECT delivery_date, status_code, open_orders
 FROM gold.open_orders_by_delivery_date_and_status
@@ -45,8 +44,6 @@ FROM gold.top_customers_by_pending_orders
 ORDER BY pending_orders DESC, customer_id
 """
 
-# Gold stores source commit times as UTC timestamps without a zone. The left join keeps the
-# clock row when the view returns nothing.
 FRESHNESS = """
 WITH clock AS (SELECT now() AS checked_at)
 SELECT
@@ -70,8 +67,6 @@ class Connection(Protocol):
 
 
 class Pool(Protocol):
-    """The part of a psycopg pool of dict-row connections the repository uses."""
-
     def connection(
         self, timeout: float | None = None
     ) -> AbstractAsyncContextManager[Connection]: ...

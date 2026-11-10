@@ -20,7 +20,6 @@ def run_sql(stack: Stack, script: str) -> None:
 
 
 def add_current_state(stack: Stack) -> None:
-    """Commit the business-question fixture, so another session (the API's) can read it."""
     run_sql(stack, CURRENT_STATE)
 
 

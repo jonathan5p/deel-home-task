@@ -22,7 +22,6 @@ type Metric = Callable[[], Awaitable[Sequence[Row]]]
 
 async def sql_rows(pool: AsyncConnectionPool[AsyncConnection[DictRow]], query: str) -> list[object]:
     async with pool.connection() as connection:
-        # Read from the repository's own query files, never from input.
         cursor = await connection.execute(cast("LiteralString", query))
         return [json.loads(json.dumps(row, default=str)) for row in await cursor.fetchall()]
 
