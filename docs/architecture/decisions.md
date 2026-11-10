@@ -2,7 +2,7 @@
 
 The design decisions a reviewer should know about, with the alternatives that were weighed. The numbers (D3, D13, ...) are the project's decision log numbers; other pages cite them. The issues and pull requests linked under each decision hold the discussion and the change.
 
-> **Status.** A few decisions describe work in open pull requests: retention (#149), rebuild (#150), gold in the lake (#152) and lake maintenance (#135). Those entries describe the design those pull requests implement.
+> **Status.** A few decisions describe work in open pull requests: the business-question views and their indexes (#142), retention (#149), rebuild (#150), gold in the lake (#152) and lake maintenance (#135). Those entries describe the design those pull requests implement.
 
 ## Platform
 
@@ -143,6 +143,29 @@ The design decisions a reviewer should know about, with the alternatives that we
   - The views leave out pipeline metadata (`_commit_sequence`) and soft-deleted rows.
   - They keep the SCD2 validity columns and the change time and type that "as of" queries need.
 - **Why:** it keeps the pipeline's storage contract apart from the consumer contract. The writer still needs `_commit_sequence` to stay idempotent and to keep late events from overwriting newer state.
+
+### D40 · Gold indexes chosen from the query plans of the current use cases
+
+- **Decision:** the gold query indexes exist only for the current use cases: the four business-question views and `gold.open_orders`, the view that holds the open-order rule. Each index was chosen by reading that query's EXPLAIN plan (#44, #45, #142).
+  - **`is_open` is stored** on `gold_internal.current_orders`, from `dim_order_status` with the `UNKNOWN` fallback. It is recomputed on every insert and on every newer-version update. This lets the planner see how few orders are open.
+  - **Partial indexes** on `current_orders`, both `WHERE is_open AND NOT _is_deleted`. They hold only open orders and make the views that read them index-only scans:
+    - `current_orders_open_delivery_idx (delivery_date, status_key)` for the two delivery-date views;
+    - `current_orders_open_customer_idx (customer_id)` for the top customers.
+  - **`current_order_items_live_order_idx`** `(order_id) INCLUDE (product_id, quantity) WHERE NOT _is_deleted`: with `is_open` stored, pending items finds the few open orders first, then looks up their items through this index.
+  - **Dropped:** four current-state indexes that no plan used: `current_orders_status_delivery_idx`, `current_orders_customer_idx`, `current_order_items_order_idx` and `current_order_items_product_idx`.
+  - **Writer indexes** serve the gold writer, not the queries: the unique current-row indexes on the dimensions, and the fact indexes on `customer_id` and `product_id` used to re-resolve dimension keys.
+- **Evidence:** EXPLAIN on a scratch `postgres:18.6` with 1M orders (about 3% open), 3M items and 50k customers, after `VACUUM ANALYZE`. Ranges are over three runs, as reported in #142.
+
+  | View | Before (no `is_open`) | After |
+  | --- | --- | --- |
+  | `open_orders_by_delivery_date_and_status` | Parallel Index Only Scan of all live orders + Hash Join, 31–33 ms | Index Only Scan of the open orders (`current_orders_open_delivery_idx`) + Hash Join, 8–10 ms |
+  | `top_delivery_dates_by_open_orders` | Parallel Index Only Scan of all live orders + Hash Join, 30–35 ms | Index Only Scan of the open orders (`current_orders_open_delivery_idx`), 3–4 ms |
+  | `pending_items_by_product` | Parallel Hash Join over Seq Scans of `current_order_items` and `current_orders`, 344–380 ms | Nested Loop: Bitmap Heap Scan of the open orders → Index Only Scan of their items (`current_order_items_live_order_idx`), 37–46 ms |
+  | `top_customers_by_pending_orders` | Nested Loop over the open statuses, Index Only Scan per status, 16–21 ms | Index Only Scan of the open orders (`current_orders_open_customer_idx`), 12–13 ms |
+
+  - With `rank()`, both top-3 views still read their partial index with an index-only scan, and PostgreSQL stops ranking early (`Run Condition: rank() <= 3`).
+  - The plans keep these indexes with a stale visibility map: 10% of rows updated and no vacuum.
+- **New use cases** get their indexes the same way: write the query, read its plan on representative data, add the index the plan uses, and drop the indexes no plan uses any more. [The sizing strategy](sizing.md) tracks the same queries on the real run.
 
 ### D37 · Gold retention by monthly partitions
 
