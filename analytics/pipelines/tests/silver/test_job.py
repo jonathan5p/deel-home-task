@@ -6,6 +6,7 @@ from pyspark.errors import AnalysisException
 from pyspark.sql import SparkSession
 
 from analytics.pipelines.tests.lake.tables_setup import stored_description, table_ddl
+from analytics.pipelines.tests.silver.deduplication_setup import redelivered
 from analytics.pipelines.tests.silver.job_setup import (
     SilverSettingsFactory,
     commit_sequences,
@@ -22,7 +23,9 @@ from pipelines.lake.columns import ChangeOp, MetadataColumn
 from pipelines.lake.tables import TABLE_TEMPLATES, table_definition
 from pipelines.lake.types import SPARK_TYPES
 from pipelines.schemas.render import avro_field, render_table_schema
-from pipelines.silver.job import SILVER, entity_stream, run
+from pipelines.silver.job import SILVER, STATE_PARTITIONS, entity_stream, run
+
+pytestmark = pytest.mark.usefixtures("job_session_conf")
 
 
 @pytest.mark.parametrize("entity", ENTITIES, ids=ENTITY_IDS)
@@ -105,6 +108,50 @@ def test_a_restart_appends_only_the_changes_since(
     run_until_caught_up(spark, settings)
 
     assert commit_sequences(silver_rows(spark, settings, CUSTOMERS)) == [1, 2]
+
+
+def test_a_change_bronze_holds_twice_becomes_one_version_row_even_across_restarts(
+    spark: SparkSession, silver_settings: SilverSettingsFactory, iceberg_catalog: str
+) -> None:
+    settings = silver_settings(CUSTOMERS, catalog=iceberg_catalog)
+    created = bronze_change(CUSTOMERS, 1, ChangeOp.CREATE)
+    write_bronze(spark, settings, CUSTOMERS, [created, redelivered(created, 50)])
+    run_until_caught_up(spark, settings)
+
+    updated = bronze_change(CUSTOMERS, 2, ChangeOp.UPDATE)
+    write_bronze(spark, settings, CUSTOMERS, [redelivered(created, 51), updated])
+    run_until_caught_up(spark, settings)
+
+    assert commit_sequences(silver_rows(spark, settings, CUSTOMERS)) == [1, 2]
+
+
+def test_the_job_keeps_its_deduplication_state_in_rocksdb(
+    spark: SparkSession, silver_settings: SilverSettingsFactory, iceberg_catalog: str
+) -> None:
+    settings = silver_settings(CUSTOMERS, catalog=iceberg_catalog)
+    write_bronze(spark, settings, CUSTOMERS, [bronze_change(CUSTOMERS, 1, ChangeOp.CREATE)])
+
+    (query,) = run_until_caught_up(spark, settings)
+
+    progress = query.lastProgress
+    assert progress is not None
+    (operator,) = progress["stateOperators"]
+    assert operator["operatorName"] == "dedupe"
+    assert any(metric.startswith("rocksdb") for metric in operator["customMetrics"])
+
+
+def test_the_deduplication_state_has_one_partition_per_core_the_job_gets(
+    spark: SparkSession, silver_settings: SilverSettingsFactory, iceberg_catalog: str
+) -> None:
+    settings = silver_settings(CUSTOMERS, catalog=iceberg_catalog)
+    write_bronze(spark, settings, CUSTOMERS, [bronze_change(CUSTOMERS, 1, ChangeOp.CREATE)])
+
+    (query,) = run_until_caught_up(spark, settings)
+
+    progress = query.lastProgress
+    assert progress is not None
+    (operator,) = progress["stateOperators"]
+    assert operator["numShufflePartitions"] == STATE_PARTITIONS
 
 
 def test_silver_tables_are_partitioned_by_change_day_and_store_every_description(

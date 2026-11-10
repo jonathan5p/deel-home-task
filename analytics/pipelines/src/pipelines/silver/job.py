@@ -17,7 +17,14 @@ from pipelines.lake.streams import (
 )
 from pipelines.lake.tables import ensure_table, table_definition
 from pipelines.settings import SilverSettings
+from pipelines.silver.deduplication import drop_duplicate_changes
 from pipelines.silver.versions import versions
+
+STATE_STORE_PROVIDER = "spark.sql.streaming.stateStore.providerClass"
+ROCKSDB_STATE_STORE = "org.apache.spark.sql.execution.streaming.state.RocksDBStateStoreProvider"
+SHUFFLE_PARTITIONS = "spark.sql.shuffle.partitions"
+STATE_PARTITIONS = 2
+JOB_SESSION_CONF = (STATE_STORE_PROVIDER, SHUFFLE_PARTITIONS)
 
 type BronzeReader = Callable[[SparkSession, str], DataFrame]
 
@@ -32,7 +39,8 @@ def entity_stream(
     spark: SparkSession, settings: SilverSettings, topic: str, read: BronzeReader
 ) -> TableStream:
     entity = entity_for_topic(topic)
-    rows = versions(read(spark, settings.bronze_table(entity.name)), entity)
+    bronze = read(spark, settings.bronze_table(entity.name))
+    rows = drop_duplicate_changes(versions(bronze, entity), entity)
     definition = table_definition(SILVER, entity.definition)
     return TableStream.for_table(settings, entity.name, rows, definition)
 
@@ -46,6 +54,8 @@ def run(
     sink: TableSink = append_to_iceberg,
     available_now: bool = False,
 ) -> list[StreamingQuery]:
+    spark.conf.set(STATE_STORE_PROVIDER, ROCKSDB_STATE_STORE)
+    spark.conf.set(SHUFFLE_PARTITIONS, STATE_PARTITIONS)
     streams = [entity_stream(spark, settings, topic, read) for topic in settings.topics]
     return start_streams(
         spark, streams, settings, create=create, sink=sink, available_now=available_now

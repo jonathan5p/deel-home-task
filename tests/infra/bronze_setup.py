@@ -132,8 +132,9 @@ def record(entity: str, offset: int, value: str | None) -> Json:
     }
 
 
-def change(entity: str, offset: int, op: str) -> Json:
-    lsn = FIRST_LSN + offset
+def change(entity: str, offset: int, op: str, *, lsn: int | None = None) -> Json:
+    """A change at `offset`, committed at `lsn` (by default `FIRST_LSN + offset`)."""
+    lsn = FIRST_LSN + offset if lsn is None else lsn
     if op == "d":
         return record(entity, offset, envelope(op, before=source_row(entity), lsn=lsn))
     return record(entity, offset, envelope(op, after=source_row(entity), lsn=lsn))

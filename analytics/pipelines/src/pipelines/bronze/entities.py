@@ -50,6 +50,10 @@ class Entity:
         return self.definition.key
 
     @property
+    def lake_key(self) -> str:
+        return next(column.lake_name for column in self.columns if column.name == self.key)
+
+    @property
     def columns(self) -> tuple[ColumnDefinition, ...]:
         return self.definition.all_columns
 
