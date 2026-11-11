@@ -3,6 +3,7 @@ import json
 from tests.infra.stack import Stack, wait_until
 
 SERVICE = "data-quality-job"
+PROFILE = "data-quality"
 SUMMARY_PREFIX = "DATA QUALITY "
 FAILED_RUN = "Data quality checks failed"
 
@@ -10,7 +11,7 @@ FAILED_RUN = "Data quality checks failed"
 def create_source_topics(stack: Stack) -> None:
     """Create the Kafka topics the service checks, which Debezium creates on the dev stack."""
     config = json.loads(
-        stack.compose("--profile", "maintenance", "config", "--format", "json", SERVICE).stdout
+        stack.compose("--profile", PROFILE, "config", "--format", "json", SERVICE).stdout
     )
     topics = config["services"][SERVICE]["environment"]["KAFKA_TOPICS"].split(",")
     for topic in topics:
@@ -24,7 +25,7 @@ def first_scheduled_run(stack: Stack) -> str:
         return stack.compose("logs", "--no-log-prefix", SERVICE).stdout
 
     try:
-        stack.compose("--profile", "maintenance", "up", "--detach", SERVICE)
+        stack.compose("--profile", PROFILE, "up", "--detach", SERVICE)
         wait_until(
             lambda: SUMMARY_PREFIX in log() or FAILED_RUN in log(),
             timeout=600,
@@ -32,7 +33,7 @@ def first_scheduled_run(stack: Stack) -> str:
         )
         return log()
     finally:
-        stack.compose("--profile", "maintenance", "rm", "-sf", SERVICE, check=False)
+        stack.compose("--profile", PROFILE, "rm", "-sf", SERVICE, check=False)
 
 
 def run_summary(log: str) -> dict[str, object]:

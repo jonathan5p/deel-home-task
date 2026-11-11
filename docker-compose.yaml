@@ -365,7 +365,7 @@ services:
 
   data-quality-job:
     <<: *spark-app
-    profiles: [maintenance]
+    profiles: [data-quality]
     hostname: data-quality-job
     restart: unless-stopped
     depends_on:
