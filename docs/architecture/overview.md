@@ -11,7 +11,7 @@ The pipeline turns the change stream of the supplied `finance_db` PostgreSQL dat
 Everything runs locally with Docker Compose.
 
 > **In progress.** Shown dotted and grey in the diagrams:
-> - serving: the metrics API (#162, #164) and Grafana (#165, #166);
+> - serving: the Grafana dashboard (#165, #166);
 > - the data quality checks `silver` (#147), `gold` (#46) and `gold-lake` (#154), and their schedule (#148);
 > - lake maintenance refreshing the views.
 
@@ -66,7 +66,7 @@ flowchart LR
 
     subgraph serving["Serving"]
         grafana["Grafana"]
-        api["FastAPI"]
+        api["api: analytics API<br/>FastAPI"]
     end
 
     tdb -- "logical replication" --> connect
@@ -88,7 +88,7 @@ flowchart LR
     serving --> adb
 
     classDef progress stroke-dasharray: 2 3,color:#888,stroke:#888
-    class grafana,api progress
+    class grafana progress
 ```
 
 | Service | Profile | Role | Host port |
@@ -98,6 +98,8 @@ flowchart LR
 | `kafka` | default | One broker. Holds the four CDC topics `finance_db.operations.{customers,products,orders,order_items}` | 9092 |
 | `kafka-connect` | default | Debezium PostgreSQL connector, as supplied | 8083 |
 | `debezium-init` | default | One-shot: registers the supplied connector | none |
+| `api` | default | The analytics API (FastAPI): the four business questions and the freshness of gold, read from the `gold` views as the read-only login `api_reader` | 8000 |
+| `api-dev` | `app` | Image for the API's own checks (`make test`, `make typecheck`) | none |
 | `seaweedfs` | default | S3-compatible object store. Bucket `lake` holds landing files, Iceberg data and metadata, checkpoints and quality reports | 8333 (S3), 8888 (filer) |
 | `analytics-db` | default | Analytics PostgreSQL. Database `analytics` holds gold (`gold_internal`, `gold`), and database `iceberg_catalog` holds the Iceberg JDBC catalog. Consumers log in with read-only service logins in the `gold_reader` role (`make db-logins`) | 5433 |
 | `spark-master` | default | Standalone master | 8080 |
@@ -155,7 +157,7 @@ flowchart LR
 | Gold (PostgreSQL) | Database `analytics`: tables in `gold_internal`, views in `gold` | `gold-job`, one query per silver table | SCD2 dimensions, append-only history facts partitioned by month, and current-state tables that only apply newer versions. Writes are idempotent per micro-batch and serialised by an advisory writer lock. Consumers read the `gold` views, which hide pipeline metadata and soft deletes (decisions D32, D35) |
 | Gold (lake) | Iceberg views `lake.gold.<relation>` | `lake-views` | The same public relations computed at read time from silver, over the full history, with natural keys instead of surrogate keys (decision D39) |
 
-The gold model, its rules and the business-question views are described in [the gold model](gold-model.md), and every table and column in the [table reference](../reference/tables/).
+The gold model, its rules and the business-question views are described in [the gold model](gold-model.md), and every table and column in the [table reference](../reference/index.md), which the docs site renders from the Avro schemas.
 
 ## One micro-batch, end to end
 
