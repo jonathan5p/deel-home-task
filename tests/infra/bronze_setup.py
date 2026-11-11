@@ -183,13 +183,18 @@ def submit(stack: Stack, app: str, *args: str) -> str:
     return output
 
 
-def land(stack: Stack, batch: str, records: dict[str, list[Json]]) -> None:
-    """Stage records as Avro files, then land them through the landing job's file sink."""
+def stage(stack: Stack, batch: str, records: dict[str, list[Json]]) -> None:
+    """Stage records as Avro files, for the next bronze run to land first."""
     for entity, entity_records in records.items():
         stack.put_object(
             f"{STAGING_KEY}/{TOPICS[entity]}/{batch}.avro", landing_avro(entity_records)
         )
-    submit(stack, LAND_APP, f"s3a://lake/{STAGING_KEY}")
+
+
+def landing_staged(staging_key: str, app: str) -> tuple[str, ...]:
+    """The app and leading arguments that land the staged records through the landing job's file
+    sink, then run `app` in the same driver."""
+    return LAND_APP, f"s3a://lake/{staging_key}", app
 
 
 def read_tables(
@@ -208,8 +213,9 @@ def read_with_spark(
     return {dump["table"]: sorted(dump["rows"], key=order_by) for dump in read}
 
 
-def run_bronze_and_read_tables(stack: Stack) -> Tables:
-    submit(stack, BRONZE_APP, "--available-now")
+def run_bronze_and_read_tables(stack: Stack, *, land_staged: bool = False) -> Tables:
+    app = landing_staged(STAGING_KEY, BRONZE_APP) if land_staged else (BRONZE_APP,)
+    submit(stack, *app, "--available-now")
     return read_tables(stack, TABLES, offset)
 
 
@@ -234,15 +240,15 @@ def table_descriptions(stack: Stack, tables: Sequence[str] = TABLES) -> list[Sto
 
 def run_bronze_scenario(stack: Stack) -> BronzeRuns:
     """Land and process two batches, then run once more with nothing new to process."""
-    land(stack, "batch-1", {entity: first_batch(entity) for entity in ENTITIES})
-    first = run_bronze_and_read_tables(stack)
+    stage(stack, "batch-1", {entity: first_batch(entity) for entity in ENTITIES})
+    first = run_bronze_and_read_tables(stack, land_staged=True)
 
     stray = [change("customers", STRAY_OFFSET, "c")]
     stack.put_object(
         f"{LAKE_KEY}/landing/{TOPICS['customers']}/part-stray.avro", landing_avro(stray)
     )
-    land(stack, "batch-2", {entity: second_batch(entity) for entity in ENTITIES})
-    restarted = run_bronze_and_read_tables(stack)
+    stage(stack, "batch-2", {entity: second_batch(entity) for entity in ENTITIES})
+    restarted = run_bronze_and_read_tables(stack, land_staged=True)
 
     idle = run_bronze_and_read_tables(stack)
     return BronzeRuns(first=first, restarted=restarted, idle=idle)

@@ -2,12 +2,12 @@ from dataclasses import dataclass
 
 from tests.infra.bronze_setup import (
     FIRST_LSN,
-    LAND_APP,
     TOPICS,
     Json,
     Rows,
     change,
     envelope,
+    landing_staged,
     offset,
     record,
     source_row,
@@ -65,9 +65,9 @@ def submit(stack: Stack, app: str, *args: str) -> str:
     return output
 
 
-def land(stack: Stack, batch: str, records: list[Json]) -> None:
+def stage(stack: Stack, batch: str, records: list[Json]) -> None:
+    """Stage records as Avro files, for the next run to land first."""
     stack.put_object(f"{STAGING_KEY}/{TOPIC}/{batch}.avro", landing_avro(records))
-    submit(stack, LAND_APP, f"s3a://lake/{STAGING_KEY}")
 
 
 def tables(stack: Stack) -> tuple[Table, Table]:
@@ -77,9 +77,10 @@ def tables(stack: Stack) -> tuple[Table, Table]:
     return Table(sorted(read[BRONZE], key=offset)), Table(sorted(read[QUARANTINE], key=offset))
 
 
-def replay(stack: Stack, first: int, last: int) -> str:
+def replay(stack: Stack, first: int, last: int, *, land_staged: bool = False) -> str:
+    app = landing_staged(STAGING_KEY, REPLAY_APP) if land_staged else (REPLAY_APP,)
     output = submit(
-        stack, REPLAY_APP, "--topic", TOPIC, "--from-offset", str(first), "--to-offset", str(last)
+        stack, *app, "--topic", TOPIC, "--from-offset", str(first), "--to-offset", str(last)
     )
     return next(line for line in output.splitlines() if line.startswith(f"replay {TOPIC}:"))
 
@@ -101,15 +102,16 @@ def commit_sequences(table: Table) -> list[int]:
 
 def run_replay_scenario(stack: Stack) -> ReplayRuns:
     """Stream two changes and a failure, replay them, then replay a range the stream never saw."""
-    land(stack, "batch-1", [change(ENTITY, 0, "r"), change(ENTITY, 1, "u"), record(ENTITY, 2, "x")])
-    submit(stack, BRONZE_APP, "--available-now")
+    streamed_batch = [change(ENTITY, 0, "r"), change(ENTITY, 1, "u"), record(ENTITY, 2, "x")]
+    stage(stack, "batch-1", streamed_batch)
+    submit(stack, *landing_staged(STAGING_KEY, BRONZE_APP), "--available-now")
     streamed = tables(stack)
 
     summaries = [replay(stack, 0, 2)]
     replayed_ingested = tables(stack)
 
-    land(stack, "batch-2", missing_batch())
-    summaries.append(replay(stack, 0, 6))
+    stage(stack, "batch-2", missing_batch())
+    summaries.append(replay(stack, 0, 6, land_staged=True))
     replayed_missing = tables(stack)
     summaries.append(replay(stack, 0, 6))
     replayed_again = tables(stack)
