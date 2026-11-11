@@ -1,5 +1,7 @@
 ## Data Engineering Take-Home Task
 
+This README is the run guide. The [docs site](https://jonathan5p.github.io/deel-home-task/) (sources in [`docs/`](docs/README.md), built with `make docs`) has the architecture, the design decisions and the table reference.
+
 ### Welcome
 
 Welcome to Deel's Data Engineering Take-Home task, as mentioned in the Task specification document, this is the pre-built stack that will help you on your solution development. This repository contains a pre-configured database containing the database represented by the following DER:
