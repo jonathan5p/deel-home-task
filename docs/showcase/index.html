@@ -15,22 +15,23 @@
   --surface-3: #e3e8ef;
   --ink: #141920;
   --ink-2: #3f4856;
-  --muted: #667080;
+  --muted: #5b6573;
   --line: #d4dae3;
   --accent: #2f63d0;
   --accent-soft: rgba(47, 99, 208, .12);
   --c-source: #2f63d0;
   --c-kafka: #7b4fd0;
   --c-landing: #66707c;
-  --c-bronze: #ad6526;
+  --c-bronze: #a35e22;
   --c-silver: #627385;
   --c-gold: #a87d00;
-  --c-serve: #10857b;
+  --c-serve: #0e7c72;
   --c-bad: #c23b47;
-  --c-ok: #1f8a4c;
+  --c-ok: #1a7f45;
   --token-ink: #ffffff;
   --code-bg: #f0f3f7;
   --shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 4px 16px rgba(16, 24, 40, .06);
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, .05);
   --radius: 14px;
   --nav-h: 56px;
 }
@@ -59,6 +60,7 @@
     --token-ink: #0f141a;
     --code-bg: #10161d;
     --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 6px 20px rgba(0, 0, 0, .25);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, .25);
   }
 }
 :root[data-theme="dark"] {
@@ -85,6 +87,7 @@
   --token-ink: #0f141a;
   --code-bg: #10161d;
   --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 6px 20px rgba(0, 0, 0, .25);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .25);
 }
 
 * { box-sizing: border-box; }
@@ -123,17 +126,17 @@ h1, h2, h3, h4 { line-height: 1.2; margin: 0; }
 .navlinks::-webkit-scrollbar { display: none; }
 .navlinks a {
   white-space: nowrap; text-decoration: none; color: var(--ink-2);
-  font-size: 14px; padding: 6px 10px; border-radius: 999px;
+  font-size: 15px; padding: 6px 12px; border-radius: 999px;
 }
-.navlinks a:hover { background: var(--surface-2); }
+.navlinks a:hover { background: var(--surface-2); color: var(--ink); }
 .navlinks a[aria-current="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .nav-tools { display: flex; gap: 8px; align-items: center; }
-.keyhint { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.keyhint { font-size: 13px; color: var(--muted); white-space: nowrap; }
 @media (max-width: 1000px) { .keyhint { display: none; } }
 @media (max-width: 600px) { .brand-text, #theme-label, .docs-link { display: none; } .topnav { gap: 8px; } }
 
 button, .btn {
-  font: inherit; font-size: 14px; cursor: pointer;
+  font: inherit; font-size: 15px; cursor: pointer;
   border: 1px solid var(--line); background: var(--surface); color: var(--ink);
   padding: 7px 14px; border-radius: 10px; text-decoration: none;
   display: inline-flex; align-items: center; gap: 6px; line-height: 1.3;
@@ -146,125 +149,150 @@ button:disabled { opacity: .45; cursor: default; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .btn-primary { color: #0d1117; } }
 button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
 .icon-btn { padding: 7px 10px; }
+.btn-ghost { border-color: transparent; background: transparent; color: var(--accent); padding: 4px 8px; font-weight: 600; }
+.btn-ghost:hover { background: var(--accent-soft); }
 
-/* Layout */
+/* Layout: one spacing scale (8, 12, 16, 24, 32, 48, 64) */
 main { display: block; }
 .section { padding: 64px 16px; scroll-margin-top: var(--nav-h); border-bottom: 1px solid var(--line); }
-.wrap { max-width: 1180px; margin: 0 auto; }
+.wrap { max-width: 1120px; margin: 0 auto; }
 .eyebrow { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); font-weight: 700; margin-bottom: 8px; }
-.section h2 { font-size: clamp(26px, 3vw, 36px); letter-spacing: -.01em; margin-bottom: 12px; }
-.lede { font-size: 18px; color: var(--ink-2); max-width: 820px; margin: 0 0 24px; }
+.section h2 { font-size: clamp(26px, 3vw, 34px); letter-spacing: -.01em; margin-bottom: 12px; }
+.lede { font-size: 18px; line-height: 1.55; color: var(--ink-2); max-width: 64ch; margin: 0 0 32px; }
 .grid { display: grid; gap: 16px; }
-.g2 { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
-.g3 { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+.g3 { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
 .card {
   background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
-  padding: 20px; box-shadow: var(--shadow);
+  padding: 24px; box-shadow: var(--shadow-sm);
 }
-.card h3 { font-size: 18px; margin-bottom: 8px; }
-.card p { margin: 0 0 10px; color: var(--ink-2); }
+.card h3 { font-size: 17px; margin-bottom: 8px; }
+.card p { margin: 0 0 8px; color: var(--ink-2); }
 .card p:last-child { margin-bottom: 0; }
-.card ul { margin: 0; padding-left: 18px; color: var(--ink-2); }
-.card li + li { margin-top: 6px; }
+.card ul { margin: 0; padding-left: 20px; color: var(--ink-2); }
+.card li + li { margin-top: 8px; }
 .muted { color: var(--muted); }
-.small { font-size: 14px; }
+.small { font-size: 15px; }
 .chip {
-  display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 999px;
+  display: inline-block; font-size: 13px; font-weight: 600; padding: 2px 9px; border-radius: 999px;
   background: var(--surface-2); color: var(--ink-2); border: 1px solid var(--line);
 }
+.more { font-weight: 600; text-decoration: none; }
+.more:hover { text-decoration: underline; }
 
 /* Data flow, the first section */
-.hero { padding: 36px 24px 56px; background:
+.hero { padding: 32px 24px 48px; background:
   radial-gradient(1200px 400px at 85% -10%, var(--accent-soft), transparent 60%),
   radial-gradient(900px 380px at 0% 110%, color-mix(in srgb, var(--c-gold) 14%, transparent), transparent 60%);
 }
 .stage-wrap { max-width: 1560px; margin: 0 auto; }
-.intro { margin-bottom: 20px; }
-.hero h1 { font-size: clamp(26px, 3vw, 38px); letter-spacing: -.02em; margin-bottom: 10px; }
+.intro { margin-bottom: 24px; }
+.hero h1 { font-size: clamp(26px, 3vw, 38px); letter-spacing: -.02em; margin-bottom: 12px; }
 .hero h1 span { background: linear-gradient(90deg, var(--c-source), var(--c-kafka) 35%, var(--c-bronze) 60%, var(--c-gold)); -webkit-background-clip: text; background-clip: text; color: transparent; }
-.hero .lede { font-size: clamp(16px, 1.4vw, 18px); max-width: 1000px; margin: 0; }
+.hero .lede { font-size: clamp(16px, 1.4vw, 18px); margin: 0; }
 
 .flow-shell { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--shadow); overflow: hidden; }
-.flow-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--line); background: var(--surface-2); }
-.flow-toolbar .hint { margin-left: auto; font-size: 14px; color: var(--muted); min-height: 1.3em; }
+.flow-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--surface-2); }
+.flow-toolbar .hint { flex: 1; min-width: 0; text-align: right; font-size: 15px; color: var(--ink-2); padding: 0 8px; }
 .flow-toolbar .hint b { color: var(--ink); }
-.flow-body { display: grid; grid-template-columns: minmax(0, 1fr) clamp(300px, 24vw, 380px); grid-template-rows: minmax(500px, auto); }
+.toolbar-sep { width: 1px; align-self: stretch; background: var(--line); margin: 2px 4px; }
+.flow-body {
+  --col: clamp(300px, 23vw, 360px);
+  display: grid; grid-template-columns: minmax(0, 1fr) var(--col); grid-template-rows: minmax(500px, auto);
+  transition: grid-template-columns .3s ease;
+}
+.flow-body.details-hidden { grid-template-columns: minmax(0, 1fr) 0px; }
 .flow-main { display: flex; flex-direction: column; min-width: 0; }
 .diagram-scroll { overflow-x: auto; }
 #flow { display: block; width: 100%; height: auto; }
-.scroll-hint { display: none; font-size: 12px; color: var(--muted); padding: 6px 14px 0; margin: 0; }
-.caption { flex: 1; margin: 0; padding: 14px 18px; border-top: 1px solid var(--line); font-size: 15px; color: var(--ink-2); }
+.scroll-hint { display: none; font-size: 14px; color: var(--ink-2); padding: 8px 16px 0; margin: 0; }
+.caption { flex: 1; margin: 0; padding: 16px 20px; border-top: 1px solid var(--line); font-size: 16px; color: var(--ink-2); min-height: 4.4em; }
 .caption b { color: var(--ink); }
 
 .lane { fill: var(--surface-2); stroke: var(--line); }
-.lane-label { fill: var(--muted); font-size: 13.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.lane-label { fill: var(--muted); font-size: 14.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
 .edge { fill: none; stroke: var(--muted); stroke-width: 1.6; opacity: .75; transition: stroke .2s, opacity .2s; }
 .edge.dashed { stroke-dasharray: 5 4; }
-.edge.hot { stroke: var(--accent); opacity: 1; stroke-width: 2.4; }
+.edge.hot { stroke: var(--accent); opacity: 1; stroke-width: 2.6; }
 .arrowhead { fill: var(--muted); }
+.node, .dq { transition: opacity .2s; }
 .node { cursor: pointer; }
 .node .box { fill: var(--surface); stroke: var(--line); stroke-width: 1.4; transition: stroke .2s, fill .2s; }
 .node .bar { fill: var(--lc); }
 .node .t1 { fill: var(--ink); font-size: 17px; font-weight: 700; }
 .node .t2 { fill: var(--muted); font-size: 14.5px; }
-.node:hover .box, .node:focus-visible .box { stroke: var(--lc); stroke-width: 2.2; }
+.node:hover .box { stroke: var(--lc); stroke-width: 2.2; fill: color-mix(in srgb, var(--lc) 7%, var(--surface)); }
 .node:focus { outline: none; }
 .node:focus-visible .box { stroke: var(--accent); stroke-width: 3; }
 .node.related .box { stroke: var(--lc); stroke-width: 2.2; fill: color-mix(in srgb, var(--lc) 8%, var(--surface)); }
-.node.active .box { stroke: var(--lc); stroke-width: 3; fill: color-mix(in srgb, var(--lc) 12%, var(--surface)); }
+.node.active .box { stroke: var(--lc); stroke-width: 3.2; fill: color-mix(in srgb, var(--lc) 14%, var(--surface)); }
 @media (prefers-reduced-motion: no-preference) { .node.pulse .box { animation: pulse .6s ease-out; } }
 @keyframes pulse { 0% { fill: color-mix(in srgb, var(--lc) 30%, var(--surface)); } 100% { fill: var(--surface); } }
 .sub-row rect { fill: var(--surface-2); stroke: none; transition: fill .2s; }
-.sub-row text { fill: var(--ink-2); font-size: 13.5px; }
+.sub-row text { fill: var(--ink-2); font-size: 14.5px; }
 .sub-row.lit rect { fill: color-mix(in srgb, var(--c-gold) 35%, var(--surface)); }
 .sub-row.lit text { fill: var(--ink); font-weight: 700; }
 #flow.stepping .node:not(.active):not(.related) { opacity: .42; }
 #flow.stepping .dq { opacity: .42; }
+#flow.focused .node:not(.active):not(.related):not(:hover),
+#flow.focused .dq:not(.active):not(.related):not(:hover) { opacity: .45; }
+#flow.focused .edge:not(.hot) { opacity: .35; }
 .dq { cursor: pointer; }
 .dq .dq-shape { fill: var(--surface); stroke: var(--c-ok); stroke-width: 1.8; }
 .dq .dq-tick { fill: none; stroke: var(--c-ok); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .dq:hover .dq-shape, .dq:focus-visible .dq-shape { fill: color-mix(in srgb, var(--c-ok) 18%, var(--surface)); stroke-width: 2.6; }
 .dq:focus { outline: none; }
 .dq:focus-visible .dq-shape { stroke: var(--accent); }
-.dq.related .dq-shape, .dq.active .dq-shape { fill: color-mix(in srgb, var(--c-ok) 22%, var(--surface)); stroke-width: 2.6; }
+.dq.related .dq-shape { fill: color-mix(in srgb, var(--c-ok) 22%, var(--surface)); stroke-width: 2.6; }
+.dq.active .dq-shape { fill: color-mix(in srgb, var(--c-ok) 30%, var(--surface)); stroke-width: 3.2; }
 .token .shape { stroke: var(--surface); stroke-width: 1.5; }
 .token text { fill: var(--token-ink); font-size: 10px; font-weight: 800; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
 .token { pointer-events: none; }
-.float-note { font-size: 13px; font-weight: 700; fill: var(--c-bad); paint-order: stroke; stroke: var(--surface); stroke-width: 4px; pointer-events: none; }
+.float-note { font-size: 14px; font-weight: 700; fill: var(--c-bad); paint-order: stroke; stroke: var(--surface); stroke-width: 4px; pointer-events: none; }
 
 /* Explanation column next to the diagram */
-.explain { position: relative; min-width: 0; border-left: 1px solid var(--line); background: var(--surface); }
-.explain-inner { position: absolute; inset: 0; overflow-y: auto; }
-.ex-head { padding: 16px 18px 12px; border-top: 4px solid var(--lc, var(--accent)); border-bottom: 1px solid var(--line); display: flex; gap: 12px; align-items: flex-start; }
-.ex-head > div { flex: 1; min-width: 0; }
-.ex-head .kicker { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--lc, var(--accent)); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.explain { position: relative; min-width: 0; overflow: hidden; border-left: 1px solid var(--line); background: var(--surface); transition: visibility 0s linear 0s; }
+.details-hidden .explain { visibility: hidden; transition: visibility 0s linear .3s; }
+.explain-inner { position: absolute; top: 0; bottom: 0; left: 0; width: var(--col); overflow-y: auto; }
+.ex-head { padding: 16px 20px 14px; border-top: 4px solid var(--lc, var(--accent)); border-bottom: 1px solid var(--line); }
+.ex-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: -6px 0 8px -8px; }
+.ex-head .kicker { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--lc, var(--accent)); }
 .ex-head h3 { font-size: 20px; margin-top: 4px; }
 .ex-head h3:focus { outline: none; }
-.ex-head .close { flex: none; }
-.ex-body { padding: 14px 18px 22px; font-size: 15px; }
-.ex-body h4 { font-size: 12.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 16px 0 6px; }
+.ex-body { padding: 16px 20px 24px; font-size: 16px; line-height: 1.55; }
+.ex-body h4 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-2); margin: 20px 0 8px; }
 .ex-body h4:first-child { margin-top: 0; }
 .ex-body p { margin: 0 0 8px; color: var(--ink-2); }
-.ex-body ul { margin: 0; padding-left: 18px; color: var(--ink-2); }
-.ex-body li + li { margin-top: 5px; }
+.ex-body ul { margin: 0; padding-left: 20px; color: var(--ink-2); }
+.ex-body li + li { margin-top: 6px; }
 .tech { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .links { list-style: none; padding: 0 !important; display: grid; gap: 6px; }
-.legend { list-style: none; padding: 0 !important; margin: 0; display: grid; gap: 6px; font-size: 14px; color: var(--ink-2); }
+.try { display: flex; gap: 10px; align-items: flex-start; background: var(--accent-soft); color: var(--ink) !important; border-radius: 10px; padding: 10px 12px; margin: 16px 0 0 !important; }
+.try svg { flex: none; margin-top: 3px; color: var(--accent); }
+.legend { list-style: none; padding: 0 !important; margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; font-size: 15px; color: var(--ink-2); }
 .legend li { display: flex; align-items: center; gap: 8px; margin: 0 !important; }
 .legend svg { flex: none; }
-.step-count { font-size: 12px; font-weight: 700; color: var(--accent); background: var(--accent-soft); padding: 2px 8px; border-radius: 999px; letter-spacing: 0; text-transform: none; }
-.progress { display: flex; gap: 3px; margin: 0 0 12px; }
+.legend-ops { font-size: 15px; margin-top: 10px !important; }
+.step-count { font-size: 13px; font-weight: 700; color: var(--accent); background: var(--accent-soft); padding: 2px 10px; border-radius: 999px; margin-left: 8px; }
+.progress { display: flex; gap: 3px; margin: 0 0 14px; }
 .progress span { height: 4px; flex: 1; border-radius: 2px; background: var(--surface-3); }
 .progress span.done { background: var(--accent); }
 .payload code { background: none; padding: 0; font-size: inherit; border-radius: 0; }
-.payload { background: var(--code-bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: 12.5px; line-height: 1.55; overflow: auto; max-height: 220px; white-space: pre; color: var(--ink); margin: 4px 0 12px; }
+.payload { background: var(--code-bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: 13.5px; line-height: 1.55; overflow: auto; max-height: 220px; white-space: pre; color: var(--ink); margin: 8px 0 14px; }
 .step-nav { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.step-keys { font-size: 14px; color: var(--ink-2); margin-left: 4px; }
+.serve-list { list-style: none; padding: 0 !important; display: grid; gap: 8px; }
+.serve-list li { display: grid; gap: 2px; margin: 0 !important; }
+.serve-list b { color: var(--ink); font-weight: 600; }
 
-@media (max-width: 1100px) {
-  .flow-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; }
+@media (prefers-reduced-motion: reduce) { .flow-body, .explain, .node, .dq { transition: none !important; } }
+
+/* Narrower than this, the column would shrink the diagram's labels below 14 px, so it moves under the diagram. */
+@media (max-width: 1359px) {
+  .flow-body, .flow-body.details-hidden { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; transition: none; }
   .explain { border-left: 0; border-top: 1px solid var(--line); }
-  .explain-inner { position: static; }
-  .flow-toolbar .hint { margin-left: 0; width: 100%; }
+  .details-hidden .explain { display: none; }
+  .explain-inner { position: static; width: auto; max-width: 620px; }
+  .flow-toolbar .hint { order: 10; flex-basis: 100%; text-align: left; padding: 0; }
 }
 @media (max-width: 1020px) {
   #flow { min-width: 980px; }
@@ -273,54 +301,67 @@ main { display: block; }
 @media (max-width: 700px) {
   .hero { padding: 24px 16px 40px; }
   .payload { max-height: none; }
+  .toolbar-sep { display: none; }
 }
 
-/* Assignment */
-.questions { counter-reset: q; list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
-.questions li { counter-increment: q; display: flex; gap: 12px; align-items: baseline; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
-.questions li::before { content: counter(q); flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); font-weight: 700; font-size: 14px; }
+/* Assignment: the four questions */
+.questions { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr)); align-items: start; }
+.q { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+.q summary { cursor: pointer; list-style: none; display: flex; gap: 12px; align-items: center; padding: 12px 16px; font-weight: 600; border-radius: 12px; }
+.q summary::-webkit-details-marker { display: none; }
+.q summary:hover { background: var(--surface-2); }
+.q summary::after, .decision summary::after { content: "+"; margin-left: auto; color: var(--ink-2); font-size: 20px; line-height: 1; font-weight: 400; }
+.q[open] summary::after, .decision[open] summary::after { content: "\2212"; }
+.q[open] summary { border-radius: 12px 12px 0 0; }
+.qn { flex: none; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); font-weight: 700; font-size: 14px; }
+.q-body { padding: 4px 16px 16px 56px; color: var(--ink-2); }
+.q-body p { margin: 0 0 8px; }
+.q-actions { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin-top: 12px; }
 
 /* Decisions */
 .filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
-.decision-list { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); align-items: start; }
-.decision { background: var(--surface); border: 1px solid var(--line); border-top: 4px solid var(--lc, var(--accent)); border-radius: 12px; box-shadow: var(--shadow); }
+.decision-list { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr)); align-items: start; }
+.decision { background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--lc, var(--accent)); border-radius: 10px; }
 .decision[hidden] { display: none; }
-.decision summary { cursor: pointer; list-style: none; display: flex; gap: 12px; align-items: baseline; padding: 11px 16px; }
+.decision summary { cursor: pointer; list-style: none; display: flex; gap: 12px; align-items: center; padding: 12px 16px; border-radius: 0 10px 10px 0; }
 .decision summary::-webkit-details-marker { display: none; }
-.decision summary::after { content: "+"; margin-left: auto; color: var(--muted); font-size: 18px; line-height: 1; }
-.decision[open] summary::after { content: "\2212"; }
-.decision .dnum { font-size: 13px; font-weight: 800; color: var(--lc); letter-spacing: .04em; min-width: 2.6em; font-variant-numeric: tabular-nums; }
+.decision summary:hover { background: var(--surface-2); }
 .decision .dname { font-weight: 600; }
-.decision > div { padding: 0 16px 14px calc(16px + 2.6em + 12px); color: var(--ink-2); font-size: 15px; }
-.decision > div p { margin: 0 0 6px; }
+.decision .dnum { font-size: 13px; font-weight: 700; color: var(--ink-2); background: var(--surface-2); border-radius: 999px; padding: 1px 8px; font-variant-numeric: tabular-nums; margin-left: auto; }
+.decision summary::after { margin-left: 0; }
+.decision > div { padding: 0 16px 16px; color: var(--ink-2); }
+.decision > div p { margin: 0 0 8px; }
 
 /* Measured */
 .metric { font-size: 30px; font-weight: 800; line-height: 1.1; margin-bottom: 8px; }
-.metric small { font-size: 15px; font-weight: 600; color: var(--muted); }
-.src { font-size: 12.5px; color: var(--muted); margin-top: 8px; }
-.bar-line { display: grid; grid-template-columns: 56px minmax(0, 1fr) 96px; gap: 8px; align-items: center; margin: 4px 0; font-size: 13px; color: var(--ink-2); }
-.bar-area { position: relative; height: 12px; }
-.bar-area .range { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 0 4px 4px 0; min-width: 4px; }
-.bar-area .range.before { background: var(--muted); opacity: .55; }
-.bar-area .range.after { background: var(--accent); }
-.bar-line .val { white-space: nowrap; font-variant-numeric: tabular-nums; }
-.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.metric small { display: block; margin-top: 4px; font-size: 16px; font-weight: 600; color: var(--ink-2); }
+.src { font-size: 14px; color: var(--ink-2); margin-top: 12px !important; }
+.latency { grid-column: 1 / -1; }
+.latency-head { display: flex; flex-wrap: wrap; gap: 4px 24px; align-items: baseline; }
+.latency-head .metric small { display: inline; margin: 0 0 0 6px; }
+.timeline { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin: 16px 0 8px; }
+.seg { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; padding: 8px 12px; border-top: 4px solid var(--lc); border-radius: 4px; background: color-mix(in srgb, var(--lc) 14%, var(--surface)); font-size: 15px; }
+.seg b { color: var(--ink); }
+.seg span { color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+@media (max-width: 600px) { .seg { flex-direction: column; gap: 0; padding: 8px; } }
 
 /* Run */
-.cmd { display: flex; align-items: stretch; gap: 0; background: var(--code-bg); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
-.cmd pre { flex: 1; padding: 12px 14px; font-size: 14px; overflow-x: auto; color: var(--ink); }
+.run-list { max-width: 820px; }
+.cmd { display: flex; align-items: stretch; gap: 0; background: var(--code-bg); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.cmd pre { flex: 1; padding: 10px 14px; font-size: 14px; overflow-x: auto; color: var(--ink); }
 .cmd code { background: none; padding: 0; font-size: inherit; border-radius: 0; }
-.cmd button { border: 0; border-left: 1px solid var(--line); border-radius: 0; background: transparent; font-size: 13px; }
-.run-step { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 14px; align-items: start; margin-bottom: 18px; }
-.run-step .n { width: 36px; height: 36px; border-radius: 50%; background: var(--accent); color: #fff; display: grid; place-items: center; font-weight: 800; }
+.cmd button { border: 0; border-left: 1px solid var(--line); border-radius: 0; background: transparent; font-size: 14px; }
+.run-step { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 14px; align-items: start; margin-bottom: 16px; }
+.run-step .n { width: 30px; height: 30px; border-radius: 50%; background: var(--accent); color: #fff; display: grid; place-items: center; font-weight: 800; font-size: 15px; margin-top: 2px; }
 :root[data-theme="dark"] .run-step .n { color: #0d1117; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .run-step .n { color: #0d1117; } }
-.run-step h3 { font-size: 17px; margin: 6px 0 8px; }
-.run-step p { margin: 8px 0 0; color: var(--ink-2); font-size: 14.5px; }
+.run-step h3 { font-size: 16px; margin: 4px 0 8px; }
+.run-step h3 span { font-weight: 400; color: var(--ink-2); }
+.run-step p { margin: 8px 0 0; color: var(--ink-2); font-size: 15px; }
 
-footer { padding: 40px 16px 60px; color: var(--muted); font-size: 14px; }
+footer { padding: 40px 16px 60px; color: var(--ink-2); font-size: 15px; }
 footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: space-between; }
-@media print { .topnav, .flow-toolbar { display: none; } .explain-inner { position: static; } .section { break-inside: avoid; } }
+@media print { .topnav, .flow-toolbar { display: none; } .explain-inner { position: static; width: auto; } .section { break-inside: avoid; } }
 </style>
 </head>
 <body>
@@ -355,7 +396,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
     <div class="intro">
       <div class="eyebrow">Deel data engineering take-home</div>
       <h1 id="flow-title">A CDC pipeline, <span>from the orders database to the answers</span></h1>
-      <p class="lede">I built a pipeline that streams every change in a PostgreSQL orders database through Kafka and Spark into an Iceberg lake and a star schema that answers four business questions. Click any part of the diagram to see what it does, or follow one change from the commit to the answer.</p>
+      <p class="lede">I built a pipeline that streams every change in an orders database through Kafka and Spark into an Iceberg lake, and into a star schema in PostgreSQL that answers four business questions.</p>
     </div>
     <div class="flow-shell">
       <div class="flow-toolbar" role="toolbar" aria-label="Data flow controls">
@@ -365,7 +406,12 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
         </button>
         <button type="button" id="step-btn" class="btn-primary" aria-pressed="false">Follow one change</button>
         <button type="button" id="reset-btn">Reset</button>
-        <span class="hint" id="hint">Hover or click a box, or a green check, for details.</span>
+        <span class="hint" id="hint">Hover a part for a one-line summary; click it for details.</span>
+        <span class="toolbar-sep" aria-hidden="true"></span>
+        <button type="button" id="details-btn" aria-expanded="true" aria-controls="explain">
+          <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path id="details-icon" d="M10 3v10" stroke="currentColor" stroke-width="1.5"/></svg>
+          <span id="details-label">Hide details</span>
+        </button>
       </div>
       <div class="flow-body">
         <div class="flow-main">
@@ -388,14 +434,15 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
         </div>
         <aside class="explain" id="explain" aria-label="Explanation">
           <div class="explain-inner" id="explain-inner">
-            <div class="ex-head"><div><div class="kicker">How to read it</div><h3>Click any part of the pipeline</h3></div></div>
+            <div class="ex-head"><div class="kicker">Overview</div><h3>From a commit to an answer</h3></div>
             <div class="ex-body">
-              <p>Each box is one part of the pipeline, and each green check between two layers is a data quality check. Click one and I explain it here: what it does, roughly how it works, and why I built it that way.</p>
-              <p><b>Follow one change</b> takes one update to order 1 through 13 steps, from the commit in the source to the answer. The arrow keys move between steps.</p>
+              <p>Debezium captures every change in the orders database. Spark carries it through the lake's layers and merges it into a star schema in PostgreSQL, which the API and Grafana read.</p>
+              <p class="try"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 1.5l9.5 6.2-4.3.9 2.4 4.6-1.8.9-2.4-4.6L3 12.3z" fill="currentColor"/></svg><span><b>Click any part of the pipeline</b>, or a green check, to see what it does. <b>Follow one change</b> walks one update through 13 steps.</span></p>
               <h4>The moving markers</h4>
               <ul class="legend" id="legend"></ul>
+              <p class="legend-ops">The letter is the operation: <b>c</b> create, <b>u</b> update, <b>d</b> delete, <b>t</b> tombstone, <b>!</b> invalid.</p>
               <h4>Read more</h4>
-              <ul class="links"><li><a href="../architecture/overview/">Architecture overview &rarr;</a></li></ul>
+              <ul class="links"><li><a class="more" href="../architecture/overview/">Architecture overview &rarr;</a></li></ul>
             </div>
           </div>
         </aside>
@@ -408,13 +455,8 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
   <div class="wrap">
     <div class="eyebrow">The assignment</div>
     <h2 id="context-title">Four questions about open orders</h2>
-    <p class="lede">ACME Delivery Services wants its logistics leaders to follow their orders with low latency. The assignment supplied the orders database and its Debezium connector; I built the streaming pipeline and the model that answer these questions.</p>
-    <ol class="questions">
-      <li>Open orders by delivery date and status</li>
-      <li>The top 3 delivery dates by open orders</li>
-      <li>Pending items by product</li>
-      <li>The top 3 customers by pending orders</li>
-    </ol>
+    <p class="lede">ACME Delivery Services wants to follow its open orders with low latency. Open a question to see how I answer it, or show its path in the diagram.</p>
+    <ol class="questions" id="questions"></ol>
   </div>
 </section>
 
@@ -422,7 +464,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
   <div class="wrap">
     <div class="eyebrow">Decisions</div>
     <h2 id="decisions-title">Why it is built this way</h2>
-    <p class="lede">The main choices I made. Open one for the reason and the alternative; each links to its full entry.</p>
+    <p class="lede">The main choices I made. Open one for the reason in a sentence or two, with a link to its full entry.</p>
     <div class="filters" role="group" aria-label="Filter decisions">
       <button type="button" data-filter="all" aria-pressed="true">All</button>
       <button type="button" data-filter="constraints" aria-pressed="false">Constraints</button>
@@ -431,86 +473,98 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
       <button type="button" data-filter="gold" aria-pressed="false">Gold</button>
     </div>
     <div class="decision-list" id="decision-list">
-      <details class="decision" data-cat="constraints" style="--lc:var(--c-serve)"><summary><span class="dnum">D8</span><span class="dname">Fully local, no cloud services</span></summary><div>
-        <p>The assignment asks for a stack reviewers can start from the README, so everything runs in Docker Compose on one machine. Managed AWS services would be closer to production, but need accounts and cost money.</p>
-        <a href="../architecture/decisions/#d8--fully-local-no-cloud-services">Read D8 &rarr;</a></div></details>
-      <details class="decision" data-cat="constraints" style="--lc:var(--c-source)"><summary><span class="dnum">D29</span><span class="dname">The source database and connector stay as provided</span></summary><div>
-        <p>I treated the database and the Debezium connector as given input. Bronze decodes their formats instead of changing the connector settings.</p>
-        <a href="../architecture/decisions/#d29--the-source-database-and-the-debezium-connector-stay-as-provided">Read D29 &rarr;</a></div></details>
-      <details class="decision" data-cat="platform" style="--lc:var(--c-landing)"><summary><span class="dnum">D13</span><span class="dname">SeaweedFS instead of MinIO</span></summary><div>
-        <p>MinIO is no longer maintained and its images can no longer be pulled. SeaweedFS is maintained, Apache-2.0 licensed and runs as one container with an S3 API. I also looked at a MinIO fork, RustFS and Garage.</p>
-        <a href="../architecture/decisions/#d13--object-store-seaweedfs-instead-of-minio">Read D13 &rarr;</a></div></details>
-      <details class="decision" data-cat="platform" style="--lc:var(--c-source)"><summary><span class="dnum">D9</span><span class="dname">Iceberg with a JDBC catalog</span></summary><div>
-        <p>Iceberg is the table format; keeping its catalog in the analytics PostgreSQL avoids running another service. A REST catalog would be closer to production, at the cost of one more service.</p>
-        <a href="../architecture/decisions/#d9--iceberg-with-a-jdbc-catalog-on-the-analytics-postgresql">Read D9 &rarr;</a></div></details>
-      <details class="decision" data-cat="platform" style="--lc:var(--c-kafka)"><summary><span class="dnum">D27</span><span class="dname">One driver container per application</span></summary><div>
-        <p>Each Spark job gets its own driver container, so a failure, its memory and its logs belong to one job only. In production this becomes YARN cluster mode on EMR, or Kubernetes.</p>
-        <a href="../architecture/decisions/#d27--one-driver-container-per-application-executors-on-shared-workers">Read D27 &rarr;</a></div></details>
-      <details class="decision" data-cat="lake" style="--lc:var(--c-bronze)"><summary><span class="dnum">D17</span><span class="dname">Landing, bronze, silver; gold built from silver</span></summary><div>
-        <p>Each layer has one job. Spark cannot stream from an Iceberg table that is updated in place, so an append-only silver keeps gold streamable. The cost is four hops, each adding some latency.</p>
-        <a href="../architecture/decisions/#d17--layered-lake-landing-bronze-silver-gold-built-from-silver">Read D17 &rarr;</a></div></details>
-      <details class="decision" data-cat="lake" style="--lc:var(--c-landing)"><summary><span class="dnum">D18</span><span class="dname">Landing as raw Avro files</span></summary><div>
-        <p>An exact, replayable copy of Kafka, in a compact format that describes itself. The cost is one more hop before the data is typed.</p>
-        <a href="../architecture/decisions/#d18--landing-as-raw-avro-files-one-folder-per-topic">Read D18 &rarr;</a></div></details>
-      <details class="decision" data-cat="lake" style="--lc:var(--c-bronze)"><summary><span class="dnum">D30</span><span class="dname">A readable change identity</span></summary><div>
-        <p>A change is identified by its key, its position in the source log and its operation, not by its Kafka offset, because the same change can arrive again at a new offset. Data Vault hash keys would work too, but are opaque.</p>
-        <a href="../architecture/decisions/#d30--change-identity-in-readable-columns-data-vault-hashing-only-in-part">Read D30 &rarr;</a></div></details>
-      <details class="decision" data-cat="lake" style="--lc:var(--c-silver)"><summary><span class="dnum">D31</span><span class="dname">Late arrivals are history</span></summary><div>
-        <p>A late change takes its place in the history and never overwrites newer state. Bronze stays a faithful log; duplicates are removed in silver.</p>
-        <a href="../architecture/decisions/#d31--late-arrivals-are-history-deduplication-happens-in-silver">Read D31 &rarr;</a></div></details>
-      <details class="decision" data-cat="lake" style="--lc:var(--c-silver)"><summary><span class="dnum">D36</span><span class="dname">How silver removes duplicates</span></summary><div>
-        <p>Exact duplicates are dropped when silver is written; versions that change nothing are folded when it is read. There is no time cut-off, so a late change is never dropped.</p>
-        <a href="../architecture/decisions/#d36--silver-deduplication-exact-duplicates-on-write-unchanged-versions-on-read">Read D36 &rarr;</a></div></details>
-      <details class="decision" data-cat="gold" style="--lc:var(--c-gold)"><summary><span class="dnum">D3</span><span class="dname">Gold in PostgreSQL, not ClickHouse</span></summary><div>
-        <p>Gold is small and must be consistent after every micro-batch, and PostgreSQL applies each batch in one transaction. ClickHouse would handle much larger facts better, so it stays an option for scale.</p>
-        <a href="../architecture/decisions/#d3--gold-in-postgresql-not-clickhouse">Read D3 &rarr;</a></div></details>
-      <details class="decision" data-cat="gold" style="--lc:var(--c-gold)"><summary><span class="dnum">D32</span><span class="dname">The gold dimensional model</span></summary><div>
-        <p>Customer and product dimensions with history, history facts and current-state tables answer every question. Current state as a plain view would get slower as the history grows.</p>
-        <a href="../architecture/decisions/#d32--the-gold-dimensional-model">Read D32 &rarr;</a></div></details>
-      <details class="decision" data-cat="gold" style="--lc:var(--c-gold)"><summary><span class="dnum">D35</span><span class="dname">Public views over an internal schema</span></summary><div>
-        <p>The pipeline writes its own internal tables; consumers read views without the pipeline's columns. I can change how gold is stored without breaking the API or the dashboard.</p>
-        <a href="../architecture/decisions/#d35--public-views-over-an-internal-schema">Read D35 &rarr;</a></div></details>
-      <details class="decision" data-cat="gold" style="--lc:var(--c-gold)"><summary><span class="dnum">D40</span><span class="dname">Indexes chosen from the query plans</span></summary><div>
-        <p>Gold has only the indexes the four questions use, each one picked by reading that question's query plan. Indexing every column would slow down every merge for no gain.</p>
-        <a href="../architecture/decisions/#d40--gold-indexes-chosen-from-the-query-plans-of-the-current-use-cases">Read D40 &rarr;</a></div></details>
-      <details class="decision" data-cat="gold" style="--lc:var(--c-gold)"><summary><span class="dnum">D37</span><span class="dname">Retention by monthly partitions</span></summary><div>
-        <p>PostgreSQL keeps 36 months of history by dropping whole months, which is cheaper than deleting rows. Current state is never trimmed, so an old open order keeps its row.</p>
-        <a href="../architecture/decisions/#d37--gold-retention-by-monthly-partitions">Read D37 &rarr;</a></div></details>
-      <details class="decision" data-cat="gold" style="--lc:var(--c-gold)"><summary><span class="dnum">D38</span><span class="dname">Rebuild gold from silver</span></summary><div>
-        <p>Gold can be reset and rebuilt from silver with the same merge the stream uses, optionally up to a point in time. A separate batch loader would be a second copy of the rules to keep in step.</p>
-        <a href="../architecture/decisions/#d38--rebuild-gold-from-silver-with-an-optional-cutoff">Read D38 &rarr;</a></div></details>
-      <details class="decision" data-cat="gold" style="--lc:var(--c-gold)"><summary><span class="dnum">D39</span><span class="dname">Gold in the lake as views over silver</span></summary><div>
-        <p>Silver already holds every version, so the lake gets the gold model as views instead of a second writer. The cost is that every read recomputes over the full history.</p>
-        <a href="../architecture/decisions/#d39--gold-in-the-lake-as-iceberg-views-over-silver">Read D39 &rarr;</a></div></details>
+      <details class="decision" data-cat="constraints" style="--lc:var(--c-serve)"><summary><span class="dname">Fully local, no cloud services</span><span class="dnum">D8</span></summary><div>
+        <p>Reviewers can start everything from the README, with Docker Compose on one machine. Managed AWS services would be closer to production, but need accounts and cost money.</p>
+        <a class="more" href="../architecture/decisions/#d8--fully-local-no-cloud-services">Read more: D8 &rarr;</a></div></details>
+      <details class="decision" data-cat="constraints" style="--lc:var(--c-source)"><summary><span class="dname">The source database and connector stay as provided</span><span class="dnum">D29</span></summary><div>
+        <p>I treated them as given input, so bronze decodes their formats instead of changing the connector settings.</p>
+        <a class="more" href="../architecture/decisions/#d29--the-source-database-and-the-debezium-connector-stay-as-provided">Read more: D29 &rarr;</a></div></details>
+      <details class="decision" data-cat="platform" style="--lc:var(--c-landing)"><summary><span class="dname">SeaweedFS instead of MinIO</span><span class="dnum">D13</span></summary><div>
+        <p>MinIO is no longer maintained and its images can no longer be pulled. SeaweedFS is maintained, Apache-2.0 licensed and one container with an S3 API.</p>
+        <a class="more" href="../architecture/decisions/#d13--object-store-seaweedfs-instead-of-minio">Read more: D13 &rarr;</a></div></details>
+      <details class="decision" data-cat="platform" style="--lc:var(--c-source)"><summary><span class="dname">Iceberg with a JDBC catalog</span><span class="dnum">D9</span></summary><div>
+        <p>Keeping the catalog in the analytics PostgreSQL avoids running another service. A REST catalog would be closer to production.</p>
+        <a class="more" href="../architecture/decisions/#d9--iceberg-with-a-jdbc-catalog-on-the-analytics-postgresql">Read more: D9 &rarr;</a></div></details>
+      <details class="decision" data-cat="platform" style="--lc:var(--c-kafka)"><summary><span class="dname">One driver container per application</span><span class="dnum">D27</span></summary><div>
+        <p>A failure, its memory and its logs belong to one job only. In production this becomes cluster mode on EMR or Kubernetes.</p>
+        <a class="more" href="../architecture/decisions/#d27--one-driver-container-per-application-executors-on-shared-workers">Read more: D27 &rarr;</a></div></details>
+      <details class="decision" data-cat="lake" style="--lc:var(--c-bronze)"><summary><span class="dname">Landing, bronze, silver; gold built from silver</span><span class="dnum">D17</span></summary><div>
+        <p>Each layer has one job, and an append-only silver lets gold read it as a stream. The cost is some latency per hop.</p>
+        <a class="more" href="../architecture/decisions/#d17--layered-lake-landing-bronze-silver-gold-built-from-silver">Read more: D17 &rarr;</a></div></details>
+      <details class="decision" data-cat="lake" style="--lc:var(--c-landing)"><summary><span class="dname">Landing as raw Avro files</span><span class="dnum">D18</span></summary><div>
+        <p>An exact, replayable copy of Kafka in a format that describes itself, at the cost of one more hop.</p>
+        <a class="more" href="../architecture/decisions/#d18--landing-as-raw-avro-files-one-folder-per-topic">Read more: D18 &rarr;</a></div></details>
+      <details class="decision" data-cat="lake" style="--lc:var(--c-bronze)"><summary><span class="dname">A readable change identity</span><span class="dnum">D30</span></summary><div>
+        <p>A change is identified by its key, its position in the source log and its operation, not by its Kafka offset, because a redelivered change gets a new offset.</p>
+        <a class="more" href="../architecture/decisions/#d30--change-identity-in-readable-columns-data-vault-hashing-only-in-part">Read more: D30 &rarr;</a></div></details>
+      <details class="decision" data-cat="lake" style="--lc:var(--c-silver)"><summary><span class="dname">Late arrivals are history</span><span class="dnum">D31</span></summary><div>
+        <p>A late change takes its place in the history and never overwrites newer state. Bronze keeps everything; silver removes the duplicates.</p>
+        <a class="more" href="../architecture/decisions/#d31--late-arrivals-are-history-deduplication-happens-in-silver">Read more: D31 &rarr;</a></div></details>
+      <details class="decision" data-cat="lake" style="--lc:var(--c-silver)"><summary><span class="dname">How silver removes duplicates</span><span class="dnum">D36</span></summary><div>
+        <p>Exact duplicates are dropped on write and versions that change nothing are folded on read. There is no time cut-off, so a late change is never dropped.</p>
+        <a class="more" href="../architecture/decisions/#d36--silver-deduplication-exact-duplicates-on-write-unchanged-versions-on-read">Read more: D36 &rarr;</a></div></details>
+      <details class="decision" data-cat="gold" style="--lc:var(--c-gold)"><summary><span class="dname">Gold in PostgreSQL, not ClickHouse</span><span class="dnum">D3</span></summary><div>
+        <p>Gold is small and must be consistent after every micro-batch, and PostgreSQL applies each batch in one transaction. ClickHouse stays an option for scale.</p>
+        <a class="more" href="../architecture/decisions/#d3--gold-in-postgresql-not-clickhouse">Read more: D3 &rarr;</a></div></details>
+      <details class="decision" data-cat="gold" style="--lc:var(--c-gold)"><summary><span class="dname">The gold dimensional model</span><span class="dnum">D32</span></summary><div>
+        <p>Dimensions with history, history facts and current-state tables answer every question. Current state is a table because a view over the history would get slower as it grows.</p>
+        <a class="more" href="../architecture/decisions/#d32--the-gold-dimensional-model">Read more: D32 &rarr;</a></div></details>
+      <details class="decision" data-cat="gold" style="--lc:var(--c-gold)"><summary><span class="dname">Public views over an internal schema</span><span class="dnum">D35</span></summary><div>
+        <p>Consumers read views without the pipeline's columns, so I can change how gold is stored without breaking the API or the dashboard.</p>
+        <a class="more" href="../architecture/decisions/#d35--public-views-over-an-internal-schema">Read more: D35 &rarr;</a></div></details>
+      <details class="decision" data-cat="gold" style="--lc:var(--c-gold)"><summary><span class="dname">Indexes chosen from the query plans</span><span class="dnum">D40</span></summary><div>
+        <p>Only the indexes the four questions use, each picked from that question's query plan. More would slow down every merge for no gain.</p>
+        <a class="more" href="../architecture/decisions/#d40--gold-indexes-chosen-from-the-query-plans-of-the-current-use-cases">Read more: D40 &rarr;</a></div></details>
+      <details class="decision" data-cat="gold" style="--lc:var(--c-gold)"><summary><span class="dname">Retention by monthly partitions</span><span class="dnum">D37</span></summary><div>
+        <p>PostgreSQL keeps 36 months of history by dropping whole months, which is cheaper than deleting rows. Current state is never trimmed.</p>
+        <a class="more" href="../architecture/decisions/#d37--gold-retention-by-monthly-partitions">Read more: D37 &rarr;</a></div></details>
+      <details class="decision" data-cat="gold" style="--lc:var(--c-gold)"><summary><span class="dname">Rebuild gold from silver</span><span class="dnum">D38</span></summary><div>
+        <p>Gold is rebuilt with the same merge the stream uses, optionally up to a point in time, so there is no second copy of the rules to keep in step.</p>
+        <a class="more" href="../architecture/decisions/#d38--rebuild-gold-from-silver-with-an-optional-cutoff">Read more: D38 &rarr;</a></div></details>
+      <details class="decision" data-cat="gold" style="--lc:var(--c-gold)"><summary><span class="dname">Gold in the lake as views over silver</span><span class="dnum">D39</span></summary><div>
+        <p>Silver already holds every version, so the lake gets the gold model as views instead of a second writer. Every read recomputes over the full history.</p>
+        <a class="more" href="../architecture/decisions/#d39--gold-in-the-lake-as-iceberg-views-over-silver">Read more: D39 &rarr;</a></div></details>
     </div>
-    <p class="small" style="margin-top:16px"><a href="../architecture/decisions/">All design decisions &rarr;</a></p>
+    <p style="margin-top:16px"><a class="more" href="../architecture/decisions/">All design decisions &rarr;</a></p>
   </div>
 </section>
 
 <section class="section" id="measured" data-section aria-labelledby="measured-title">
   <div class="wrap">
     <div class="eyebrow">Measured</div>
-    <h2 id="measured-title">Numbers from the repository</h2>
-    <p class="lede">Only numbers recorded in the repository or its pull requests, with where and when I measured them.</p>
+    <h2 id="measured-title">How fast it is and how it is checked</h2>
+    <p class="lede">Only numbers recorded in the repository's pull requests, with where and when I measured them.</p>
     <div class="grid g3">
+      <div class="card latency">
+        <div class="latency-head">
+          <h3>From a source commit to gold</h3>
+          <div class="metric">39&ndash;40 s <small>median, 41 s at p95</small></div>
+        </div>
+        <div class="timeline" role="img" aria-label="Median seconds from the source commit: landing 10, bronze 19 to 20, silver 30 to 31, gold 39 to 40.">
+          <div class="seg" style="--lc:var(--c-landing)"><b>Landing</b><span>10 s</span></div>
+          <div class="seg" style="--lc:var(--c-bronze)"><b>Bronze</b><span>19&ndash;20 s</span></div>
+          <div class="seg" style="--lc:var(--c-silver)"><b>Silver</b><span>30&ndash;31 s</span></div>
+          <div class="seg" style="--lc:var(--c-gold)"><b>Gold</b><span>39&ndash;40 s</span></div>
+        </div>
+        <p>The commit reaches Kafka in about 0.3 s. Each Spark job then adds about one trigger interval, 10 seconds by default.</p>
+        <p class="src"><code>make latency-probe PROBES=3</code>, every entity, in pull request <a href="https://github.com/jonathan5p/deel-home-task/pull/197">#197</a>, merged 2026-11-11; <a href="../operations/latency/">end-to-end latency</a>.</p>
+      </div>
       <div class="card">
-        <h3>Pending items by product</h3>
-        <div class="metric">37&ndash;46 ms <small>from 344&ndash;380 ms</small></div>
-        <div class="bar-line" aria-hidden="true"><span>Before</span><div class="bar-area"><div class="range before" style="width:100%"></div></div><span class="val">344&ndash;380 ms</span></div>
-        <div class="bar-line" aria-hidden="true"><span>After</span><div class="bar-area"><div class="range after" style="width:12.1%"></div></div><span class="val">37&ndash;46 ms</span></div>
-        <p class="small" style="margin-top:10px">After adding the indexes I chose from the query plans, on a test PostgreSQL with 1M orders and 3M items.</p>
-        <p class="src">Pull request <a href="https://github.com/jonathan5p/deel-home-task/pull/142">#142</a>, merged 2026-11-10; <a href="../architecture/decisions/#d40--gold-indexes-chosen-from-the-query-plans-of-the-current-use-cases">decision D40</a>.</p>
+        <h3>Data quality</h3>
+        <div class="metric">All passed <small>in bronze, silver and gold</small></div>
+        <p>12 of 12 bronze, 8 of 8 silver and 13 of 13 gold checks, each layer compared with the one before it.</p>
+        <p class="src">Runs on the local stack in <a href="https://github.com/jonathan5p/deel-home-task/pull/151">#151</a> (2026-11-10), <a href="https://github.com/jonathan5p/deel-home-task/pull/179">#179</a> and <a href="https://github.com/jonathan5p/deel-home-task/pull/154">#154</a> (2026-11-11); <a href="../lakehouse/data-quality/">checks</a>.</p>
       </div>
       <div class="card">
         <h3>Unit tests</h3>
-        <div class="metric">96.64% <small>branch coverage, 734 tests</small></div>
-        <p class="small">Run in the same image as the Spark cluster; CI and the commit hooks fail below 90%.</p>
+        <div class="metric">96.64% <small>branch coverage</small></div>
+        <p>734 tests, run in the same image as the Spark cluster. CI and the commit hooks fail below 90%.</p>
         <p class="src">Pull request <a href="https://github.com/jonathan5p/deel-home-task/pull/171">#171</a>, merged 2026-11-11.</p>
       </div>
       <div class="card">
         <h3>Infra tests</h3>
-        <div class="metric">247 <small>passed</small></div>
-        <p class="small">They run the real jobs on isolated copies of the stack: exactly-once appends, quarantine, deduplication, history, retention, rebuild, the API and Grafana.</p>
+        <div class="metric">247 <small>passed in 11 min 34 s</small></div>
+        <p>The real jobs on isolated copies of the stack, with 2 workers: exactly-once appends, quarantine, history, retention, rebuild, the API and Grafana.</p>
         <p class="src">Pull request <a href="https://github.com/jonathan5p/deel-home-task/pull/192">#192</a>, merged 2026-11-11; <a href="../development/testing/#infra-tests">testing</a>.</p>
       </div>
     </div>
@@ -520,18 +574,24 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
 <section class="section" id="run" data-section aria-labelledby="run-title">
   <div class="wrap">
     <div class="eyebrow">Run it</div>
-    <h2 id="run-title">From clone to answers in four commands</h2>
-    <p class="lede">You need Docker with Compose v2, GNU Make and uv. From the repository root:</p>
-    <div class="run-step"><div class="n">1</div><div><h3>Start the stack and every streaming job</h3>
-      <div class="cmd"><pre><code>make pipeline PIPELINE=all</code></pre><button type="button" class="copy">Copy</button></div></div></div>
-    <div class="run-step"><div class="n">2</div><div><h3>Check each layer against the one before it</h3>
-      <div class="cmd"><pre><code>make data-quality</code></pre><button type="button" class="copy">Copy</button></div></div></div>
-    <div class="run-step"><div class="n">3</div><div><h3>Ask a question</h3>
-      <div class="cmd"><pre><code>curl -s localhost:8000/metrics/top-customers-by-pending-orders</code></pre><button type="button" class="copy">Copy</button></div>
-      <p>The dashboard is at <code>localhost:3000/d/gold-metrics</code>.</p></div></div>
-    <div class="run-step"><div class="n">4</div><div><h3>Stop everything, keeping the data</h3>
-      <div class="cmd"><pre><code>make down</code></pre><button type="button" class="copy">Copy</button></div>
-      <p>The <a href="https://github.com/jonathan5p/deel-home-task#install">README quick start</a> has every step.</p></div></div>
+    <h2 id="run-title">From a fresh clone to the answers</h2>
+    <p class="lede">You need Docker with Compose v2, GNU Make and uv.</p>
+    <div class="run-list">
+      <div class="run-step"><div class="n">1</div><div><h3>Clone the repository</h3>
+        <div class="cmd"><pre><code>git clone https://github.com/jonathan5p/deel-home-task.git &amp;&amp; cd deel-home-task</code></pre><button type="button" class="copy">Copy</button></div></div></div>
+      <div class="run-step"><div class="n">2</div><div><h3>Start the stack <span>(source and CDC, the lake, Spark, the analytics database, the API and Grafana)</span></h3>
+        <div class="cmd"><pre><code>make up</code></pre><button type="button" class="copy">Copy</button></div></div></div>
+      <div class="run-step"><div class="n">3</div><div><h3>Start the streaming jobs <span>(this would also start the stack on its own)</span></h3>
+        <div class="cmd"><pre><code>make pipeline PIPELINE=all</code></pre><button type="button" class="copy">Copy</button></div></div></div>
+      <div class="run-step"><div class="n">4</div><div><h3>Check every layer against the one before it</h3>
+        <div class="cmd"><pre><code>make data-quality</code></pre><button type="button" class="copy">Copy</button></div></div></div>
+      <div class="run-step"><div class="n">5</div><div><h3>Ask a question</h3>
+        <div class="cmd"><pre><code>curl -s localhost:8000/metrics/top-customers-by-pending-orders</code></pre><button type="button" class="copy">Copy</button></div>
+        <p>The dashboard is at <code>localhost:3000/d/gold-metrics</code>.</p></div></div>
+      <div class="run-step"><div class="n">6</div><div><h3>Stop everything, keeping the data</h3>
+        <div class="cmd"><pre><code>make down</code></pre><button type="button" class="copy">Copy</button></div></div></div>
+      <p><a class="more" href="https://github.com/jonathan5p/deel-home-task#install">README quick start &rarr;</a></p>
+    </div>
   </div>
 </section>
 
@@ -548,7 +608,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
         <li>Metrics, dashboards and alerts, and a data quality framework that keeps its results.</li>
         <li>Secrets, TLS and authentication, infrastructure as code and deployments from CI.</li>
       </ul>
-      <p style="margin-top:14px"><a href="../architecture/production/">The way to production &rarr;</a></p>
+      <p style="margin-top:16px"><a class="more" href="../architecture/production/">The way to production &rarr;</a></p>
     </div>
   </div>
 </section>
@@ -569,7 +629,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
   const VIEW_FULL = "0 0 1216 496";
   const VIEW_STEPS = "0 0 1216 392";
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const narrow = () => window.matchMedia("(max-width: 1100px)").matches;
+  const narrow = () => window.matchMedia("(max-width: 1359px)").matches;
 
   // Theme toggle: auto -> light -> dark.
   const root = document.documentElement;
@@ -652,8 +712,8 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
       kicker: "Lake", title: "Bronze: a typed change log", tech: ["Spark Structured Streaming", "Iceberg"],
       hint: "one typed row per change",
       what: "The bronze job turns each raw record into a typed row, one row per change.",
-      how: ["It decodes Debezium's number and date formats and adds what the later layers need: the operation, the position in the source log and a hash of the business columns.",
-        "A record that fails validation goes to a quarantine table instead of stopping the job. Bronze removes nothing, so it stays a faithful log."],
+      how: ["It decodes Debezium's number and date formats and adds the operation, the position in the source log and a hash of the business columns.",
+        "A record it cannot read goes to quarantine instead of stopping the job."],
       why: [D("D30", "a readable change identity", "d30--change-identity-in-readable-columns-data-vault-hashing-only-in-part"), D("D31", "duplicates are removed later, in silver", "d31--late-arrivals-are-history-deduplication-happens-in-silver")],
       docs: [L("Bronze", "../lakehouse/bronze/")] },
     { id: "quarantine", x: 592, y: 252, w: 130, h: 56, layer: "bad", form: "typed", t: "Quarantine", s: "invalid records",
@@ -667,8 +727,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
       kicker: "Lake", title: "Silver: the version history", tech: ["Spark Structured Streaming", "Iceberg"],
       hint: "every version, once",
       what: "Silver keeps every version of every customer, product, order and item, once.",
-      how: ["A change that arrives twice is stored once. A change that arrives late is still kept, and takes its place in the history.",
-        "Silver only ever appends. That is what lets the gold job read it as a stream."],
+      how: ["A change that arrives twice is stored once; a late change still takes its place in the history. Silver only appends, which lets gold read it as a stream."],
       why: [D("D36", "how silver removes duplicates", "d36--silver-deduplication-exact-duplicates-on-write-unchanged-versions-on-read"), D("D31", "late arrivals are history", "d31--late-arrivals-are-history-deduplication-happens-in-silver")],
       docs: [L("Silver", "../lakehouse/silver/")] },
     { id: "sviews", x: 731, y: 252, w: 136, h: 56, layer: "silver", form: "version", t: "Silver views", s: "history, current",
@@ -681,9 +740,8 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
     { id: "gold", x: 894, y: 56, w: 156, h: 178, layer: "gold", form: "star", t: "Gold", s: "PostgreSQL 18.6",
       kicker: "Gold", title: "Gold: a star schema in PostgreSQL", tech: ["PostgreSQL 18.6", "Spark Structured Streaming"],
       hint: "the star schema that answers the questions",
-      what: "The gold job keeps a star schema in a separate PostgreSQL: customer and product dimensions that keep their history, history facts for orders and items, and current-state tables.",
-      how: ["Each micro-batch is staged, then merged in one transaction. Current state only accepts a newer version, so a late or replayed change never overwrites newer data.",
-        "Consumers read public views; the tables the pipeline writes stay internal."],
+      what: "A star schema in a separate PostgreSQL: customer and product dimensions that keep their history, history facts, and current-state tables.",
+      how: ["Each micro-batch is merged in one transaction, and current state only accepts a newer version, so a replayed change never overwrites newer data. Consumers read public views."],
       why: [D("D3", "PostgreSQL, not ClickHouse", "d3--gold-in-postgresql-not-clickhouse"), D("D32", "the dimensional model", "d32--the-gold-dimensional-model"), D("D35", "public views over an internal schema", "d35--public-views-over-an-internal-schema")],
       docs: [L("Gold", "../lakehouse/gold/"), L("The model", "../lakehouse/gold/model/"), L("The writer", "../lakehouse/gold/writer/")] },
     { id: "lakegold", x: 894, y: 252, w: 156, h: 56, layer: "gold", form: "star", t: "Lake gold", s: "views over silver",
@@ -743,7 +801,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
       kicker: "Platform", title: "The Spark cluster", tech: ["Spark 4.1.4", "Iceberg 1.12.0", "standalone"],
       hint: "runs every job",
       what: "A small standalone cluster: one master and two workers. Each job gets its own driver container, and its executors share the workers.",
-      how: ["The streaming jobs restart on failure and continue from their checkpoints. The sizing strategy ties each setting to what drives it: input rate, partitions, trigger interval and state size."],
+      how: ["The streaming jobs restart on failure and continue from their checkpoints. Each setting is sized from what drives it: input rate, partitions, trigger interval and state size."],
       why: [D("D27", "one driver container per application", "d27--one-driver-container-per-application-executors-on-shared-workers")],
       docs: [L("Spark sizing strategy", "../architecture/sizing/"), L("Running the pipeline", "../operations/running-the-pipeline/")] },
     { id: "dq", x: 530, y: 424, w: 156, h: 60, layer: "ok", t: "Data quality", s: "Kafka to gold",
@@ -808,13 +866,13 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
   ];
 
   const DQS = [
-    { id: "dq-landing", x: 438, check: "landing", title: "Kafka to landing",
+    { id: "dq-landing", x: 438, check: "landing", title: "Kafka to landing", pair: ["kafka", "landing"],
       text: "Every Kafka record is in landing exactly once, with the same bytes, and no offset is missing." },
-    { id: "dq-bronze", x: 586, check: "bronze", title: "Landing to bronze",
+    { id: "dq-bronze", x: 586, check: "bronze", title: "Landing to bronze", pair: ["landing", "bronze", "quarantine"],
       text: "Every landed record is in bronze or in quarantine, once, and never in both." },
-    { id: "dq-silver", x: 728, check: "silver", title: "Bronze to silver",
+    { id: "dq-silver", x: 728, check: "silver", title: "Bronze to silver", pair: ["bronze", "silver"],
       text: "Silver holds every change bronze holds, each one once, and nothing else. A redelivered change is expected once." },
-    { id: "dq-gold", x: 876, check: "gold", title: "Silver to gold",
+    { id: "dq-gold", x: 876, check: "gold", title: "Silver to gold", pair: ["silver", "gold", "lakegold"],
       text: "Each PostgreSQL gold view matches the same view computed from silver in the lake." }
   ];
 
@@ -901,32 +959,72 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
     if (stepping) return;
     (n.related || []).forEach(id => nodeEls[id] && nodeEls[id].classList.toggle("related", on));
     if (n.relatedDq) Object.values(dqEls).forEach(d => d.classList.toggle("related", on));
+    // Leaving a hovered part must not undo the highlight of what is selected.
+    if (!on && reapply) reapply();
   }
 
   const LEGEND = [
-    ["row", "source", "A row committed in the source"],
-    ["event", "kafka", "A Debezium change event"],
-    ["file", "landing", "A raw record in a landing file"],
-    ["typed", "bronze", "A typed bronze row"],
-    ["version", "silver", "A silver version"],
-    ["star", "gold", "A row in gold"],
-    ["answer", "serve", "An answer to a question"]
+    ["row", "source", "Source row"],
+    ["event", "kafka", "Change event"],
+    ["file", "landing", "Raw record"],
+    ["typed", "bronze", "Bronze row"],
+    ["version", "silver", "Silver version"],
+    ["star", "gold", "Gold row"],
+    ["answer", "serve", "Answer"]
   ];
   document.getElementById("legend").innerHTML = LEGEND.map(([form, layer, text]) =>
-    `<li><svg width="26" height="24" viewBox="-13 -12 26 24" aria-hidden="true"><path d="${FORMS[form]}" fill="${LAYER[layer]}"/></svg><span>${text}</span></li>`).join("")
-    + "<li><span>The letter on a marker is the operation: <b>c</b> create, <b>u</b> update, <b>d</b> delete, <b>t</b> tombstone, <b>!</b> invalid.</span></li>";
+    `<li><svg width="24" height="22" viewBox="-13 -12 26 24" aria-hidden="true"><path d="${FORMS[form]}" fill="${LAYER[layer]}"/></svg><span>${text}</span></li>`).join("");
 
   // ---------- Explanation next to the diagram ----------
   const explain = document.getElementById("explain");
   const explainInner = document.getElementById("explain-inner");
   const startHTML = explainInner.innerHTML;
+  const flowBody = document.querySelector(".flow-body");
+  const detailsBtn = document.getElementById("details-btn");
+  const detailsLabel = document.getElementById("details-label");
+  const detailsIcon = document.getElementById("details-icon");
   let returnFocus = null;
   let showing = "start";
+  let reapply = null;
 
   function esc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+  function ident(s) { return `<code>${esc(s).replace(/([_/.-])/g, "$1<wbr>")}</code>`; }
+
+  function setDetails(open, remember) {
+    flowBody.classList.toggle("details-hidden", !open);
+    explain.inert = !open;
+    detailsBtn.setAttribute("aria-expanded", String(open));
+    detailsLabel.textContent = open ? "Hide details" : "Show details";
+    detailsIcon.setAttribute("d", open ? "M10 3v10" : "M12.5 3v10");
+    if (remember) { try { localStorage.setItem("showcase-details", open ? "shown" : "hidden"); } catch (e) { /* storage unavailable */ } }
+  }
+  let detailsStored = null;
+  try { detailsStored = localStorage.getItem("showcase-details"); } catch (e) { /* storage unavailable */ }
+  setDetails(detailsStored !== "hidden", false);
+  detailsBtn.addEventListener("click", () => {
+    const open = detailsBtn.getAttribute("aria-expanded") !== "true";
+    if (!open) {
+      if (stepping) exitSteps(false);
+      else if (showing !== "start") showStart(false);
+    }
+    setDetails(open, true);
+  });
+  // Choosing something to explain while the column is hidden opens it again, so every explanation lives in one place.
+  function ensureDetails() { if (detailsBtn.getAttribute("aria-expanded") !== "true") setDetails(true, true); }
+
   function clearActive() {
-    Object.values(nodeEls).forEach(g => g.classList.remove("active"));
-    Object.values(dqEls).forEach(g => g.classList.remove("active"));
+    Object.values(nodeEls).forEach(g => g.classList.remove("active", "related"));
+    Object.values(dqEls).forEach(g => g.classList.remove("active", "related"));
+    Object.values(goldRowEls).forEach(g => g.classList.remove("lit"));
+    Object.values(edgeEls).forEach(p => p.classList.remove("hot"));
+    svg.classList.remove("focused");
+    reapply = null;
+  }
+  function select(apply) {
+    clearActive();
+    reapply = apply;
+    svg.classList.add("focused");
+    apply();
   }
   function revealExplain() {
     if (!narrow()) return;
@@ -937,27 +1035,27 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
     explain.style.setProperty("--lc", color);
     explainInner.innerHTML = html;
     explainInner.scrollTop = 0;
-    const close = explainInner.querySelector(".close");
-    if (close) close.addEventListener("click", () => showStart(true));
+    const back = explainInner.querySelector(".back");
+    if (back) back.addEventListener("click", () => showStart(true));
     if (focusTitle) {
       const h = explainInner.querySelector("h3");
       h.setAttribute("tabindex", "-1");
       h.focus({ preventScroll: true });
     }
   }
-  function head(kicker, title, tech) {
+  function head(kicker, title, tech, top) {
     const chips = tech && tech.length ? `<div class="tech">${tech.map(t => `<span class="chip">${esc(t)}</span>`).join("")}</div>` : "";
-    return `<div class="ex-head"><div><div class="kicker">${kicker}</div><h3>${esc(title)}</h3>${chips}</div>`
-      + `<button type="button" class="close icon-btn" aria-label="Back to the overview">&times;</button></div>`;
+    const bar = top || `<button type="button" class="back btn-ghost">&larr; Overview</button>`;
+    return `<div class="ex-head"><div class="ex-top">${bar}</div><div class="kicker">${kicker}</div><h3>${esc(title)}</h3>${chips}</div>`;
   }
   function readMore(links) {
-    return `<h4>Read more</h4><ul class="links">${links.map(d => `<li><a href="${d.href}">${esc(d.label)} &rarr;</a></li>`).join("")}</ul>`;
+    return `<h4>Read more</h4><ul class="links">${links.map(d => `<li><a class="more" href="${d.href}">${esc(d.label)} &rarr;</a></li>`).join("")}</ul>`;
   }
   function showNode(id, from) {
     if (stepping) exitSteps(true);
+    ensureDetails();
     const n = NODE[id];
-    clearActive();
-    nodeEls[id].classList.add("active");
+    select(() => { nodeEls[id].classList.add("active"); markRelated(n, true); });
     let body = `<h4>What it does</h4><p>${n.what}</p>`;
     if (n.how.length) body += `<h4>How it works</h4>${n.how.map(p => `<p>${p}</p>`).join("")}`;
     body += `<h4>Why</h4><ul>${n.why.map(d => `<li><a href="${DEC}${d.anchor}">${d.num}</a>: ${d.label}</li>`).join("")}</ul>`;
@@ -969,10 +1067,10 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
   }
   function showCheck(q, from) {
     if (stepping) exitSteps(true);
-    clearActive();
-    dqEls[q.id].classList.add("active");
+    ensureDetails();
+    select(() => { dqEls[q.id].classList.add("active"); q.pair.forEach(id => nodeEls[id].classList.add("related")); });
     const body = `<h4>What it checks</h4><p>${q.text}</p>
-      <h4>How it runs</h4><p>The four checks form one chain from Kafka to gold. Each one only looks at what the next layer has already committed, so normal lag is never reported as missing data. A run saves its report in the lake and fails if any check fails.</p>`
+      <h4>How it runs</h4><p>The four checks form one chain from Kafka to gold. Each one only looks at what the next layer has already committed, so normal lag is not reported as missing data.</p>`
       + readMore([L("Data quality checks", "../lakehouse/data-quality/")]);
     returnFocus = from || null;
     showing = q.id;
@@ -986,6 +1084,73 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
     if (restoreFocus && returnFocus) returnFocus.focus({ preventScroll: true });
     returnFocus = null;
   }
+
+  // ---------- The four business questions ----------
+  const QUESTIONS = [
+    { title: "Open orders by delivery date and status", view: "gold.open_orders_by_delivery_date_and_status",
+      endpoint: "/metrics/open-orders-by-delivery-date-and-status", panel: "Open orders by delivery date and status",
+      file: "01_open_orders_by_delivery_date_and_status.sql", rows: ["current", "views"],
+      idea: ["An open order is any order whose status is not COMPLETED; a missing or unexpected status counts as open, so it shows up instead of disappearing.",
+        "The gold job keeps one current row per order, updated every micro-batch, and the view counts the open ones by delivery date and status."],
+      sql: "SELECT delivery_date, status_code, open_orders\nFROM gold.open_orders_by_delivery_date_and_status\nORDER BY delivery_date, status_code;" },
+    { title: "The top 3 delivery dates by open orders", view: "gold.top_delivery_dates_by_open_orders",
+      endpoint: "/metrics/top-delivery-dates-by-open-orders", panel: "Top 3 delivery dates by open orders",
+      file: "02_top_delivery_dates_by_open_orders.sql", rows: ["current", "views"],
+      idea: ["The same open orders, counted by delivery date and ranked with RANK().",
+        "Every date tied for third place is kept, so more than three rows can come back, but never more than three places."],
+      sql: "SELECT delivery_date, open_orders\nFROM gold.top_delivery_dates_by_open_orders\nORDER BY open_orders DESC, delivery_date;" },
+    { title: "Pending items by product", view: "gold.pending_items_by_product",
+      endpoint: "/metrics/pending-items-by-product", panel: "Pending items by product",
+      file: "03_pending_items_by_product.sql", rows: ["current", "views"],
+      idea: ["A pending item is an item, not deleted, of an open order.",
+        "The view joins the current items to the open orders and reports, per product, how many items are pending and their total quantity."],
+      sql: "SELECT product_id, pending_items, pending_quantity\nFROM gold.pending_items_by_product\nORDER BY product_id;" },
+    { title: "The top 3 customers by pending orders", view: "gold.top_customers_by_pending_orders",
+      endpoint: "/metrics/top-customers-by-pending-orders", panel: "Top 3 customers by pending orders",
+      file: "04_top_customers_by_pending_orders.sql", rows: ["dims", "current", "views"],
+      idea: ["A pending order is an open order, so this answer agrees with the other three questions.",
+        "Customers are ranked with RANK(), ties for third place included, and the name comes from the customer's current version."],
+      sql: "SELECT customer_id, customer_name, pending_orders\nFROM gold.top_customers_by_pending_orders\nORDER BY pending_orders DESC, customer_id;" }
+  ];
+  const Q_PATH = ["source", "debezium", "kafka", "landing", "bronze", "silver"];
+  document.getElementById("questions").innerHTML = QUESTIONS.map((q, i) =>
+    `<li><details class="q"><summary><span class="qn" aria-hidden="true">${i + 1}</span><span>${esc(q.title)}</span></summary>
+      <div class="q-body">${q.idea.map(p => `<p>${p}</p>`).join("")}
+        <p>The view ${ident(q.view)} answers it, for the API and the Grafana panel alike.</p>
+        <div class="q-actions"><button type="button" class="btn-primary" data-question="${i}">Show in the flow &uarr;</button>
+        <a class="more" href="../lakehouse/gold/model/#the-four-business-questions">Read more &rarr;</a></div></div></details></li>`).join("");
+
+  function showQuestion(i, from) {
+    if (stepping) exitSteps(true);
+    ensureDetails();
+    const q = QUESTIONS[i];
+    select(() => {
+      Q_PATH.forEach(id => nodeEls[id].classList.add("related"));
+      ["gold", "api", "grafana"].forEach(id => nodeEls[id].classList.add("active"));
+      q.rows.forEach(r => goldRowEls[r].classList.add("lit"));
+      edgesBetween("source", "api").concat("gold>grafana").forEach(k => edgeEls[k] && edgeEls[k].classList.add("hot"));
+    });
+    const body = `<h4>How I answer it</h4>${q.idea.map(p => `<p>${p}</p>`).join("")}
+      <h4>Where it is served</h4><ul class="serve-list">
+        <li><b>View</b> ${ident(q.view)}</li>
+        <li><b>API</b> ${ident("GET " + q.endpoint)}</li>
+        <li><b>Grafana</b> <span>the &ldquo;${esc(q.panel)}&rdquo; panel</span></li>
+        <li><b>SQL file</b> ${ident("analytics/sql/gold/" + q.file)}</li></ul>
+      <pre class="payload" tabindex="0" aria-label="The query"><code>${esc(q.sql)}</code></pre>
+      <h4>How fresh</h4><p>About 40 seconds after the commit in the source, with the default 10-second triggers.</p>`
+      + readMore([L("The four business questions", "../lakehouse/gold/model/#the-four-business-questions"),
+        L("Open orders and pending items", "../lakehouse/gold/model/#open-orders-and-pending-items"),
+        L("End-to-end latency", "../operations/latency/")]);
+    returnFocus = from || null;
+    showing = "q" + i;
+    render(LAYER.gold, head("Question " + (i + 1), q.title) + `<div class="ex-body">${body}</div>`, true);
+    const top = document.querySelector(".flow-shell").getBoundingClientRect().top + window.scrollY - 64;
+    window.scrollTo({ top, behavior: reducedMotion ? "auto" : "smooth" });
+  }
+  document.getElementById("questions").addEventListener("click", e => {
+    const b = e.target.closest("[data-question]");
+    if (b) showQuestion(Number(b.dataset.question), b);
+  });
 
   // ---------- Animation ----------
   const SPEED = 120;
@@ -1256,14 +1421,15 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
 
     const final = stepIdx === STEPS.length - 1;
     const bars = STEPS.map((_, i) => `<span class="${i <= stepIdx ? "done" : ""}"></span>`).join("");
-    const html = `<div class="ex-head"><div><div class="kicker">Follow one change <span class="step-count">Step ${stepIdx + 1} of ${STEPS.length}</span></div><h3>${esc(s.title)}</h3></div>`
-      + `<button type="button" class="icon-btn" id="step-exit" aria-label="Exit the walk-through">&times;</button></div>`
+    const top = `<span class="step-count">Step ${stepIdx + 1} of ${STEPS.length}</span><button type="button" class="btn-ghost" id="step-exit">Exit walk-through &times;</button>`;
+    const html = head("Follow one change", s.title, null, top)
       + `<div class="ex-body"><div class="progress" aria-hidden="true">${bars}</div>
         <p>${s.body}</p>
         <pre class="payload" tabindex="0" aria-label="Example at this step"><code>${esc(s.payload)}</code></pre>
         <div class="step-nav">
           <button type="button" id="step-prev" ${stepIdx === 0 ? "disabled" : ""}>&larr; Previous</button>
           <button type="button" id="step-next" class="btn-primary">${final ? "Finish" : "Next &rarr;"}</button>
+          <span class="step-keys">or <kbd>&larr;</kbd> <kbd>&rarr;</kbd></span>
         </div>
         ${readMore([s.link])}</div>`;
     render(LAYER[s.layer], html, false);
@@ -1291,6 +1457,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
     setPlaying(false);
     clearTokens();
     clearActive();
+    ensureDetails();
     stepping = true;
     showing = "steps";
     svg.classList.add("stepping");
@@ -1299,6 +1466,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
     const top = shell.getBoundingClientRect().top + window.scrollY - 64;
     if (Math.abs(window.scrollY - top) > 120) window.scrollTo({ top, behavior: reducedMotion ? "auto" : "smooth" });
     stepBtn.setAttribute("aria-pressed", "true");
+    stepBtn.textContent = "Exit walk-through";
     caption.innerHTML = "Following one update to order 1. Use <b>Next</b>, or the arrow keys, to move along.";
     stepIdx = 0;
     stepPos = null;
@@ -1309,6 +1477,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
     svg.classList.remove("stepping");
     svg.setAttribute("viewBox", VIEW_FULL);
     stepBtn.setAttribute("aria-pressed", "false");
+    stepBtn.textContent = "Follow one change";
     if (stepTok) { stepTok.remove(); stepTok = null; }
     stepPos = null;
     Object.values(nodeEls).forEach(g => g.classList.remove("active", "related"));
@@ -1320,7 +1489,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
   function nextStep(focusNext) {
     if (stepIdx < STEPS.length - 1) { const p = stepIdx; stepIdx++; renderStep(p, focusNext); return true; }
     exitSteps(false);
-    caption.innerHTML = "That was one change, from the commit to the answer. Press <b>Play</b> to watch several, or click any box for its explanation.";
+    caption.innerHTML = "That was one change, from the commit to the answer. Press <b>Play</b> to watch several, or click any part for its explanation.";
     stepBtn.focus();
     return false;
   }
