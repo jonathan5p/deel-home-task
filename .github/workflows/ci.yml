@@ -79,4 +79,31 @@ jobs:
         with:
           name: coverage-badge
           path: target/coverage/badge/coverage.json
-          retention-days: 90
+          retention-days: 1
+
+  coverage-badge:
+    name: coverage badge
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [lint, container-checks]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: coverage-badge
+      - name: Commit the badge to the badges branch
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          git init -q -b badges badges && cd badges
+          git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git fetch -q --depth=1 origin badges; then git reset -q --hard FETCH_HEAD; fi
+          cp ../coverage.json coverage.json
+          git add coverage.json
+          if git diff --cached --quiet; then echo "Badge unchanged"; exit 0; fi
+          git commit -q -m "chore(badges): update the coverage badge to $(jq -r .message coverage.json)"
+          git push -q origin badges
