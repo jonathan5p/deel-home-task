@@ -6,7 +6,7 @@ This README is the run guide. The [docs site](https://jonathan5p.github.io/deel-
 
 Welcome to Deel's Data Engineering Take-Home task, as mentioned in the Task specification document, this is the pre-built stack that will help you on your solution development. This repository contains a pre-configured database containing the database represented by the following DER:
 
-![Database Diagram](./diagrams/database-diagram.png)
+![Database Diagram](docs/assets/database-diagram.png)
 
 ### Architecture
 
