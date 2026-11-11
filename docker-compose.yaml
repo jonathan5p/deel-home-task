@@ -104,6 +104,8 @@ services:
       POSTGRES_DB: ${ANALYTICS_DB_NAME}
       API_READER_USER: ${API_READER_USER}
       API_READER_PASSWORD: ${API_READER_PASSWORD}
+      GRAFANA_READER_USER: ${GRAFANA_READER_USER}
+      GRAFANA_READER_PASSWORD: ${GRAFANA_READER_PASSWORD}
     ports:
       - "5433:5432"
     volumes:
@@ -381,6 +383,34 @@ services:
       retries: 10
       start_period: 20s
 
+  grafana:
+    image: grafana/grafana-oss:13.0.2
+    depends_on:
+      analytics-db:
+        condition: service_healthy
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      ANALYTICS_DB_NAME: ${ANALYTICS_DB_NAME}
+      GRAFANA_READER_USER: ${GRAFANA_READER_USER}
+      GRAFANA_READER_PASSWORD: ${GRAFANA_READER_PASSWORD}
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
   # Kafka monitoring console
   conduktor-console:
     image: conduktor/conduktor-console:1.48.1
@@ -439,3 +469,4 @@ volumes:
   conduktor-pg-data:
   conduktor-data:
   spark-events:
+  grafana-data:
