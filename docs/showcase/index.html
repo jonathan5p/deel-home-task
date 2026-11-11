@@ -9,81 +9,87 @@
 <style>
 :root {
   color-scheme: light;
-  --bg: #faf9f6;
+  --bg: #f6f7f9;
   --surface: #ffffff;
-  --surface-2: #f1efea;
-  --ink: #1e1e1c;
-  --ink-2: #474641;
-  --muted: #6f6d66;
-  --line: #dedbd3;
-  --accent: #1f5c99;
-  --accent-ink: #ffffff;
-  --accent-soft: #e4ecf5;
-  --c-source: #3f6aa1;
-  --c-kafka: #75589f;
-  --c-landing: #6c727a;
-  --c-bronze: #a45f27;
-  --c-silver: #5e7487;
-  --c-gold: #9a7614;
-  --c-serve: #2c7a6f;
-  --c-bad: #b2433b;
-  --c-ok: #3a7d4c;
+  --surface-2: #eef1f5;
+  --surface-3: #e3e8ef;
+  --ink: #141920;
+  --ink-2: #3f4856;
+  --muted: #667080;
+  --line: #d4dae3;
+  --accent: #2f63d0;
+  --accent-soft: rgba(47, 99, 208, .12);
+  --c-source: #2f63d0;
+  --c-kafka: #7b4fd0;
+  --c-landing: #66707c;
+  --c-bronze: #ad6526;
+  --c-silver: #627385;
+  --c-gold: #a87d00;
+  --c-serve: #10857b;
+  --c-bad: #c23b47;
+  --c-ok: #1f8a4c;
   --token-ink: #ffffff;
-  --code-bg: #f3f1ec;
+  --code-bg: #f0f3f7;
+  --shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 4px 16px rgba(16, 24, 40, .06);
+  --radius: 14px;
+  --nav-h: 56px;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --bg: #171716;
-    --surface: #1f1f1d;
-    --surface-2: #282826;
-    --ink: #ecebe6;
-    --ink-2: #c6c4bd;
-    --muted: #97958e;
-    --line: #383732;
-    --accent: #86b4e8;
-    --accent-ink: #12161b;
-    --accent-soft: #23303e;
-    --c-source: #86a9dc;
-    --c-kafka: #b59ae0;
-    --c-landing: #a9afb6;
-    --c-bronze: #dc9a62;
-    --c-silver: #a9bccc;
-    --c-gold: #dcb64e;
-    --c-serve: #6cc2b5;
-    --c-bad: #ec8a82;
-    --c-ok: #79c28b;
-    --token-ink: #141413;
-    --code-bg: #242422;
+    --bg: #0d1117;
+    --surface: #151b23;
+    --surface-2: #1b232d;
+    --surface-3: #25303c;
+    --ink: #e8edf3;
+    --ink-2: #b9c3cf;
+    --muted: #8a95a3;
+    --line: #2b3542;
+    --accent: #78a2ff;
+    --accent-soft: rgba(120, 162, 255, .14);
+    --c-source: #79a3ff;
+    --c-kafka: #b893ff;
+    --c-landing: #a6afba;
+    --c-bronze: #e39a5b;
+    --c-silver: #c2cedb;
+    --c-gold: #f0c04f;
+    --c-serve: #4fd2c3;
+    --c-bad: #f2808a;
+    --c-ok: #5fd08f;
+    --token-ink: #0f141a;
+    --code-bg: #10161d;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 6px 20px rgba(0, 0, 0, .25);
   }
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #171716;
-  --surface: #1f1f1d;
-  --surface-2: #282826;
-  --ink: #ecebe6;
-  --ink-2: #c6c4bd;
-  --muted: #97958e;
-  --line: #383732;
-  --accent: #86b4e8;
-  --accent-ink: #12161b;
-  --accent-soft: #23303e;
-  --c-source: #86a9dc;
-  --c-kafka: #b59ae0;
-  --c-landing: #a9afb6;
-  --c-bronze: #dc9a62;
-  --c-silver: #a9bccc;
-  --c-gold: #dcb64e;
-  --c-serve: #6cc2b5;
-  --c-bad: #ec8a82;
-  --c-ok: #79c28b;
-  --token-ink: #141413;
-  --code-bg: #242422;
+  --bg: #0d1117;
+  --surface: #151b23;
+  --surface-2: #1b232d;
+  --surface-3: #25303c;
+  --ink: #e8edf3;
+  --ink-2: #b9c3cf;
+  --muted: #8a95a3;
+  --line: #2b3542;
+  --accent: #78a2ff;
+  --accent-soft: rgba(120, 162, 255, .14);
+  --c-source: #79a3ff;
+  --c-kafka: #b893ff;
+  --c-landing: #a6afba;
+  --c-bronze: #e39a5b;
+  --c-silver: #c2cedb;
+  --c-gold: #f0c04f;
+  --c-serve: #4fd2c3;
+  --c-bad: #f2808a;
+  --c-ok: #5fd08f;
+  --token-ink: #0f141a;
+  --code-bg: #10161d;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 6px 20px rgba(0, 0, 0, .25);
 }
 
 * { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; }
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
 body {
   margin: 0;
   background: var(--bg);
@@ -91,336 +97,468 @@ body {
   font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 a { color: var(--accent); text-underline-offset: 2px; }
-code, pre { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; }
-code { font-size: .88em; background: var(--surface-2); padding: .05em .3em; border-radius: 3px; overflow-wrap: anywhere; }
+code, pre, kbd { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; }
+code { font-size: .88em; background: var(--surface-2); padding: .1em .35em; border-radius: 5px; overflow-wrap: anywhere; }
 pre { margin: 0; }
-h1, h2, h3 { line-height: 1.25; margin: 0; font-weight: 650; }
-p { margin: 0 0 12px; }
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.muted { color: var(--muted); }
-.small { font-size: 14px; }
+kbd { font-size: .8em; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; padding: 0 .4em; background: var(--surface); }
+h1, h2, h3, h4 { line-height: 1.2; margin: 0; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.skip { position: absolute; left: -9999px; top: 8px; z-index: 100; background: var(--surface); padding: 8px 12px; border-radius: 8px; }
+.skip:focus { left: 16px; }
 
-button {
+/* Navigation */
+.topnav {
+  position: sticky; top: 0; z-index: 40;
+  height: var(--nav-h);
+  display: flex; align-items: center; gap: 16px;
+  padding: 0 16px;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: saturate(1.4) blur(10px);
+  -webkit-backdrop-filter: saturate(1.4) blur(10px);
+  border-bottom: 1px solid var(--line);
+}
+.brand { font-weight: 700; white-space: nowrap; color: var(--ink); text-decoration: none; display: flex; align-items: center; gap: 8px; }
+.brand-mark { width: 22px; height: 22px; }
+.navlinks { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; flex: 1; min-width: 0; }
+.navlinks::-webkit-scrollbar { display: none; }
+.navlinks a {
+  white-space: nowrap; text-decoration: none; color: var(--ink-2);
+  font-size: 14px; padding: 6px 10px; border-radius: 999px;
+}
+.navlinks a:hover { background: var(--surface-2); }
+.navlinks a[aria-current="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.nav-tools { display: flex; gap: 8px; align-items: center; }
+.keyhint { font-size: 12px; color: var(--muted); white-space: nowrap; }
+@media (max-width: 1000px) { .keyhint { display: none; } }
+@media (max-width: 600px) { .brand-text, #theme-label, .docs-link { display: none; } .topnav { gap: 8px; } }
+
+button, .btn {
   font: inherit; font-size: 14px; cursor: pointer;
   border: 1px solid var(--line); background: var(--surface); color: var(--ink);
-  padding: 6px 12px; border-radius: 6px; line-height: 1.3;
-  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 14px; border-radius: 10px; text-decoration: none;
+  display: inline-flex; align-items: center; gap: 6px; line-height: 1.3;
 }
-button:hover { border-color: var(--muted); }
+button:hover, .btn:hover { background: var(--surface-2); }
 button:disabled { opacity: .45; cursor: default; }
-button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
-button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--ink); }
-.linkish { border: 0; background: none; padding: 0; color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent); filter: brightness(1.08); }
+:root[data-theme="dark"] .btn-primary { color: #0d1117; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .btn-primary { color: #0d1117; } }
+button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.icon-btn { padding: 7px 10px; }
 
-/* Top line and intro */
-.top { max-width: 1400px; margin: 0 auto; padding: 14px 32px 0; display: flex; align-items: center; gap: 20px; font-size: 14px; }
-.top .site { color: var(--muted); }
-.top nav { margin-left: auto; display: flex; gap: 18px; align-items: center; }
-.top nav a { color: var(--ink-2); }
-.intro { max-width: 1400px; margin: 0 auto; padding: 18px 32px 20px; }
-.intro h1 { font-size: clamp(24px, 2.4vw, 30px); letter-spacing: -.01em; margin-bottom: 6px; }
-.intro p { color: var(--ink-2); max-width: 1000px; margin: 0; }
-
-/* Stage: the diagram with its explanation beside it */
-.stage {
-  max-width: 1400px; margin: 0 auto; padding: 0 32px 40px;
-  display: grid; grid-template-columns: minmax(0, 1fr) clamp(320px, 28vw, 400px); gap: 28px; align-items: start;
+/* Layout */
+main { display: block; }
+.section { padding: 64px 16px; scroll-margin-top: var(--nav-h); border-bottom: 1px solid var(--line); }
+.wrap { max-width: 1180px; margin: 0 auto; }
+.eyebrow { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); font-weight: 700; margin-bottom: 8px; }
+.section h2 { font-size: clamp(26px, 3vw, 36px); letter-spacing: -.01em; margin-bottom: 12px; }
+.lede { font-size: 18px; color: var(--ink-2); max-width: 820px; margin: 0 0 24px; }
+.grid { display: grid; gap: 16px; }
+.g2 { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+.g3 { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+.card {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 20px; box-shadow: var(--shadow);
 }
-.diagram-card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; min-width: 0; }
-.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--line); }
-.toolbar .hint { margin-left: auto; font-size: 13.5px; color: var(--muted); min-height: 1.3em; }
-.toolbar .hint b { color: var(--ink); font-weight: 600; }
+.card h3 { font-size: 18px; margin-bottom: 8px; }
+.card p { margin: 0 0 10px; color: var(--ink-2); }
+.card p:last-child { margin-bottom: 0; }
+.card ul { margin: 0; padding-left: 18px; color: var(--ink-2); }
+.card li + li { margin-top: 6px; }
+.muted { color: var(--muted); }
+.small { font-size: 14px; }
+.chip {
+  display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 999px;
+  background: var(--surface-2); color: var(--ink-2); border: 1px solid var(--line);
+}
+
+/* Data flow, the first section */
+.hero { padding: 36px 24px 56px; background:
+  radial-gradient(1200px 400px at 85% -10%, var(--accent-soft), transparent 60%),
+  radial-gradient(900px 380px at 0% 110%, color-mix(in srgb, var(--c-gold) 14%, transparent), transparent 60%);
+}
+.stage-wrap { max-width: 1560px; margin: 0 auto; }
+.intro { margin-bottom: 20px; }
+.hero h1 { font-size: clamp(26px, 3vw, 38px); letter-spacing: -.02em; margin-bottom: 10px; }
+.hero h1 span { background: linear-gradient(90deg, var(--c-source), var(--c-kafka) 35%, var(--c-bronze) 60%, var(--c-gold)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.hero .lede { font-size: clamp(16px, 1.4vw, 18px); max-width: 1000px; margin: 0; }
+
+.flow-shell { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--shadow); overflow: hidden; }
+.flow-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--line); background: var(--surface-2); }
+.flow-toolbar .hint { margin-left: auto; font-size: 14px; color: var(--muted); min-height: 1.3em; }
+.flow-toolbar .hint b { color: var(--ink); }
+.flow-body { display: grid; grid-template-columns: minmax(0, 1fr) clamp(300px, 24vw, 380px); grid-template-rows: minmax(500px, auto); }
+.flow-main { display: flex; flex-direction: column; min-width: 0; }
 .diagram-scroll { overflow-x: auto; }
 #flow { display: block; width: 100%; height: auto; }
-.caption { border-top: 1px solid var(--line); padding: 10px 14px; margin: 0; font-size: 15px; color: var(--ink-2); min-height: 3.6em; }
-.caption b { color: var(--ink); font-weight: 600; }
+.scroll-hint { display: none; font-size: 12px; color: var(--muted); padding: 6px 14px 0; margin: 0; }
+.caption { flex: 1; margin: 0; padding: 14px 18px; border-top: 1px solid var(--line); font-size: 15px; color: var(--ink-2); }
+.caption b { color: var(--ink); }
 
-.explain {
-  background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
-  padding: 18px 20px 20px; font-size: 15px; color: var(--ink-2);
-  position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow-y: auto;
-}
-.explain .eyebrow { font-size: 13px; color: var(--muted); margin-bottom: 2px; display: flex; align-items: center; gap: 8px; }
-.explain .eyebrow .sw { width: 10px; height: 10px; border-radius: 2px; background: var(--lc, var(--muted)); flex: none; }
-.explain h2 { font-size: 20px; color: var(--ink); margin-bottom: 4px; }
-.explain h2:focus { outline: none; }
-.explain h3 { font-size: 15px; color: var(--ink); margin: 18px 0 6px; }
-.explain .built { font-size: 13.5px; color: var(--muted); margin-bottom: 12px; }
-.explain ol, .explain ul { margin: 0 0 12px; padding-left: 20px; }
-.explain li + li { margin-top: 3px; }
-.explain .why { font-size: 14px; border-top: 1px solid var(--line); padding-top: 10px; margin-top: 14px; }
-.explain .why p { margin: 0 0 4px; }
-.explain .more { margin: 12px 0 0; font-size: 14.5px; }
-.explain .more a { display: inline-block; margin-right: 14px; }
-.explain .head { display: flex; align-items: flex-start; gap: 10px; }
-.explain .head > div { flex: 1; min-width: 0; }
-.explain .close { flex: none; font-size: 13px; padding: 4px 9px; }
-.legend { list-style: none; padding: 0 !important; margin: 8px 0 0 !important; display: grid; gap: 4px; font-size: 14px; }
-.legend li { display: flex; gap: 8px; align-items: center; margin: 0 !important; }
-.legend svg { flex: none; }
-details.shapes { margin-top: 14px; font-size: 14px; }
-details.shapes summary { cursor: pointer; color: var(--ink); }
-.progress { height: 3px; background: var(--surface-2); border-radius: 2px; margin: 10px 0 12px; overflow: hidden; }
-.progress i { display: block; height: 100%; background: var(--accent); }
-.payload { background: var(--code-bg); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; font-size: 12px; line-height: 1.5; overflow: auto; max-height: 260px; white-space: pre; color: var(--ink); margin: 4px 0 12px; }
-.payload code { background: none; padding: 0; font-size: inherit; }
-.step-nav { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-.step-nav .keys { font-size: 13px; color: var(--muted); margin-left: auto; }
-
-/* Diagram */
-.lane { fill: var(--surface-2); }
-.lane-label { fill: var(--muted); font-size: 14px; }
-.edge { fill: none; stroke: var(--muted); stroke-width: 1.5; opacity: .7; }
+.lane { fill: var(--surface-2); stroke: var(--line); }
+.lane-label { fill: var(--muted); font-size: 13.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.edge { fill: none; stroke: var(--muted); stroke-width: 1.6; opacity: .75; transition: stroke .2s, opacity .2s; }
 .edge.dashed { stroke-dasharray: 5 4; }
 .edge.hot { stroke: var(--accent); opacity: 1; stroke-width: 2.4; }
 .arrowhead { fill: var(--muted); }
 .node { cursor: pointer; }
-.node .box { fill: var(--surface); stroke: var(--line); stroke-width: 1.3; }
+.node .box { fill: var(--surface); stroke: var(--line); stroke-width: 1.4; transition: stroke .2s, fill .2s; }
 .node .bar { fill: var(--lc); }
-.node .t1 { fill: var(--ink); font-size: 16px; font-weight: 650; }
-.node .t2 { fill: var(--muted); font-size: 13px; }
-.node:hover .box { stroke: var(--lc); stroke-width: 2; }
+.node .t1 { fill: var(--ink); font-size: 17px; font-weight: 700; }
+.node .t2 { fill: var(--muted); font-size: 14.5px; }
+.node:hover .box, .node:focus-visible .box { stroke: var(--lc); stroke-width: 2.2; }
 .node:focus { outline: none; }
-.node:focus-visible .box { stroke: var(--accent); stroke-width: 2.6; }
-.node.related .box { stroke: var(--lc); stroke-width: 2; }
-.node.active .box { stroke: var(--lc); stroke-width: 2.6; fill: color-mix(in srgb, var(--lc) 10%, var(--surface)); }
+.node:focus-visible .box { stroke: var(--accent); stroke-width: 3; }
+.node.related .box { stroke: var(--lc); stroke-width: 2.2; fill: color-mix(in srgb, var(--lc) 8%, var(--surface)); }
+.node.active .box { stroke: var(--lc); stroke-width: 3; fill: color-mix(in srgb, var(--lc) 12%, var(--surface)); }
 @media (prefers-reduced-motion: no-preference) { .node.pulse .box { animation: pulse .6s ease-out; } }
-@keyframes pulse { 0% { fill: color-mix(in srgb, var(--lc) 26%, var(--surface)); } 100% { fill: var(--surface); } }
-.sub-row rect { fill: var(--surface-2); }
-.sub-row text { fill: var(--ink-2); font-size: 12.5px; }
-.sub-row.lit rect { fill: color-mix(in srgb, var(--c-gold) 30%, var(--surface)); }
-.sub-row.lit text { fill: var(--ink); font-weight: 650; }
-#flow.stepping .node:not(.active):not(.related), #flow.stepping .dq { opacity: .4; }
+@keyframes pulse { 0% { fill: color-mix(in srgb, var(--lc) 30%, var(--surface)); } 100% { fill: var(--surface); } }
+.sub-row rect { fill: var(--surface-2); stroke: none; transition: fill .2s; }
+.sub-row text { fill: var(--ink-2); font-size: 13.5px; }
+.sub-row.lit rect { fill: color-mix(in srgb, var(--c-gold) 35%, var(--surface)); }
+.sub-row.lit text { fill: var(--ink); font-weight: 700; }
+#flow.stepping .node:not(.active):not(.related) { opacity: .42; }
+#flow.stepping .dq { opacity: .42; }
 .dq { cursor: pointer; }
-.dq circle { fill: var(--surface); stroke: var(--c-ok); stroke-width: 1.6; }
-.dq path { fill: none; stroke: var(--c-ok); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.dq:hover circle, .dq.related circle, .dq.active circle { fill: color-mix(in srgb, var(--c-ok) 20%, var(--surface)); stroke-width: 2.2; }
+.dq .dq-shape { fill: var(--surface); stroke: var(--c-ok); stroke-width: 1.8; }
+.dq .dq-tick { fill: none; stroke: var(--c-ok); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.dq:hover .dq-shape, .dq:focus-visible .dq-shape { fill: color-mix(in srgb, var(--c-ok) 18%, var(--surface)); stroke-width: 2.6; }
 .dq:focus { outline: none; }
-.dq:focus-visible circle { stroke: var(--accent); stroke-width: 2.6; }
-.token { pointer-events: none; }
+.dq:focus-visible .dq-shape { stroke: var(--accent); }
+.dq.related .dq-shape, .dq.active .dq-shape { fill: color-mix(in srgb, var(--c-ok) 22%, var(--surface)); stroke-width: 2.6; }
 .token .shape { stroke: var(--surface); stroke-width: 1.5; }
-.token text { fill: var(--token-ink); font-size: 10px; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
-.float-note { font-size: 12px; font-weight: 600; fill: var(--c-bad); paint-order: stroke; stroke: var(--surface); stroke-width: 4px; pointer-events: none; }
+.token text { fill: var(--token-ink); font-size: 10px; font-weight: 800; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+.token { pointer-events: none; }
+.float-note { font-size: 13px; font-weight: 700; fill: var(--c-bad); paint-order: stroke; stroke: var(--surface); stroke-width: 4px; pointer-events: none; }
 
-/* Sections below the stage */
-.section { max-width: 1400px; margin: 0 auto; padding: 40px 32px; border-top: 1px solid var(--line); display: grid; grid-template-columns: 240px minmax(0, 760px); gap: 40px; }
-.section > h2 { font-size: 20px; }
-.group { font-size: 13px; color: var(--muted); margin: 18px 0 4px; }
-.decisions details { border-bottom: 1px solid var(--line); }
-.decisions summary { cursor: pointer; padding: 8px 0; list-style: none; display: flex; gap: 12px; align-items: baseline; }
-.decisions summary::-webkit-details-marker { display: none; }
-.decisions summary::after { content: "+"; margin-left: auto; color: var(--muted); font-size: 18px; line-height: 1; }
-.decisions details[open] summary::after { content: "\2212"; }
-.decisions .dn { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 14px; min-width: 2.6em; }
-.decisions summary span:not(.dn) { color: var(--ink); }
-.decisions details > div { padding: 0 0 12px calc(2.6em + 12px); color: var(--ink-2); font-size: 15px; }
-.decisions details > div p { margin: 0 0 6px; }
-.numbers { margin: 0; display: grid; gap: 16px; }
-.numbers dt { font-weight: 600; color: var(--ink); }
-.numbers dd { margin: 2px 0 0; color: var(--ink-2); }
-.numbers .src { font-size: 13.5px; color: var(--muted); }
-.cmd { position: relative; background: var(--code-bg); border: 1px solid var(--line); border-radius: 6px; margin: 4px 0 12px; }
-.cmd pre { padding: 12px 14px; font-size: 13.5px; overflow-x: auto; color: var(--ink); }
-.cmd code { background: none; padding: 0; font-size: inherit; }
-.cmd button { position: absolute; top: 6px; right: 6px; font-size: 12.5px; padding: 3px 8px; }
-.body ul { margin: 0 0 12px; padding-left: 20px; color: var(--ink-2); }
-.body li + li { margin-top: 4px; }
+/* Explanation column next to the diagram */
+.explain { position: relative; min-width: 0; border-left: 1px solid var(--line); background: var(--surface); }
+.explain-inner { position: absolute; inset: 0; overflow-y: auto; }
+.ex-head { padding: 16px 18px 12px; border-top: 4px solid var(--lc, var(--accent)); border-bottom: 1px solid var(--line); display: flex; gap: 12px; align-items: flex-start; }
+.ex-head > div { flex: 1; min-width: 0; }
+.ex-head .kicker { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--lc, var(--accent)); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.ex-head h3 { font-size: 20px; margin-top: 4px; }
+.ex-head h3:focus { outline: none; }
+.ex-head .close { flex: none; }
+.ex-body { padding: 14px 18px 22px; font-size: 15px; }
+.ex-body h4 { font-size: 12.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 16px 0 6px; }
+.ex-body h4:first-child { margin-top: 0; }
+.ex-body p { margin: 0 0 8px; color: var(--ink-2); }
+.ex-body ul { margin: 0; padding-left: 18px; color: var(--ink-2); }
+.ex-body li + li { margin-top: 5px; }
+.tech { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.links { list-style: none; padding: 0 !important; display: grid; gap: 6px; }
+.legend { list-style: none; padding: 0 !important; margin: 0; display: grid; gap: 6px; font-size: 14px; color: var(--ink-2); }
+.legend li { display: flex; align-items: center; gap: 8px; margin: 0 !important; }
+.legend svg { flex: none; }
+.step-count { font-size: 12px; font-weight: 700; color: var(--accent); background: var(--accent-soft); padding: 2px 8px; border-radius: 999px; letter-spacing: 0; text-transform: none; }
+.progress { display: flex; gap: 3px; margin: 0 0 12px; }
+.progress span { height: 4px; flex: 1; border-radius: 2px; background: var(--surface-3); }
+.progress span.done { background: var(--accent); }
+.payload code { background: none; padding: 0; font-size: inherit; border-radius: 0; }
+.payload { background: var(--code-bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: 12.5px; line-height: 1.55; overflow: auto; max-height: 220px; white-space: pre; color: var(--ink); margin: 4px 0 12px; }
+.step-nav { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 
-footer { max-width: 1400px; margin: 0 auto; padding: 24px 32px 48px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: space-between; }
-
-@media (max-width: 1080px) {
-  .stage { grid-template-columns: minmax(0, 1fr); }
-  .explain { position: static; max-height: none; }
-  .section { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+@media (max-width: 1100px) {
+  .flow-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; }
+  .explain { border-left: 0; border-top: 1px solid var(--line); }
+  .explain-inner { position: static; }
+  .flow-toolbar .hint { margin-left: 0; width: 100%; }
 }
-@media (max-width: 760px) {
-  .top, .intro, .stage, .section, footer { padding-left: 16px; padding-right: 16px; }
-  .top nav { gap: 12px; }
-  .top .site { display: none; }
-  #flow { min-width: 860px; }
-  .toolbar .hint { margin-left: 0; width: 100%; }
-  .cmd pre { padding-top: 38px; }
+@media (max-width: 1020px) {
+  #flow { min-width: 980px; }
+  .scroll-hint { display: block; }
 }
-@media print { .toolbar, .explain .close { display: none; } .explain { position: static; max-height: none; } }
+@media (max-width: 700px) {
+  .hero { padding: 24px 16px 40px; }
+  .payload { max-height: none; }
+}
+
+/* Assignment */
+.questions { counter-reset: q; list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.questions li { counter-increment: q; display: flex; gap: 12px; align-items: baseline; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+.questions li::before { content: counter(q); flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); font-weight: 700; font-size: 14px; }
+
+/* Decisions */
+.filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+.decision-list { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); align-items: start; }
+.decision { background: var(--surface); border: 1px solid var(--line); border-top: 4px solid var(--lc, var(--accent)); border-radius: 12px; box-shadow: var(--shadow); }
+.decision[hidden] { display: none; }
+.decision summary { cursor: pointer; list-style: none; display: flex; gap: 12px; align-items: baseline; padding: 11px 16px; }
+.decision summary::-webkit-details-marker { display: none; }
+.decision summary::after { content: "+"; margin-left: auto; color: var(--muted); font-size: 18px; line-height: 1; }
+.decision[open] summary::after { content: "\2212"; }
+.decision .dnum { font-size: 13px; font-weight: 800; color: var(--lc); letter-spacing: .04em; min-width: 2.6em; font-variant-numeric: tabular-nums; }
+.decision .dname { font-weight: 600; }
+.decision > div { padding: 0 16px 14px calc(16px + 2.6em + 12px); color: var(--ink-2); font-size: 15px; }
+.decision > div p { margin: 0 0 6px; }
+
+/* Measured */
+.metric { font-size: 30px; font-weight: 800; line-height: 1.1; margin-bottom: 8px; }
+.metric small { font-size: 15px; font-weight: 600; color: var(--muted); }
+.src { font-size: 12.5px; color: var(--muted); margin-top: 8px; }
+.bar-line { display: grid; grid-template-columns: 56px minmax(0, 1fr) 96px; gap: 8px; align-items: center; margin: 4px 0; font-size: 13px; color: var(--ink-2); }
+.bar-area { position: relative; height: 12px; }
+.bar-area .range { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 0 4px 4px 0; min-width: 4px; }
+.bar-area .range.before { background: var(--muted); opacity: .55; }
+.bar-area .range.after { background: var(--accent); }
+.bar-line .val { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+
+/* Run */
+.cmd { display: flex; align-items: stretch; gap: 0; background: var(--code-bg); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.cmd pre { flex: 1; padding: 12px 14px; font-size: 14px; overflow-x: auto; color: var(--ink); }
+.cmd code { background: none; padding: 0; font-size: inherit; border-radius: 0; }
+.cmd button { border: 0; border-left: 1px solid var(--line); border-radius: 0; background: transparent; font-size: 13px; }
+.run-step { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 14px; align-items: start; margin-bottom: 18px; }
+.run-step .n { width: 36px; height: 36px; border-radius: 50%; background: var(--accent); color: #fff; display: grid; place-items: center; font-weight: 800; }
+:root[data-theme="dark"] .run-step .n { color: #0d1117; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .run-step .n { color: #0d1117; } }
+.run-step h3 { font-size: 17px; margin: 6px 0 8px; }
+.run-step p { margin: 8px 0 0; color: var(--ink-2); font-size: 14.5px; }
+
+footer { padding: 40px 16px 60px; color: var(--muted); font-size: 14px; }
+footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: space-between; }
+@media print { .topnav, .flow-toolbar { display: none; } .explain-inner { position: static; } .section { break-inside: avoid; } }
 </style>
 </head>
 <body>
-<header class="top">
-  <span class="site">Deel data engineering take-home</span>
-  <nav aria-label="Site">
-    <a href="../">Documentation</a>
-    <a href="https://github.com/jonathan5p/deel-home-task">GitHub</a>
-    <button type="button" id="theme-toggle" class="linkish" aria-label="Colour theme: automatic">Theme: auto</button>
+<a class="skip" href="#flow-section">Skip to the interactive data flow</a>
+
+<header class="topnav">
+  <a class="brand" href="#top" aria-label="Back to the top">
+    <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="3" fill="var(--c-source)"/><circle cx="12" cy="12" r="3" fill="var(--c-bronze)"/><circle cx="19" cy="12" r="3" fill="var(--c-gold)"/><path d="M8 12h1M15 12h1" stroke="var(--muted)" stroke-width="2"/></svg>
+    <span class="brand-text">CDC pipeline</span>
+  </a>
+  <nav class="navlinks" aria-label="Sections">
+    <a href="#flow-section">Data flow</a>
+    <a href="#context">Assignment</a>
+    <a href="#decisions">Decisions</a>
+    <a href="#measured">Measured</a>
+    <a href="#run">Run it</a>
+    <a href="#production">Production</a>
   </nav>
+  <div class="nav-tools">
+    <span class="keyhint"><kbd>&larr;</kbd> <kbd>&rarr;</kbd> sections</span>
+    <a class="btn docs-link" href="../">Documentation</a>
+    <button type="button" class="icon-btn" id="theme-toggle" aria-label="Colour theme: automatic">
+      <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18V3z" fill="currentColor"/><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+      <span id="theme-label">Auto</span>
+    </button>
+  </div>
 </header>
 
-<main>
-<div class="intro">
-  <h1>A CDC pipeline, from the orders database to the answers</h1>
-  <p>ACME Delivery Services wants to follow its orders with low latency. I built a pipeline that streams every change in its PostgreSQL database through Kafka and Spark into an Iceberg lake and a star schema that answers four questions.</p>
-</div>
-
-<section class="stage" id="flow-section" aria-label="Interactive data flow">
-  <div class="diagram-card">
-    <div class="toolbar" role="toolbar" aria-label="Data flow controls">
-      <button type="button" id="play-btn" aria-pressed="false">
-        <svg width="12" height="12" viewBox="0 0 14 14" aria-hidden="true"><path id="play-icon" d="M3 2l9 5-9 5z" fill="currentColor"/></svg>
-        <span id="play-label">Play</span>
-      </button>
-      <button type="button" id="step-btn" class="primary" aria-pressed="false">Follow one change</button>
-      <button type="button" id="reset-btn">Reset</button>
-      <span class="hint" id="hint">Click any box, or a green check, for details.</span>
+<main id="top">
+<section class="hero section" id="flow-section" data-section aria-labelledby="flow-title">
+  <div class="stage-wrap">
+    <div class="intro">
+      <div class="eyebrow">Deel data engineering take-home</div>
+      <h1 id="flow-title">A CDC pipeline, <span>from the orders database to the answers</span></h1>
+      <p class="lede">I built a pipeline that streams every change in a PostgreSQL orders database through Kafka and Spark into an Iceberg lake and a star schema that answers four business questions. Click any part of the diagram to see what it does, or follow one change from the commit to the answer.</p>
     </div>
-    <div class="diagram-scroll" id="diagram-scroll">
-      <svg id="flow" viewBox="0 0 1280 480" role="group" aria-labelledby="flow-desc">
-        <desc id="flow-desc">Data flow from the source PostgreSQL through Debezium and Kafka to the landing, bronze and silver layers of the lake, then to gold in PostgreSQL and the gold views in the lake, and on to the API, Grafana, Spark SQL and DuckDB. Platform and operations components are along the bottom. Each component is a button that shows its explanation next to the diagram.</desc>
-        <defs>
-          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrowhead" d="M0,0 L10,5 L0,10 z"/></marker>
-        </defs>
-        <g id="lanes"></g>
-        <g id="edges"></g>
-        <g id="nodes"></g>
-        <g id="dqs"></g>
-        <g id="tokens"></g>
-        <g id="notes"></g>
-      </svg>
+    <div class="flow-shell">
+      <div class="flow-toolbar" role="toolbar" aria-label="Data flow controls">
+        <button type="button" id="play-btn" aria-pressed="false">
+          <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path id="play-icon" d="M3 2l9 5-9 5z" fill="currentColor"/></svg>
+          <span id="play-label">Play</span>
+        </button>
+        <button type="button" id="step-btn" class="btn-primary" aria-pressed="false">Follow one change</button>
+        <button type="button" id="reset-btn">Reset</button>
+        <span class="hint" id="hint">Hover or click a box, or a green check, for details.</span>
+      </div>
+      <div class="flow-body">
+        <div class="flow-main">
+          <p class="scroll-hint">Scroll the diagram sideways to see every part.</p>
+          <div class="diagram-scroll" id="diagram-scroll">
+            <svg id="flow" viewBox="0 0 1216 496" role="group" aria-labelledby="flow-title flow-desc">
+              <desc id="flow-desc">Data flow from the source PostgreSQL through Debezium and Kafka to the landing, bronze and silver layers of the lake, then to gold in PostgreSQL and the gold views in the lake, and on to the API, Grafana, Spark SQL and DuckDB. Platform and operations components are along the bottom. Each component is a button that shows its explanation next to the diagram.</desc>
+              <defs>
+                <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrowhead" d="M0,0 L10,5 L0,10 z"/></marker>
+              </defs>
+              <g id="lanes"></g>
+              <g id="edges"></g>
+              <g id="nodes"></g>
+              <g id="dqs"></g>
+              <g id="tokens"></g>
+              <g id="notes"></g>
+            </svg>
+          </div>
+          <p class="caption" id="caption" aria-live="polite"></p>
+        </div>
+        <aside class="explain" id="explain" aria-label="Explanation">
+          <div class="explain-inner" id="explain-inner">
+            <div class="ex-head"><div><div class="kicker">How to read it</div><h3>Click any part of the pipeline</h3></div></div>
+            <div class="ex-body">
+              <p>Each box is one part of the pipeline, and each green check between two layers is a data quality check. Click one and I explain it here: what it does, roughly how it works, and why I built it that way.</p>
+              <p><b>Follow one change</b> takes one update to order 1 through 13 steps, from the commit in the source to the answer. The arrow keys move between steps.</p>
+              <h4>The moving markers</h4>
+              <ul class="legend" id="legend"></ul>
+              <h4>Read more</h4>
+              <ul class="links"><li><a href="../architecture/overview/">Architecture overview &rarr;</a></li></ul>
+            </div>
+          </div>
+        </aside>
+      </div>
     </div>
-    <p class="caption" id="caption" aria-live="polite">Press <b>Play</b> to watch a few changes to order 1 move through the pipeline, or <b>Follow one change</b> to walk through one update step by step.</p>
   </div>
+</section>
 
-  <aside class="explain" id="explain" aria-label="Explanation">
-    <div id="start">
-      <h2>How to read this</h2>
-      <p>Each box is one part of the pipeline. Click one, or a green check between two layers, and I explain it here: what it does, how I built it and why.</p>
-      <p><b>Follow one change</b> takes one update to order 1 through 13 steps, from the commit in the source to the answer. The arrow keys move between steps.</p>
-      <h3>The four questions it answers</h3>
-      <ol>
-        <li>Open orders by delivery date and status</li>
-        <li>The top 3 delivery dates by open orders</li>
-        <li>Pending items by product</li>
-        <li>The top 3 customers by pending orders</li>
-      </ol>
-      <details class="shapes">
-        <summary>What the moving shapes mean</summary>
-        <ul class="legend" id="legend"></ul>
-      </details>
-      <p class="more"><a href="../">The full documentation &rarr;</a></p>
+<section class="section" id="context" data-section aria-labelledby="context-title">
+  <div class="wrap">
+    <div class="eyebrow">The assignment</div>
+    <h2 id="context-title">Four questions about open orders</h2>
+    <p class="lede">ACME Delivery Services wants its logistics leaders to follow their orders with low latency. The assignment supplied the orders database and its Debezium connector; I built the streaming pipeline and the model that answer these questions.</p>
+    <ol class="questions">
+      <li>Open orders by delivery date and status</li>
+      <li>The top 3 delivery dates by open orders</li>
+      <li>Pending items by product</li>
+      <li>The top 3 customers by pending orders</li>
+    </ol>
+  </div>
+</section>
+
+<section class="section" id="decisions" data-section aria-labelledby="decisions-title">
+  <div class="wrap">
+    <div class="eyebrow">Decisions</div>
+    <h2 id="decisions-title">Why it is built this way</h2>
+    <p class="lede">The main choices I made. Open one for the reason and the alternative; each links to its full entry.</p>
+    <div class="filters" role="group" aria-label="Filter decisions">
+      <button type="button" data-filter="all" aria-pressed="true">All</button>
+      <button type="button" data-filter="constraints" aria-pressed="false">Constraints</button>
+      <button type="button" data-filter="platform" aria-pressed="false">Platform</button>
+      <button type="button" data-filter="lake" aria-pressed="false">Lake</button>
+      <button type="button" data-filter="gold" aria-pressed="false">Gold</button>
     </div>
-  </aside>
-</section>
-
-<section class="section" id="decisions" aria-labelledby="decisions-title">
-  <h2 id="decisions-title">Decisions</h2>
-  <div class="body decisions">
-    <p class="muted small">The main choices I made. Open one for the reason and the alternative; each links to the full write-up.</p>
-
-    <p class="group">Constraints</p>
-    <details><summary><span class="dn">D8</span><span>Fully local, no cloud services</span></summary><div>
-      <p>The assignment asks for a stack reviewers can start from the README, so everything runs in Docker Compose on one machine. Managed AWS services would be closer to production, but need accounts and cost money.</p>
-      <a href="../architecture/decisions/#d8--fully-local-no-cloud-services">Read D8 &rarr;</a></div></details>
-    <details><summary><span class="dn">D29</span><span>The source database and connector stay as provided</span></summary><div>
-      <p>I treated the database and the Debezium connector as given input. Bronze decodes their formats instead of changing the connector settings.</p>
-      <a href="../architecture/decisions/#d29--the-source-database-and-the-debezium-connector-stay-as-provided">Read D29 &rarr;</a></div></details>
-
-    <p class="group">Platform</p>
-    <details><summary><span class="dn">D13</span><span>SeaweedFS instead of MinIO</span></summary><div>
-      <p>MinIO is no longer maintained and its images can no longer be pulled. SeaweedFS is maintained, Apache-2.0 licensed and runs as one container with an S3 API. I also looked at a MinIO fork, RustFS and Garage.</p>
-      <a href="../architecture/decisions/#d13--object-store-seaweedfs-instead-of-minio">Read D13 &rarr;</a></div></details>
-    <details><summary><span class="dn">D9</span><span>Iceberg with a JDBC catalog</span></summary><div>
-      <p>Iceberg is the table format; keeping its catalog in the analytics PostgreSQL avoids running another service. A REST catalog would be closer to production, at the cost of one more service.</p>
-      <a href="../architecture/decisions/#d9--iceberg-with-a-jdbc-catalog-on-the-analytics-postgresql">Read D9 &rarr;</a></div></details>
-    <details><summary><span class="dn">D27</span><span>One driver container per application</span></summary><div>
-      <p>Each Spark job gets its own driver container, so a failure, its memory and its logs belong to one job only. In production this becomes YARN cluster mode on EMR, or Kubernetes.</p>
-      <a href="../architecture/decisions/#d27--one-driver-container-per-application-executors-on-shared-workers">Read D27 &rarr;</a></div></details>
-
-    <p class="group">Lake</p>
-    <details><summary><span class="dn">D17</span><span>Landing, bronze, silver; gold built from silver</span></summary><div>
-      <p>Each layer has one job. Spark cannot stream from an Iceberg table that is updated in place, so an append-only silver keeps gold streamable. The cost is four hops, each adding some latency.</p>
-      <a href="../architecture/decisions/#d17--layered-lake-landing-bronze-silver-gold-built-from-silver">Read D17 &rarr;</a></div></details>
-    <details><summary><span class="dn">D18</span><span>Landing as raw Avro files</span></summary><div>
-      <p>An exact, replayable copy of Kafka, in a compact format that describes itself. The cost is one more hop before the data is typed.</p>
-      <a href="../architecture/decisions/#d18--landing-as-raw-avro-files-one-folder-per-topic">Read D18 &rarr;</a></div></details>
-    <details><summary><span class="dn">D30</span><span>A readable change identity</span></summary><div>
-      <p>A change is identified by its key, its position in the source log and its operation, not by its Kafka offset, because the same change can arrive again at a new offset. Data Vault hash keys would work too, but are opaque.</p>
-      <a href="../architecture/decisions/#d30--change-identity-in-readable-columns-data-vault-hashing-only-in-part">Read D30 &rarr;</a></div></details>
-    <details><summary><span class="dn">D31</span><span>Late arrivals are history</span></summary><div>
-      <p>A late change takes its place in the history and never overwrites newer state. Bronze stays a faithful log; duplicates are removed in silver.</p>
-      <a href="../architecture/decisions/#d31--late-arrivals-are-history-deduplication-happens-in-silver">Read D31 &rarr;</a></div></details>
-    <details><summary><span class="dn">D36</span><span>How silver removes duplicates</span></summary><div>
-      <p>Exact duplicates are dropped when silver is written; versions that change nothing are folded when it is read. There is no time cut-off, so a late change is never dropped.</p>
-      <a href="../architecture/decisions/#d36--silver-deduplication-exact-duplicates-on-write-unchanged-versions-on-read">Read D36 &rarr;</a></div></details>
-
-    <p class="group">Gold</p>
-    <details><summary><span class="dn">D3</span><span>Gold in PostgreSQL, not ClickHouse</span></summary><div>
-      <p>Gold is small and must be consistent after every micro-batch, and PostgreSQL applies each batch in one transaction. ClickHouse would handle much larger facts better, so it stays an option for scale.</p>
-      <a href="../architecture/decisions/#d3--gold-in-postgresql-not-clickhouse">Read D3 &rarr;</a></div></details>
-    <details><summary><span class="dn">D32</span><span>The gold dimensional model</span></summary><div>
-      <p>Customer and product dimensions with history, history facts and current-state tables answer every question. Current state as a plain view would get slower as the history grows.</p>
-      <a href="../architecture/decisions/#d32--the-gold-dimensional-model">Read D32 &rarr;</a></div></details>
-    <details><summary><span class="dn">D35</span><span>Public views over an internal schema</span></summary><div>
-      <p>The pipeline writes its own internal tables; consumers read views without the pipeline's columns. I can change how gold is stored without breaking the API or the dashboard.</p>
-      <a href="../architecture/decisions/#d35--public-views-over-an-internal-schema">Read D35 &rarr;</a></div></details>
-    <details><summary><span class="dn">D40</span><span>Indexes chosen from the query plans</span></summary><div>
-      <p>Gold has only the indexes the four questions use, each one picked by reading that question's query plan.</p>
-      <a href="../architecture/decisions/#d40--gold-indexes-chosen-from-the-query-plans-of-the-current-use-cases">Read D40 &rarr;</a></div></details>
-    <details><summary><span class="dn">D37</span><span>Retention by monthly partitions</span></summary><div>
-      <p>PostgreSQL keeps 36 months of history by dropping whole months, which is cheaper than deleting rows. Current state is never trimmed, so an old open order keeps its row.</p>
-      <a href="../architecture/decisions/#d37--gold-retention-by-monthly-partitions">Read D37 &rarr;</a></div></details>
-    <details><summary><span class="dn">D38</span><span>Rebuild gold from silver</span></summary><div>
-      <p>Gold can be reset and rebuilt from silver with the same merge the stream uses, optionally up to a point in time.</p>
-      <a href="../architecture/decisions/#d38--rebuild-gold-from-silver-with-an-optional-cutoff">Read D38 &rarr;</a></div></details>
-    <details><summary><span class="dn">D39</span><span>Gold in the lake as views over silver</span></summary><div>
-      <p>Silver already holds every version, so the lake gets the gold model as views instead of a second writer. The cost is that every read recomputes over the full history.</p>
-      <a href="../architecture/decisions/#d39--gold-in-the-lake-as-iceberg-views-over-silver">Read D39 &rarr;</a></div></details>
-    <p class="small" style="margin-top:14px"><a href="../architecture/decisions/">All design decisions &rarr;</a></p>
+    <div class="decision-list" id="decision-list">
+      <details class="decision" data-cat="constraints" style="--lc:var(--c-serve)"><summary><span class="dnum">D8</span><span class="dname">Fully local, no cloud services</span></summary><div>
+        <p>The assignment asks for a stack reviewers can start from the README, so everything runs in Docker Compose on one machine. Managed AWS services would be closer to production, but need accounts and cost money.</p>
+        <a href="../architecture/decisions/#d8--fully-local-no-cloud-services">Read D8 &rarr;</a></div></details>
+      <details class="decision" data-cat="constraints" style="--lc:var(--c-source)"><summary><span class="dnum">D29</span><span class="dname">The source database and connector stay as provided</span></summary><div>
+        <p>I treated the database and the Debezium connector as given input. Bronze decodes their formats instead of changing the connector settings.</p>
+        <a href="../architecture/decisions/#d29--the-source-database-and-the-debezium-connector-stay-as-provided">Read D29 &rarr;</a></div></details>
+      <details class="decision" data-cat="platform" style="--lc:var(--c-landing)"><summary><span class="dnum">D13</span><span class="dname">SeaweedFS instead of MinIO</span></summary><div>
+        <p>MinIO is no longer maintained and its images can no longer be pulled. SeaweedFS is maintained, Apache-2.0 licensed and runs as one container with an S3 API. I also looked at a MinIO fork, RustFS and Garage.</p>
+        <a href="../architecture/decisions/#d13--object-store-seaweedfs-instead-of-minio">Read D13 &rarr;</a></div></details>
+      <details class="decision" data-cat="platform" style="--lc:var(--c-source)"><summary><span class="dnum">D9</span><span class="dname">Iceberg with a JDBC catalog</span></summary><div>
+        <p>Iceberg is the table format; keeping its catalog in the analytics PostgreSQL avoids running another service. A REST catalog would be closer to production, at the cost of one more service.</p>
+        <a href="../architecture/decisions/#d9--iceberg-with-a-jdbc-catalog-on-the-analytics-postgresql">Read D9 &rarr;</a></div></details>
+      <details class="decision" data-cat="platform" style="--lc:var(--c-kafka)"><summary><span class="dnum">D27</span><span class="dname">One driver container per application</span></summary><div>
+        <p>Each Spark job gets its own driver container, so a failure, its memory and its logs belong to one job only. In production this becomes YARN cluster mode on EMR, or Kubernetes.</p>
+        <a href="../architecture/decisions/#d27--one-driver-container-per-application-executors-on-shared-workers">Read D27 &rarr;</a></div></details>
+      <details class="decision" data-cat="lake" style="--lc:var(--c-bronze)"><summary><span class="dnum">D17</span><span class="dname">Landing, bronze, silver; gold built from silver</span></summary><div>
+        <p>Each layer has one job. Spark cannot stream from an Iceberg table that is updated in place, so an append-only silver keeps gold streamable. The cost is four hops, each adding some latency.</p>
+        <a href="../architecture/decisions/#d17--layered-lake-landing-bronze-silver-gold-built-from-silver">Read D17 &rarr;</a></div></details>
+      <details class="decision" data-cat="lake" style="--lc:var(--c-landing)"><summary><span class="dnum">D18</span><span class="dname">Landing as raw Avro files</span></summary><div>
+        <p>An exact, replayable copy of Kafka, in a compact format that describes itself. The cost is one more hop before the data is typed.</p>
+        <a href="../architecture/decisions/#d18--landing-as-raw-avro-files-one-folder-per-topic">Read D18 &rarr;</a></div></details>
+      <details class="decision" data-cat="lake" style="--lc:var(--c-bronze)"><summary><span class="dnum">D30</span><span class="dname">A readable change identity</span></summary><div>
+        <p>A change is identified by its key, its position in the source log and its operation, not by its Kafka offset, because the same change can arrive again at a new offset. Data Vault hash keys would work too, but are opaque.</p>
+        <a href="../architecture/decisions/#d30--change-identity-in-readable-columns-data-vault-hashing-only-in-part">Read D30 &rarr;</a></div></details>
+      <details class="decision" data-cat="lake" style="--lc:var(--c-silver)"><summary><span class="dnum">D31</span><span class="dname">Late arrivals are history</span></summary><div>
+        <p>A late change takes its place in the history and never overwrites newer state. Bronze stays a faithful log; duplicates are removed in silver.</p>
+        <a href="../architecture/decisions/#d31--late-arrivals-are-history-deduplication-happens-in-silver">Read D31 &rarr;</a></div></details>
+      <details class="decision" data-cat="lake" style="--lc:var(--c-silver)"><summary><span class="dnum">D36</span><span class="dname">How silver removes duplicates</span></summary><div>
+        <p>Exact duplicates are dropped when silver is written; versions that change nothing are folded when it is read. There is no time cut-off, so a late change is never dropped.</p>
+        <a href="../architecture/decisions/#d36--silver-deduplication-exact-duplicates-on-write-unchanged-versions-on-read">Read D36 &rarr;</a></div></details>
+      <details class="decision" data-cat="gold" style="--lc:var(--c-gold)"><summary><span class="dnum">D3</span><span class="dname">Gold in PostgreSQL, not ClickHouse</span></summary><div>
+        <p>Gold is small and must be consistent after every micro-batch, and PostgreSQL applies each batch in one transaction. ClickHouse would handle much larger facts better, so it stays an option for scale.</p>
+        <a href="../architecture/decisions/#d3--gold-in-postgresql-not-clickhouse">Read D3 &rarr;</a></div></details>
+      <details class="decision" data-cat="gold" style="--lc:var(--c-gold)"><summary><span class="dnum">D32</span><span class="dname">The gold dimensional model</span></summary><div>
+        <p>Customer and product dimensions with history, history facts and current-state tables answer every question. Current state as a plain view would get slower as the history grows.</p>
+        <a href="../architecture/decisions/#d32--the-gold-dimensional-model">Read D32 &rarr;</a></div></details>
+      <details class="decision" data-cat="gold" style="--lc:var(--c-gold)"><summary><span class="dnum">D35</span><span class="dname">Public views over an internal schema</span></summary><div>
+        <p>The pipeline writes its own internal tables; consumers read views without the pipeline's columns. I can change how gold is stored without breaking the API or the dashboard.</p>
+        <a href="../architecture/decisions/#d35--public-views-over-an-internal-schema">Read D35 &rarr;</a></div></details>
+      <details class="decision" data-cat="gold" style="--lc:var(--c-gold)"><summary><span class="dnum">D40</span><span class="dname">Indexes chosen from the query plans</span></summary><div>
+        <p>Gold has only the indexes the four questions use, each one picked by reading that question's query plan. Indexing every column would slow down every merge for no gain.</p>
+        <a href="../architecture/decisions/#d40--gold-indexes-chosen-from-the-query-plans-of-the-current-use-cases">Read D40 &rarr;</a></div></details>
+      <details class="decision" data-cat="gold" style="--lc:var(--c-gold)"><summary><span class="dnum">D37</span><span class="dname">Retention by monthly partitions</span></summary><div>
+        <p>PostgreSQL keeps 36 months of history by dropping whole months, which is cheaper than deleting rows. Current state is never trimmed, so an old open order keeps its row.</p>
+        <a href="../architecture/decisions/#d37--gold-retention-by-monthly-partitions">Read D37 &rarr;</a></div></details>
+      <details class="decision" data-cat="gold" style="--lc:var(--c-gold)"><summary><span class="dnum">D38</span><span class="dname">Rebuild gold from silver</span></summary><div>
+        <p>Gold can be reset and rebuilt from silver with the same merge the stream uses, optionally up to a point in time. A separate batch loader would be a second copy of the rules to keep in step.</p>
+        <a href="../architecture/decisions/#d38--rebuild-gold-from-silver-with-an-optional-cutoff">Read D38 &rarr;</a></div></details>
+      <details class="decision" data-cat="gold" style="--lc:var(--c-gold)"><summary><span class="dnum">D39</span><span class="dname">Gold in the lake as views over silver</span></summary><div>
+        <p>Silver already holds every version, so the lake gets the gold model as views instead of a second writer. The cost is that every read recomputes over the full history.</p>
+        <a href="../architecture/decisions/#d39--gold-in-the-lake-as-iceberg-views-over-silver">Read D39 &rarr;</a></div></details>
+    </div>
+    <p class="small" style="margin-top:16px"><a href="../architecture/decisions/">All design decisions &rarr;</a></p>
   </div>
 </section>
 
-<section class="section" id="measured" aria-labelledby="measured-title">
-  <h2 id="measured-title">Measured</h2>
-  <div class="body">
-    <dl class="numbers">
-      <div><dt>Pending items by product: 344&ndash;380 ms down to 37&ndash;46 ms</dt>
-        <dd>After adding the indexes chosen from the query plans, on a test PostgreSQL with 1M orders and 3M items. <span class="src">Pull request <a href="https://github.com/jonathan5p/deel-home-task/pull/142">#142</a>, 2026-11-10; <a href="../architecture/decisions/#d40--gold-indexes-chosen-from-the-query-plans-of-the-current-use-cases">D40</a>.</span></dd></div>
-      <div><dt>734 unit tests, 96.64% branch coverage</dt>
-        <dd>Run in the same image as the Spark cluster; CI and the commit hooks fail below 90%. <span class="src">Pull request <a href="https://github.com/jonathan5p/deel-home-task/pull/171">#171</a>, 2026-11-11.</span></dd></div>
-      <div><dt>247 infra tests pass</dt>
-        <dd>They run the real jobs on isolated copies of the stack: exactly-once appends, quarantine, deduplication, history, retention, rebuild, the API and Grafana. <span class="src">Pull request <a href="https://github.com/jonathan5p/deel-home-task/pull/192">#192</a>, 2026-11-11; <a href="../development/testing/#infra-tests">testing</a>.</span></dd></div>
-    </dl>
+<section class="section" id="measured" data-section aria-labelledby="measured-title">
+  <div class="wrap">
+    <div class="eyebrow">Measured</div>
+    <h2 id="measured-title">Numbers from the repository</h2>
+    <p class="lede">Only numbers recorded in the repository or its pull requests, with where and when I measured them.</p>
+    <div class="grid g3">
+      <div class="card">
+        <h3>Pending items by product</h3>
+        <div class="metric">37&ndash;46 ms <small>from 344&ndash;380 ms</small></div>
+        <div class="bar-line" aria-hidden="true"><span>Before</span><div class="bar-area"><div class="range before" style="width:100%"></div></div><span class="val">344&ndash;380 ms</span></div>
+        <div class="bar-line" aria-hidden="true"><span>After</span><div class="bar-area"><div class="range after" style="width:12.1%"></div></div><span class="val">37&ndash;46 ms</span></div>
+        <p class="small" style="margin-top:10px">After adding the indexes I chose from the query plans, on a test PostgreSQL with 1M orders and 3M items.</p>
+        <p class="src">Pull request <a href="https://github.com/jonathan5p/deel-home-task/pull/142">#142</a>, merged 2026-11-10; <a href="../architecture/decisions/#d40--gold-indexes-chosen-from-the-query-plans-of-the-current-use-cases">decision D40</a>.</p>
+      </div>
+      <div class="card">
+        <h3>Unit tests</h3>
+        <div class="metric">96.64% <small>branch coverage, 734 tests</small></div>
+        <p class="small">Run in the same image as the Spark cluster; CI and the commit hooks fail below 90%.</p>
+        <p class="src">Pull request <a href="https://github.com/jonathan5p/deel-home-task/pull/171">#171</a>, merged 2026-11-11.</p>
+      </div>
+      <div class="card">
+        <h3>Infra tests</h3>
+        <div class="metric">247 <small>passed</small></div>
+        <p class="small">They run the real jobs on isolated copies of the stack: exactly-once appends, quarantine, deduplication, history, retention, rebuild, the API and Grafana.</p>
+        <p class="src">Pull request <a href="https://github.com/jonathan5p/deel-home-task/pull/192">#192</a>, merged 2026-11-11; <a href="../development/testing/#infra-tests">testing</a>.</p>
+      </div>
+    </div>
   </div>
 </section>
 
-<section class="section" id="run" aria-labelledby="run-title">
-  <h2 id="run-title">Run it</h2>
-  <div class="body">
-    <p>You need Docker with Compose v2, GNU Make and uv. From the repository root:</p>
-    <div class="cmd"><pre><code>make pipeline PIPELINE=all   # start the stack and every streaming job
-make data-quality            # check each layer against the one before it
-curl -s localhost:8000/metrics/top-customers-by-pending-orders
-make down                    # stop everything, keeping the data</code></pre><button type="button" class="copy">Copy</button></div>
-    <p>The dashboard is then at <code>localhost:3000/d/gold-metrics</code>. The <a href="https://github.com/jonathan5p/deel-home-task#install">README quick start</a> has every step.</p>
+<section class="section" id="run" data-section aria-labelledby="run-title">
+  <div class="wrap">
+    <div class="eyebrow">Run it</div>
+    <h2 id="run-title">From clone to answers in four commands</h2>
+    <p class="lede">You need Docker with Compose v2, GNU Make and uv. From the repository root:</p>
+    <div class="run-step"><div class="n">1</div><div><h3>Start the stack and every streaming job</h3>
+      <div class="cmd"><pre><code>make pipeline PIPELINE=all</code></pre><button type="button" class="copy">Copy</button></div></div></div>
+    <div class="run-step"><div class="n">2</div><div><h3>Check each layer against the one before it</h3>
+      <div class="cmd"><pre><code>make data-quality</code></pre><button type="button" class="copy">Copy</button></div></div></div>
+    <div class="run-step"><div class="n">3</div><div><h3>Ask a question</h3>
+      <div class="cmd"><pre><code>curl -s localhost:8000/metrics/top-customers-by-pending-orders</code></pre><button type="button" class="copy">Copy</button></div>
+      <p>The dashboard is at <code>localhost:3000/d/gold-metrics</code>.</p></div></div>
+    <div class="run-step"><div class="n">4</div><div><h3>Stop everything, keeping the data</h3>
+      <div class="cmd"><pre><code>make down</code></pre><button type="button" class="copy">Copy</button></div>
+      <p>The <a href="https://github.com/jonathan5p/deel-home-task#install">README quick start</a> has every step.</p></div></div>
   </div>
 </section>
 
-<section class="section" id="next" aria-labelledby="next-title">
-  <h2 id="next-title">What production would need</h2>
-  <div class="body">
-    <p>The pipeline logic, the model and the checks are built as they would be in production. The platform around them is simplified for one machine:</p>
-    <ul>
-      <li>AWS S3 and a catalog service instead of SeaweedFS and the JDBC catalog.</li>
-      <li>Managed, replicated Kafka with more partitions and a schema registry.</li>
-      <li>Spark on EMR or Kubernetes, sized from measured streaming metrics.</li>
-      <li>Metrics, dashboards and alerts, and a data quality framework that keeps its results.</li>
-      <li>Secrets, TLS and authentication, infrastructure as code and deployments from CI.</li>
-    </ul>
-    <p><a href="../architecture/production/">The way to production &rarr;</a></p>
+<section class="section" id="production" data-section aria-labelledby="production-title">
+  <div class="wrap">
+    <div class="eyebrow">Production</div>
+    <h2 id="production-title">What production would need</h2>
+    <p class="lede">The pipeline logic, the model and the checks are built as they would be in production. The platform around them is simplified for one machine.</p>
+    <div class="card">
+      <ul>
+        <li>AWS S3 and a catalog service instead of SeaweedFS and the JDBC catalog.</li>
+        <li>Managed, replicated Kafka with more partitions and a schema registry.</li>
+        <li>Spark on EMR or Kubernetes, sized from measured streaming metrics.</li>
+        <li>Metrics, dashboards and alerts, and a data quality framework that keeps its results.</li>
+        <li>Secrets, TLS and authentication, infrastructure as code and deployments from CI.</li>
+      </ul>
+      <p style="margin-top:14px"><a href="../architecture/production/">The way to production &rarr;</a></p>
+    </div>
   </div>
 </section>
 </main>
 
 <footer>
-  <span>I built this pipeline for Deel's data engineering take-home.</span>
-  <span><a href="../">Documentation</a> &middot; <a href="https://github.com/jonathan5p/deel-home-task">GitHub</a> &middot; <a href="../reference/">Table reference</a></span>
+  <div class="wrap">
+    <span>I built this pipeline for Deel's data engineering take-home.</span>
+    <span><a href="../">Documentation</a> &middot; <a href="https://github.com/jonathan5p/deel-home-task">GitHub</a> &middot; <a href="../reference/">Table reference</a></span>
+  </div>
 </footer>
 
 <script>
@@ -428,16 +566,19 @@ make down                    # stop everything, keeping the data</code></pre><bu
   "use strict";
   const SVGNS = "http://www.w3.org/2000/svg";
   const DEC = "../architecture/decisions/#";
+  const VIEW_FULL = "0 0 1216 496";
+  const VIEW_STEPS = "0 0 1216 392";
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const narrow = () => window.matchMedia("(max-width: 1080px)").matches;
+  const narrow = () => window.matchMedia("(max-width: 1100px)").matches;
 
-  // Theme: auto -> light -> dark.
+  // Theme toggle: auto -> light -> dark.
   const root = document.documentElement;
   const themeBtn = document.getElementById("theme-toggle");
+  const themeLabel = document.getElementById("theme-label");
   const THEMES = ["auto", "light", "dark"];
   function applyTheme(t) {
     if (t === "auto") root.removeAttribute("data-theme"); else root.setAttribute("data-theme", t);
-    themeBtn.textContent = "Theme: " + t;
+    themeLabel.textContent = t[0].toUpperCase() + t.slice(1);
     themeBtn.setAttribute("aria-label", "Colour theme: " + (t === "auto" ? "automatic" : t));
   }
   let theme = "auto";
@@ -477,157 +618,164 @@ make down                    # stop everything, keeping the data</code></pre><bu
 
   const L = (label, href) => ({ label, href });
   const D = (num, label, anchor) => ({ num, label, anchor });
-  // Text fields are trusted HTML written for this page.
+  // Text fields are trusted HTML written for this page; titles stay plain text because they also label the buttons.
   const NODES = [
-    { id: "source", x: 16, y: 110, w: 124, h: 80, layer: "source", form: "row", t: "finance_db", s: "PostgreSQL 15",
-      kicker: "Source", title: "The source database", built: "PostgreSQL 15, as supplied with the assignment",
+    { id: "source", x: 18, y: 104, w: 118, h: 72, layer: "source", form: "row", t: "finance_db", s: "PostgreSQL 15",
+      kicker: "Source", title: "The source database", tech: ["PostgreSQL 15", "as supplied"],
       hint: "the supplied orders database",
-      p: ["The live database that came with the assignment: customers, products, orders and order items. A generator keeps creating orders and changing them.",
-        "PostgreSQL writes every commit to its write-ahead log, and that is where the pipeline starts. I left the database and its connector exactly as supplied."],
+      what: "The live database that came with the assignment: customers, products, orders and order items. A generator keeps creating orders and changing them.",
+      how: ["PostgreSQL writes every commit to its write-ahead log, and that is where the pipeline starts. I left the database and its connector exactly as supplied."],
       why: [D("D29", "the source side stays as provided", "d29--the-source-database-and-the-debezium-connector-stay-as-provided"), D("D20", "analytics run on a separate PostgreSQL", "d20--a-separate-analytics-postgresql")],
       docs: [L("Source database and CDC", "../lakehouse/source-and-cdc/")] },
-    { id: "debezium", x: 172, y: 110, w: 124, h: 80, layer: "kafka", form: "event", t: "Debezium", s: "Kafka Connect",
-      kicker: "Capture", title: "Debezium", built: "Debezium 2.4 on Kafka Connect, as supplied",
+    { id: "debezium", x: 160, y: 104, w: 118, h: 72, layer: "kafka", form: "event", t: "Debezium", s: "Kafka Connect",
+      kicker: "Capture", title: "Debezium", tech: ["Debezium 2.4", "Kafka Connect", "as supplied"],
       hint: "turns each row change into an event",
-      p: ["Debezium reads the write-ahead log and turns each row change into an event: the row before, the row after, the operation, and where in the log it was committed.",
-        "It first copies each table as a snapshot, then streams every insert, update and delete."],
+      what: "Debezium reads the write-ahead log and turns each row change into an event: the row before, the row after, the operation, and where in the log it was committed.",
+      how: ["It first copies each table as a snapshot, then streams every insert, update and delete."],
       why: [D("D29", "its formats are decoded downstream, the connector is unchanged", "d29--the-source-database-and-the-debezium-connector-stay-as-provided")],
       docs: [L("The change event format", "../lakehouse/source-and-cdc/#message-format")] },
-    { id: "kafka", x: 328, y: 110, w: 124, h: 80, layer: "kafka", form: "event", t: "Kafka", s: "4 topics",
-      kicker: "Transport", title: "Kafka", built: "One broker, one topic per source table",
+    { id: "kafka", x: 302, y: 104, w: 118, h: 72, layer: "kafka", form: "event", t: "Kafka", s: "4 topics",
+      kicker: "Transport", title: "Kafka", tech: ["one broker", "one topic per table"],
       hint: "one topic per source table",
-      p: ["Each source table has its own topic, keyed by the primary key.",
-        "Kafka delivers at least once: after a connector restart the same change can arrive again, at a new offset. So nothing downstream uses the offset to identify a change."],
+      what: "Each source table has its own topic, keyed by the primary key.",
+      how: ["Kafka delivers at least once: after a connector restart the same change can arrive again, at a new offset. So nothing downstream uses the offset to identify a change."],
       why: [D("D30", "a change is identified by its content, not its offset", "d30--change-identity-in-readable-columns-data-vault-hashing-only-in-part")],
       docs: [L("Topics", "../lakehouse/source-and-cdc/#topics")] },
-    { id: "landing", x: 484, y: 110, w: 124, h: 80, layer: "landing", form: "file", t: "Landing", s: "raw Avro files",
-      kicker: "Lake", title: "Landing: a raw copy of Kafka", built: "Spark Structured Streaming, Avro files on SeaweedFS",
+    { id: "landing", x: 456, y: 104, w: 118, h: 72, layer: "landing", form: "file", t: "Landing", s: "raw records",
+      kicker: "Lake", title: "Landing: a raw copy of Kafka", tech: ["Spark Structured Streaming", "Avro"],
       hint: "every Kafka record, unchanged",
-      p: ["The first streaming job copies every Kafka record into Avro files in the lake, unchanged, with its topic, partition and offset.",
-        "This copy is what I replay from when a later layer needs it. The job's checkpoint makes sure a restart neither skips nor repeats a record."],
+      what: "The first streaming job copies every Kafka record into Avro files in the lake, unchanged, with its topic, partition and offset.",
+      how: ["This copy is what I replay from when a later layer needs it. The job's checkpoint makes sure a restart neither skips nor repeats a record."],
       why: [D("D18", "landing as raw Avro", "d18--landing-as-raw-avro-files-one-folder-per-topic")],
       docs: [L("Landing", "../lakehouse/landing/")] },
-    { id: "bronze", x: 640, y: 110, w: 124, h: 80, layer: "bronze", form: "typed", t: "Bronze", s: "typed change log",
-      kicker: "Lake", title: "Bronze: a typed change log", built: "Spark Structured Streaming, Iceberg tables",
+    { id: "bronze", x: 598, y: 104, w: 118, h: 72, layer: "bronze", form: "typed", t: "Bronze", s: "typed changes",
+      kicker: "Lake", title: "Bronze: a typed change log", tech: ["Spark Structured Streaming", "Iceberg"],
       hint: "one typed row per change",
-      p: ["The bronze job turns each raw record into a typed row, one row per change. It decodes Debezium's number and date formats and adds what the later layers need: the operation, the position in the source log and a hash of the business columns.",
+      what: "The bronze job turns each raw record into a typed row, one row per change.",
+      how: ["It decodes Debezium's number and date formats and adds what the later layers need: the operation, the position in the source log and a hash of the business columns.",
         "A record that fails validation goes to a quarantine table instead of stopping the job. Bronze removes nothing, so it stays a faithful log."],
       why: [D("D30", "a readable change identity", "d30--change-identity-in-readable-columns-data-vault-hashing-only-in-part"), D("D31", "duplicates are removed later, in silver", "d31--late-arrivals-are-history-deduplication-happens-in-silver")],
       docs: [L("Bronze", "../lakehouse/bronze/")] },
-    { id: "quarantine", x: 640, y: 250, w: 124, h: 52, layer: "bad", form: "typed", t: "Quarantine", s: "invalid records",
-      kicker: "Lake", title: "Quarantine", built: "Iceberg tables next to bronze",
+    { id: "quarantine", x: 592, y: 252, w: 130, h: 56, layer: "bad", form: "typed", t: "Quarantine", s: "invalid records",
+      kicker: "Lake", title: "Quarantine", tech: ["Iceberg"],
       hint: "records bronze cannot read",
-      p: ["A record bronze cannot read, such as an unknown operation or a missing key, is kept here with the reason and the landing file it came from. The stream keeps going.",
-        "Once the cause is fixed, the record can be replayed into bronze."],
+      what: "A record bronze cannot read, such as an unknown operation or a missing key, is kept here with the reason and the landing file it came from. The stream keeps going.",
+      how: ["Once the cause is fixed, the record can be replayed into bronze."],
       why: [D("D17", "each layer has one job", "d17--layered-lake-landing-bronze-silver-gold-built-from-silver")],
       docs: [L("Bronze and its quarantine", "../lakehouse/bronze/"), L("Replaying into bronze", "../operations/maintenance-and-recovery/#replaying-a-landing-range-into-bronze")] },
-    { id: "silver", x: 796, y: 110, w: 124, h: 80, layer: "silver", form: "version", t: "Silver", s: "version history",
-      kicker: "Lake", title: "Silver: the version history", built: "Spark Structured Streaming, Iceberg tables",
+    { id: "silver", x: 740, y: 104, w: 118, h: 72, layer: "silver", form: "version", t: "Silver", s: "every version",
+      kicker: "Lake", title: "Silver: the version history", tech: ["Spark Structured Streaming", "Iceberg"],
       hint: "every version, once",
-      p: ["Silver keeps every version of every customer, product, order and item, once. A change that arrives twice is stored once. A change that arrives late is still kept, and takes its place in the history.",
+      what: "Silver keeps every version of every customer, product, order and item, once.",
+      how: ["A change that arrives twice is stored once. A change that arrives late is still kept, and takes its place in the history.",
         "Silver only ever appends. That is what lets the gold job read it as a stream."],
       why: [D("D36", "how silver removes duplicates", "d36--silver-deduplication-exact-duplicates-on-write-unchanged-versions-on-read"), D("D31", "late arrivals are history", "d31--late-arrivals-are-history-deduplication-happens-in-silver")],
       docs: [L("Silver", "../lakehouse/silver/")] },
-    { id: "sviews", x: 796, y: 250, w: 124, h: 52, layer: "silver", form: "version", t: "Silver views", s: "history, current",
-      kicker: "Lake", title: "Silver views", built: "Iceberg views, computed on read",
+    { id: "sviews", x: 731, y: 252, w: 136, h: 56, layer: "silver", form: "version", t: "Silver views", s: "history, current",
+      kicker: "Lake", title: "Silver views", tech: ["Iceberg views"],
       hint: "history and current state per table",
-      p: ["Two views per table: the full history, with the period each version was valid, and the current state.",
-        "They are computed when they are read, so a late change needs no special handling. Versions that change nothing are folded together here."],
+      what: "Two views per table: the full history, with the period each version was valid, and the current state.",
+      how: ["They are computed when they are read, so a late change needs no special handling. Versions that change nothing are folded together here."],
       why: [D("D36", "unchanged versions are folded on read", "d36--silver-deduplication-exact-duplicates-on-write-unchanged-versions-on-read")],
       docs: [L("Silver views", "../lakehouse/silver/")] },
-    { id: "gold", x: 952, y: 70, w: 140, h: 160, layer: "gold", form: "star", t: "Gold", s: "PostgreSQL 18.6",
-      kicker: "Gold", title: "Gold: a star schema in PostgreSQL", built: "Spark Structured Streaming writing to PostgreSQL 18.6",
+    { id: "gold", x: 894, y: 56, w: 156, h: 178, layer: "gold", form: "star", t: "Gold", s: "PostgreSQL 18.6",
+      kicker: "Gold", title: "Gold: a star schema in PostgreSQL", tech: ["PostgreSQL 18.6", "Spark Structured Streaming"],
       hint: "the star schema that answers the questions",
-      p: ["The gold job keeps a star schema in a separate PostgreSQL: customer and product dimensions that keep their history, history facts for orders and items, and current-state tables.",
-        "Each micro-batch is staged, then merged in one transaction. Current state only accepts a newer version, so a late or replayed change never overwrites newer data.",
+      what: "The gold job keeps a star schema in a separate PostgreSQL: customer and product dimensions that keep their history, history facts for orders and items, and current-state tables.",
+      how: ["Each micro-batch is staged, then merged in one transaction. Current state only accepts a newer version, so a late or replayed change never overwrites newer data.",
         "Consumers read public views; the tables the pipeline writes stay internal."],
       why: [D("D3", "PostgreSQL, not ClickHouse", "d3--gold-in-postgresql-not-clickhouse"), D("D32", "the dimensional model", "d32--the-gold-dimensional-model"), D("D35", "public views over an internal schema", "d35--public-views-over-an-internal-schema")],
       docs: [L("Gold", "../lakehouse/gold/"), L("The model", "../lakehouse/gold/model/"), L("The writer", "../lakehouse/gold/writer/")] },
-    { id: "lakegold", x: 952, y: 250, w: 140, h: 52, layer: "gold", form: "star", t: "Gold in the lake", s: "views over silver",
-      kicker: "Gold", title: "Gold in the lake", built: "Iceberg views over silver",
+    { id: "lakegold", x: 894, y: 252, w: 156, h: 56, layer: "gold", form: "star", t: "Lake gold", s: "views over silver",
+      kicker: "Gold", title: "Gold in the lake", tech: ["Iceberg views"],
       hint: "the same model, computed from silver",
-      p: ["The same gold model also exists in the lake, as views over silver. They store nothing and compute the answer when read, over the full history.",
-        "The gold data quality check compares PostgreSQL with them."],
+      what: "The same gold model also exists in the lake, as views over silver. They store nothing and compute the answer when read, over the full history.",
+      how: ["The gold data quality check compares PostgreSQL with them."],
       why: [D("D39", "gold in the lake as views", "d39--gold-in-the-lake-as-iceberg-views-over-silver")],
       docs: [L("Gold in the lake", "../lakehouse/gold/writer/#gold-in-the-lake")] },
-    { id: "api", x: 1150, y: 40, w: 118, h: 56, layer: "serve", form: "answer", t: "HTTP API", s: "FastAPI",
-      kicker: "Serving", title: "Analytics API", built: "FastAPI, with a read-only database login",
+    { id: "api", x: 1074, y: 40, w: 124, h: 56, layer: "serve", form: "answer", t: "HTTP API", s: "FastAPI",
+      kicker: "Serving", title: "Analytics API", tech: ["FastAPI", "read-only login"],
       hint: "the four answers over HTTP",
-      p: ["A small FastAPI service answers the four questions over HTTP, plus how fresh each table is. It reads only the public gold views, with a read-only login."],
+      what: "A small FastAPI service answers the four questions over HTTP, plus how fresh each table is.",
+      how: ["It reads only the public gold views, with a read-only login."],
       why: [D("D35", "consumers read the public views", "d35--public-views-over-an-internal-schema")],
       docs: [L("Analytics API", "../serving/api/")] },
-    { id: "grafana", x: 1150, y: 122, w: 118, h: 56, layer: "serve", form: "answer", t: "Grafana", s: "Gold metrics",
-      kicker: "Serving", title: "Grafana dashboard", built: "Grafana, provisioned from the repository",
+    { id: "grafana", x: 1074, y: 112, w: 124, h: 56, layer: "serve", form: "answer", t: "Grafana", s: "Gold metrics",
+      kicker: "Serving", title: "Grafana dashboard", tech: ["Grafana", "provisioned as code"],
       hint: "one panel per question",
-      p: ["A dashboard with one panel per question and the freshness of each table, refreshed every 30 seconds. It is provisioned from files in the repository and runs the same SQL as the API."],
+      what: "A dashboard with one panel per question and the freshness of each table, refreshed every 30 seconds.",
+      how: ["It is provisioned from files in the repository and runs the same SQL as the API."],
       why: [D("D35", "consumers read the public views", "d35--public-views-over-an-internal-schema")],
       docs: [L("Grafana", "../serving/grafana/")] },
-    { id: "sparksql", x: 1150, y: 250, w: 118, h: 52, layer: "serve", form: "answer", t: "Spark SQL", s: "on the lake",
-      kicker: "Serving", title: "Spark SQL on the lake", built: "A SQL shell on the Spark cluster",
+    { id: "sparksql", x: 1074, y: 252, w: 124, h: 56, layer: "serve", form: "answer", t: "Spark SQL", s: "on the lake",
+      kicker: "Serving", title: "Spark SQL on the lake", tech: ["Spark SQL"],
       hint: "query any lake table or view",
-      p: ["<code>make spark-sql</code> opens a SQL shell that can query every table and view in the lake, including the gold views over the full history."],
+      what: "<code>make spark-sql</code> opens a SQL shell that can query every table and view in the lake, including the gold views over the full history.",
+      how: [],
       why: [D("D39", "the lake has the gold model too", "d39--gold-in-the-lake-as-iceberg-views-over-silver")],
       docs: [L("Querying the lake", "../serving/lake-access/")] },
-    { id: "rest", x: 1150, y: 316, w: 118, h: 52, layer: "serve", form: "answer", t: "DuckDB", s: "REST catalog",
-      kicker: "Serving", title: "DuckDB", built: "An optional read-only Iceberg REST catalog",
+    { id: "rest", x: 1074, y: 320, w: 124, h: 56, layer: "serve", form: "answer", t: "DuckDB", s: "REST catalog",
+      kicker: "Serving", title: "DuckDB", tech: ["DuckDB", "Iceberg REST catalog"],
       hint: "read the lake without Spark",
-      p: ["An optional read-only Iceberg REST catalog lets engines such as DuckDB read the lake's tables without Spark. The infra tests use it too, to read results back quickly."],
+      what: "An optional read-only Iceberg REST catalog lets engines such as DuckDB read the lake's tables without Spark.",
+      how: ["The infra tests use it too, to read results back quickly."],
       why: [D("D9", "the Iceberg catalog", "d9--iceberg-with-a-jdbc-catalog-on-the-analytics-postgresql")],
       docs: [L("Query the lake from DuckDB", "../serving/lake-access/#query-the-lake-from-duckdb")] },
 
-    { id: "seaweedfs", x: 16, y: 410, w: 160, h: 56, layer: "landing", t: "SeaweedFS", s: "S3 object store",
+    { id: "seaweedfs", x: 14, y: 424, w: 156, h: 60, layer: "landing", t: "SeaweedFS", s: "S3 object store",
       related: ["landing", "bronze", "quarantine", "silver"],
-      kicker: "Platform", title: "SeaweedFS, the lake's storage", built: "One container with an S3 API",
+      kicker: "Platform", title: "SeaweedFS, the lake's storage", tech: ["SeaweedFS", "S3 API"],
       hint: "where the lake's files live",
-      p: ["One S3-compatible container holds the landing files, the Iceberg tables, the streaming checkpoints and the data quality reports.",
-        "Moving to AWS S3 is a configuration change."],
+      what: "One S3-compatible container holds the landing files, the Iceberg tables, the streaming checkpoints and the data quality reports.",
+      how: ["Moving to AWS S3 is a configuration change."],
       why: [D("D13", "SeaweedFS instead of MinIO", "d13--object-store-seaweedfs-instead-of-minio")],
       docs: [L("Data lake (SeaweedFS)", "../architecture/infrastructure/#data-lake-seaweedfs")] },
-    { id: "catalog", x: 194, y: 410, w: 160, h: 56, layer: "source", t: "Iceberg catalog", s: "in PostgreSQL",
+    { id: "catalog", x: 186, y: 424, w: 156, h: 60, layer: "source", t: "Iceberg catalog", s: "in PostgreSQL",
       related: ["bronze", "silver", "sviews", "lakegold", "quarantine", "rest", "gold"],
-      kicker: "Platform", title: "The analytics PostgreSQL and the Iceberg catalog", built: "PostgreSQL 18.6, Iceberg JDBC catalog",
+      kicker: "Platform", title: "The analytics PostgreSQL and the Iceberg catalog", tech: ["PostgreSQL 18.6", "Iceberg JDBC catalog"],
       hint: "the lake's catalog and gold's database",
-      p: ["A second PostgreSQL, never the source, holds two databases: gold, and the Iceberg catalog that records every table and view in the lake.",
-        "Keeping the catalog here means one service less to run."],
+      what: "A second PostgreSQL, never the source, holds two databases: gold, and the Iceberg catalog that records every table and view in the lake.",
+      how: ["Keeping the catalog here means one service less to run."],
       why: [D("D9", "Iceberg with a JDBC catalog", "d9--iceberg-with-a-jdbc-catalog-on-the-analytics-postgresql"), D("D20", "a separate analytics PostgreSQL", "d20--a-separate-analytics-postgresql")],
       docs: [L("Analytics database", "../architecture/infrastructure/#analytics-database")] },
-    { id: "spark", x: 372, y: 410, w: 160, h: 56, layer: "kafka", t: "Spark cluster", s: "1 master, 2 workers",
+    { id: "spark", x: 358, y: 424, w: 156, h: 60, layer: "kafka", t: "Spark cluster", s: "master, 2 workers",
       related: ["landing", "bronze", "silver", "gold"],
-      kicker: "Platform", title: "The Spark cluster", built: "Spark 4.1.4 with Iceberg 1.12.0, standalone",
+      kicker: "Platform", title: "The Spark cluster", tech: ["Spark 4.1.4", "Iceberg 1.12.0", "standalone"],
       hint: "runs every job",
-      p: ["A small standalone cluster: one master and two workers. Each job gets its own driver container, and its executors share the workers.",
-        "The streaming jobs restart on failure and continue from their checkpoints. The sizing strategy ties each setting to what drives it: input rate, partitions, trigger interval and state size."],
+      what: "A small standalone cluster: one master and two workers. Each job gets its own driver container, and its executors share the workers.",
+      how: ["The streaming jobs restart on failure and continue from their checkpoints. The sizing strategy ties each setting to what drives it: input rate, partitions, trigger interval and state size."],
       why: [D("D27", "one driver container per application", "d27--one-driver-container-per-application-executors-on-shared-workers")],
       docs: [L("Spark sizing strategy", "../architecture/sizing/"), L("Running the pipeline", "../operations/running-the-pipeline/")] },
-    { id: "dq", x: 550, y: 410, w: 160, h: 56, layer: "ok", t: "Data quality", s: "Kafka to gold",
+    { id: "dq", x: 530, y: 424, w: 156, h: 60, layer: "ok", t: "Data quality", s: "Kafka to gold",
       related: ["landing", "bronze", "silver", "gold", "quarantine", "lakegold"], relatedDq: true,
-      kicker: "Operations", title: "Data quality checks", built: "A Spark job, run on demand or on a schedule",
+      kicker: "Operations", title: "Data quality checks", tech: ["Spark job", "on demand or scheduled"],
       hint: "each layer checked against the one before",
-      p: ["A chain of checks compares each layer with the one before it, from Kafka to gold, and fails if a record is missing, duplicated or different.",
-        "Each check only looks at what the next layer has already committed, so normal lag is never reported as missing data. Every run writes a report to the lake."],
+      what: "A chain of checks compares each layer with the one before it, from Kafka to gold, and fails if a record is missing, duplicated or different.",
+      how: ["Each check only looks at what the next layer has already committed, so normal lag is never reported as missing data. Every run writes a report to the lake."],
       why: [D("D39", "the gold check uses the lake gold views", "d39--gold-in-the-lake-as-iceberg-views-over-silver")],
       docs: [L("Data quality checks", "../lakehouse/data-quality/")] },
-    { id: "maint", x: 728, y: 410, w: 160, h: 56, layer: "bronze", t: "Maintenance", s: "lake tables, daily",
+    { id: "maint", x: 702, y: 424, w: 156, h: 60, layer: "bronze", t: "Maintenance", s: "compaction, expiry",
       related: ["bronze", "silver", "quarantine", "sviews", "lakegold"],
-      kicker: "Operations", title: "Lake maintenance", built: "Iceberg's maintenance procedures, scheduled",
-      hint: "keeps the tables healthy",
-      p: ["A scheduled job compacts small files, removes old snapshots and deletes orphan files while the streams keep running.",
-        "Before it removes a snapshot, it checks that no stream still needs it."],
+      kicker: "Operations", title: "Lake maintenance", tech: ["Iceberg procedures", "daily"],
+      hint: "keeps the lake tables healthy",
+      what: "A scheduled job compacts small files, removes old snapshots and deletes orphan files while the streams keep running.",
+      how: ["Before it removes a snapshot, it checks that no stream still needs it."],
       why: [D("D31", "maintenance must not outrun the streams", "d31--late-arrivals-are-history-deduplication-happens-in-silver")],
       docs: [L("Lake maintenance", "../operations/maintenance-and-recovery/#lake-maintenance")] },
-    { id: "retention", x: 906, y: 410, w: 160, h: 56, layer: "gold", t: "Gold upkeep", s: "retention, rebuild",
+    { id: "retention", x: 874, y: 424, w: 156, h: 60, layer: "gold", t: "Gold upkeep", s: "retention, rebuild",
       related: ["gold"],
-      kicker: "Operations", title: "Gold retention and rebuild", built: "Plain Python against PostgreSQL",
+      kicker: "Operations", title: "Gold retention and rebuild", tech: ["Python", "PostgreSQL"],
       hint: "36 months in gold; rebuild from silver",
-      p: ["PostgreSQL keeps 36 months of history by dropping whole monthly partitions; the lake keeps everything.",
-        "Gold can also be rebuilt from silver with the same merge the stream uses, optionally up to a point in time."],
+      what: "PostgreSQL keeps 36 months of history by dropping whole monthly partitions; the lake keeps everything.",
+      how: ["Gold can also be rebuilt from silver with the same merge the stream uses, optionally up to a point in time."],
       why: [D("D37", "retention by monthly partitions", "d37--gold-retention-by-monthly-partitions"), D("D38", "rebuild from silver", "d38--rebuild-gold-from-silver-with-an-optional-cutoff")],
       docs: [L("Gold retention", "../operations/maintenance-and-recovery/#gold-retention"), L("Rebuilding gold", "../operations/maintenance-and-recovery/#rebuilding-gold-from-silver")] },
-    { id: "history", x: 1084, y: 410, w: 160, h: 56, layer: "kafka", t: "History Server", s: "Spark event logs",
+    { id: "history", x: 1046, y: 424, w: 156, h: 60, layer: "kafka", t: "History Server", s: "Spark event logs",
       related: ["spark"],
-      kicker: "Operations", title: "Spark History Server", built: "Optional, started by make pipeline",
+      kicker: "Operations", title: "Spark History Server", tech: ["optional", "started by make pipeline"],
       hint: "inspect finished or crashed jobs",
-      p: ["Every job writes event logs, so a finished or crashed job can still be inspected in the History Server."],
+      what: "Every job writes event logs, so a finished or crashed job can still be inspected in the History Server.",
+      how: [],
       why: [D("D23", "event logs are always written", "d23--event-logs-always-written-optional-history-server")],
       docs: [L("Spark History Server", "../architecture/infrastructure/#spark-history-server-optional")] }
   ];
@@ -640,31 +788,33 @@ make down                    # stop everything, keeping the data</code></pre><bu
     { id: "current", label: "current state" },
     { id: "views", label: "public views" }
   ];
+  const GOLD_ROW_TOP = 64;
+  const GOLD_ROW_PITCH = 22;
 
   const EDGES = [
-    ["source", "debezium", "M140,150 H172"],
-    ["debezium", "kafka", "M296,150 H328"],
-    ["kafka", "landing", "M452,150 H484"],
-    ["landing", "bronze", "M608,150 H640"],
-    ["landing", "quarantine", "M546,190 C546,252 596,276 640,276"],
-    ["bronze", "silver", "M764,150 H796"],
-    ["silver", "gold", "M920,150 H952"],
-    ["silver", "sviews", "M858,190 V250"],
-    ["sviews", "lakegold", "M920,276 H952"],
-    ["lakegold", "sparksql", "M1092,276 H1150"],
-    ["silver", "rest", "M920,176 C932,176 936,186 936,200 V326 C936,338 944,342 958,342 H1150", true],
-    ["gold", "api", "M1092,110 C1124,110 1118,68 1150,68"],
-    ["gold", "grafana", "M1092,150 H1150"]
+    ["source", "debezium", "M136,140 H160"],
+    ["debezium", "kafka", "M278,140 H302"],
+    ["kafka", "landing", "M420,140 H456"],
+    ["landing", "bronze", "M574,140 H598"],
+    ["landing", "quarantine", "M515,176 C515,248 550,280 592,280"],
+    ["bronze", "silver", "M716,140 H740"],
+    ["silver", "gold", "M858,140 H894"],
+    ["silver", "sviews", "M799,176 V252"],
+    ["sviews", "lakegold", "M867,280 H894"],
+    ["lakegold", "sparksql", "M1050,280 H1074"],
+    ["silver", "rest", "M858,162 C870,162 876,170 876,182 V336 C876,344 882,348 892,348 H1074", true],
+    ["gold", "api", "M1050,96 C1062,96 1062,68 1074,68"],
+    ["gold", "grafana", "M1050,140 H1074"]
   ];
 
   const DQS = [
-    { id: "dq-landing", x: 468, check: "landing", title: "Kafka to landing",
+    { id: "dq-landing", x: 438, check: "landing", title: "Kafka to landing",
       text: "Every Kafka record is in landing exactly once, with the same bytes, and no offset is missing." },
-    { id: "dq-bronze", x: 624, check: "bronze", title: "Landing to bronze",
+    { id: "dq-bronze", x: 586, check: "bronze", title: "Landing to bronze",
       text: "Every landed record is in bronze or in quarantine, once, and never in both." },
-    { id: "dq-silver", x: 780, check: "silver", title: "Bronze to silver",
+    { id: "dq-silver", x: 728, check: "silver", title: "Bronze to silver",
       text: "Silver holds every change bronze holds, each one once, and nothing else. A redelivered change is expected once." },
-    { id: "dq-gold", x: 936, check: "gold", title: "Silver to gold",
+    { id: "dq-gold", x: 876, check: "gold", title: "Silver to gold",
       text: "Each PostgreSQL gold view matches the same view computed from silver in the lake." }
   ];
 
@@ -678,6 +828,7 @@ make down                    # stop everything, keeping the data</code></pre><bu
   const gNotes = document.getElementById("notes");
   const hint = document.getElementById("hint");
   const HINT_DEFAULT = hint.innerHTML;
+  function setHint(html) { hint.innerHTML = html || HINT_DEFAULT; }
 
   function el(tag, attrs, parent, text) {
     const e = document.createElementNS(SVGNS, tag);
@@ -687,34 +838,33 @@ make down                    # stop everything, keeping the data</code></pre><bu
     return e;
   }
 
-  [[6, 16, 456, "Source and capture"], [474, 16, 456, "Lake: Iceberg on SeaweedFS"], [942, 16, 334, "Gold and serving"]].forEach(([x, y, w, label]) => {
-    el("rect", { class: "lane", x, y, width: w, height: 362, rx: 6 }, gLanes);
-    el("text", { class: "lane-label", x: x + 12, y: y + 22 }, gLanes, label);
+  [[6, 426, "Source and CDC"], [444, 426, "Lakehouse: Iceberg on SeaweedFS"], [882, 328, "Gold and serving"]].forEach(([x, w, label]) => {
+    el("rect", { class: "lane", x, y: 12, width: w, height: 372, rx: 14 }, gLanes);
+    el("text", { class: "lane-label", x: x + 14, y: 38 }, gLanes, label);
   });
-  el("text", { class: "lane-label", x: 18, y: 400 }, gLanes, "Platform and operations");
+  el("text", { class: "lane-label", x: 18, y: 412 }, gLanes, "Platform and operations");
 
   const edgeEls = {};
   EDGES.forEach(([a, b, d, dashed]) => {
     edgeEls[a + ">" + b] = el("path", { class: "edge" + (dashed ? " dashed" : ""), d, "marker-end": "url(#arrow)" }, gEdges);
   });
 
-  function setHint(html) { hint.innerHTML = html || HINT_DEFAULT; }
-
   const nodeEls = {};
   const goldRowEls = {};
   NODES.forEach(n => {
     const g = el("g", { class: "node", tabindex: 0, role: "button", "data-id": n.id, "aria-label": n.title + ". Show the explanation." }, gNodes);
     g.style.setProperty("--lc", LAYER[n.layer]);
-    el("rect", { class: "box", x: n.x, y: n.y, width: n.w, height: n.h, rx: 6 }, g);
-    el("rect", { class: "bar", x: n.x, y: n.y, width: 4, height: n.h, rx: 2 }, g);
+    el("rect", { class: "box", x: n.x, y: n.y, width: n.w, height: n.h, rx: 10 }, g);
+    el("rect", { class: "bar", x: n.x, y: n.y + 8, width: 4, height: n.h - 16, rx: 2 }, g);
     const big = n.h >= 70;
-    el("text", { class: "t1", x: n.x + 14, y: n.y + (big ? 30 : 23) }, g, n.t);
-    el("text", { class: "t2", x: n.x + 14, y: n.y + (big ? 49 : 41) }, g, n.s);
+    el("text", { class: "t1", x: n.x + 14, y: n.y + (big ? 30 : 24) }, g, n.t);
+    el("text", { class: "t2", x: n.x + 14, y: n.y + (big ? 51 : 44) }, g, n.s);
     if (n.id === "gold") {
       GOLD_ROWS.forEach((r, i) => {
         const rg = el("g", { class: "sub-row" }, g);
-        el("rect", { x: n.x + 12, y: n.y + 60 + i * 19, width: n.w - 20, height: 16, rx: 3 }, rg);
-        el("text", { x: n.x + 19, y: n.y + 72.5 + i * 19 }, rg, r.label);
+        const top = n.y + GOLD_ROW_TOP + i * GOLD_ROW_PITCH;
+        el("rect", { x: n.x + 10, y: top, width: n.w - 18, height: 19, rx: 4 }, rg);
+        el("text", { x: n.x + 17, y: top + 14 }, rg, r.label);
         goldRowEls[r.id] = rg;
       });
     }
@@ -732,10 +882,10 @@ make down                    # stop everything, keeping the data</code></pre><bu
 
   const dqEls = {};
   DQS.forEach(q => {
-    const g = el("g", { class: "dq", tabindex: 0, role: "button", "aria-label": "Data quality check " + q.check + ": " + q.title + ". Show the explanation.", transform: `translate(${q.x},126)` }, gDqs);
+    const g = el("g", { class: "dq", tabindex: 0, role: "button", "aria-label": "Data quality check " + q.check + ": " + q.title + ". Show the explanation.", transform: `translate(${q.x},118)` }, gDqs);
     el("title", {}, g, "Data quality check: " + q.title);
-    el("circle", { r: 10 }, g);
-    el("path", { d: "M-4.5,0.5L-1.2,3.8L4.8,-3.2" }, g);
+    el("path", { class: "dq-shape", d: "M0,-11L11,0L0,11L-11,0z" }, g);
+    el("path", { class: "dq-tick", d: "M-4.5,0.5L-1.2,3.8L4.8,-3.2" }, g);
     dqEls[q.id] = g;
     const activate = () => showCheck(q, g);
     const enter = () => setHint(`<b>Check ${q.check}</b>: ${q.title.toLowerCase()}.`);
@@ -754,25 +904,26 @@ make down                    # stop everything, keeping the data</code></pre><bu
   }
 
   const LEGEND = [
-    ["row", "source", "a row committed in the source"],
-    ["event", "kafka", "a Debezium change event"],
-    ["file", "landing", "a raw record in a landing file"],
-    ["typed", "bronze", "a typed bronze row"],
-    ["version", "silver", "a silver version"],
-    ["star", "gold", "a row in gold"],
-    ["answer", "serve", "an answer to a question"]
+    ["row", "source", "A row committed in the source"],
+    ["event", "kafka", "A Debezium change event"],
+    ["file", "landing", "A raw record in a landing file"],
+    ["typed", "bronze", "A typed bronze row"],
+    ["version", "silver", "A silver version"],
+    ["star", "gold", "A row in gold"],
+    ["answer", "serve", "An answer to a question"]
   ];
-  const legendHTML = LEGEND.map(([form, layer, text]) =>
-    `<li><svg width="22" height="22" viewBox="-13 -13 26 26" aria-hidden="true"><path d="${FORMS[form]}" fill="${LAYER[layer]}"/></svg><span>${text}</span></li>`).join("")
-    + "<li><span>The letter on a shape is the operation: c create, u update, d delete, t tombstone, ! invalid.</span></li>";
-  document.getElementById("legend").innerHTML = legendHTML;
+  document.getElementById("legend").innerHTML = LEGEND.map(([form, layer, text]) =>
+    `<li><svg width="26" height="24" viewBox="-13 -12 26 24" aria-hidden="true"><path d="${FORMS[form]}" fill="${LAYER[layer]}"/></svg><span>${text}</span></li>`).join("")
+    + "<li><span>The letter on a marker is the operation: <b>c</b> create, <b>u</b> update, <b>d</b> delete, <b>t</b> tombstone, <b>!</b> invalid.</span></li>";
 
-  // ---------- Explanation beside the diagram ----------
+  // ---------- Explanation next to the diagram ----------
   const explain = document.getElementById("explain");
-  const startHTML = explain.innerHTML;
+  const explainInner = document.getElementById("explain-inner");
+  const startHTML = explainInner.innerHTML;
   let returnFocus = null;
   let showing = "start";
 
+  function esc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
   function clearActive() {
     Object.values(nodeEls).forEach(g => g.classList.remove("active"));
     Object.values(dqEls).forEach(g => g.classList.remove("active"));
@@ -782,50 +933,56 @@ make down                    # stop everything, keeping the data</code></pre><bu
     const r = explain.getBoundingClientRect();
     if (r.top > window.innerHeight * 0.6 || r.top < 0) explain.scrollIntoView({ block: "start", behavior: reducedMotion ? "auto" : "smooth" });
   }
-  function render(html, focus) {
-    explain.innerHTML = html;
-    explain.scrollTop = 0;
-    const h = explain.querySelector("h2");
-    if (focus && h) { h.setAttribute("tabindex", "-1"); h.focus({ preventScroll: true }); }
-    const close = explain.querySelector(".close:not(#step-exit)");
+  function render(color, html, focusTitle) {
+    explain.style.setProperty("--lc", color);
+    explainInner.innerHTML = html;
+    explainInner.scrollTop = 0;
+    const close = explainInner.querySelector(".close");
     if (close) close.addEventListener("click", () => showStart(true));
+    if (focusTitle) {
+      const h = explainInner.querySelector("h3");
+      h.setAttribute("tabindex", "-1");
+      h.focus({ preventScroll: true });
+    }
   }
-  function head(eyebrow, color, title, closeLabel, closeId) {
-    return `<div class="head"><div><div class="eyebrow"><span class="sw" style="--lc:${color}"></span>${eyebrow}</div><h2>${title}</h2></div><button type="button" class="close"${closeId ? ` id="${closeId}"` : ""}>${closeLabel || "Close"}</button></div>`;
+  function head(kicker, title, tech) {
+    const chips = tech && tech.length ? `<div class="tech">${tech.map(t => `<span class="chip">${esc(t)}</span>`).join("")}</div>` : "";
+    return `<div class="ex-head"><div><div class="kicker">${kicker}</div><h3>${esc(title)}</h3>${chips}</div>`
+      + `<button type="button" class="close icon-btn" aria-label="Back to the overview">&times;</button></div>`;
+  }
+  function readMore(links) {
+    return `<h4>Read more</h4><ul class="links">${links.map(d => `<li><a href="${d.href}">${esc(d.label)} &rarr;</a></li>`).join("")}</ul>`;
   }
   function showNode(id, from) {
     if (stepping) exitSteps(true);
     const n = NODE[id];
     clearActive();
     nodeEls[id].classList.add("active");
-    let html = head(n.kicker, LAYER[n.layer], n.title);
-    html += `<p class="built">${n.built}</p>`;
-    html += n.p.map(s => `<p>${s}</p>`).join("");
-    html += `<div class="why">${n.why.map(d => `<p>Why: <a href="${DEC}${d.anchor}">${d.num}</a>, ${d.label}.</p>`).join("")}</div>`;
-    html += `<p class="more">Read more: ${n.docs.map(d => `<a href="${d.href}">${d.label} &rarr;</a>`).join(" ")}</p>`;
+    let body = `<h4>What it does</h4><p>${n.what}</p>`;
+    if (n.how.length) body += `<h4>How it works</h4>${n.how.map(p => `<p>${p}</p>`).join("")}`;
+    body += `<h4>Why</h4><ul>${n.why.map(d => `<li><a href="${DEC}${d.anchor}">${d.num}</a>: ${d.label}</li>`).join("")}</ul>`;
+    body += readMore(n.docs);
     returnFocus = from || null;
     showing = id;
-    render(html, true);
+    render(LAYER[n.layer], head(n.kicker, n.title, n.tech) + `<div class="ex-body">${body}</div>`, true);
     revealExplain();
   }
   function showCheck(q, from) {
     if (stepping) exitSteps(true);
     clearActive();
     dqEls[q.id].classList.add("active");
-    let html = head("Data quality check", LAYER.ok, q.title);
-    html += `<p class="built"><code>make data-quality CHECK=${q.check}</code></p>`;
-    html += `<p>${q.text}</p>`;
-    html += "<p>The four checks form one chain from Kafka to gold. A run exits with code 1 if any check fails, and saves its report in the lake.</p>";
-    html += `<p class="more">Read more: <a href="../lakehouse/data-quality/">Data quality checks &rarr;</a></p>`;
+    const body = `<h4>What it checks</h4><p>${q.text}</p>
+      <h4>How it runs</h4><p>The four checks form one chain from Kafka to gold. Each one only looks at what the next layer has already committed, so normal lag is never reported as missing data. A run saves its report in the lake and fails if any check fails.</p>`
+      + readMore([L("Data quality checks", "../lakehouse/data-quality/")]);
     returnFocus = from || null;
     showing = q.id;
-    render(html, true);
+    render(LAYER.ok, head("Data quality check", q.title, ["make data-quality CHECK=" + q.check]) + `<div class="ex-body">${body}</div>`, true);
     revealExplain();
   }
   function showStart(restoreFocus) {
     clearActive();
     showing = "start";
-    render(startHTML, false);
+    render("var(--accent)", startHTML, false);
     if (restoreFocus && returnFocus) returnFocus.focus({ preventScroll: true });
     returnFocus = null;
   }
@@ -856,7 +1013,9 @@ make down                    # stop everything, keeping the data</code></pre><bu
   ];
   const LOOP_LENGTH = 21000;
   const caption = document.getElementById("caption");
-  const CAPTION_DEFAULT = caption.innerHTML;
+  const CAPTION_DEFAULT = "Press <b>Play</b> to watch a few changes to order 1 move through the pipeline, or <b>Follow one change</b> to walk through one update step by step."
+    + (reducedMotion ? " Reduced motion is on, so nothing moves until you press Play." : "");
+  caption.innerHTML = CAPTION_DEFAULT;
 
   function tokenEl(form, layer, op) {
     const g = el("g", { class: "token" }, gTokens);
@@ -910,7 +1069,7 @@ make down                    # stop everything, keeping the data</code></pre><bu
       remove(t);
       return;
     }
-    if (id === "quarantine") floatNote(n.x + n.w / 2, n.y + n.h + 16, "quarantined");
+    if (id === "quarantine") floatNote(n.x + n.w / 2, n.y + n.h + 18, "quarantined");
     t.phase = "dwell";
     t.t = 0;
     if (t.i === t.route.length - 1) setForm(t, id);
@@ -1045,6 +1204,7 @@ make down                    # stop everything, keeping the data</code></pre><bu
   ];
 
   const stepBtn = document.getElementById("step-btn");
+  const shell = document.querySelector(".flow-shell");
   const scroller = document.getElementById("diagram-scroll");
   let stepping = false;
   let stepIdx = 0;
@@ -1055,7 +1215,7 @@ make down                    # stop everything, keeping the data</code></pre><bu
     const n = NODE[s.node];
     if (s.sub && s.node === "gold") {
       const i = GOLD_ROWS.findIndex(r => r.id === s.sub);
-      return { x: n.x + 4, y: n.y + 68 + i * 19 };
+      return { x: n.x + 4, y: n.y + GOLD_ROW_TOP + i * GOLD_ROW_PITCH + 9.5 };
     }
     return { x: n.x + n.w / 2, y: n.y - 2 };
   }
@@ -1070,11 +1230,10 @@ make down                    # stop everything, keeping the data</code></pre><bu
   function keepInView(nodeId) {
     if (scroller.scrollWidth <= scroller.clientWidth) return;
     const n = NODE[nodeId];
-    const scale = svg.getBoundingClientRect().width / 1280;
+    const scale = svg.getBoundingClientRect().width / 1216;
     const cx = (n.x + n.w / 2) * scale;
     scroller.scrollTo({ left: Math.max(0, cx - scroller.clientWidth / 2), behavior: reducedMotion ? "auto" : "smooth" });
   }
-  function escapeHtml(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
   function renderStep(prevIdx, focusNext) {
     const s = STEPS[stepIdx];
     Object.values(nodeEls).forEach(g => g.classList.remove("active", "related"));
@@ -1095,19 +1254,19 @@ make down                    # stop everything, keeping the data</code></pre><bu
     stepPos = to;
     keepInView(s.node);
 
-    const pct = ((stepIdx + 1) / STEPS.length * 100).toFixed(1);
     const final = stepIdx === STEPS.length - 1;
-    let html = head(`Follow one change &middot; step ${stepIdx + 1} of ${STEPS.length}`, LAYER[s.layer], s.title, "Exit", "step-exit");
-    html += `<div class="progress" aria-hidden="true"><i style="width:${pct}%"></i></div>
-      <p>${s.body}</p>
-      <pre class="payload" tabindex="0" aria-label="Example at this step"><code>${escapeHtml(s.payload)}</code></pre>
-      <div class="step-nav">
-        <button type="button" id="step-prev" ${stepIdx === 0 ? "disabled" : ""}>&larr; Back</button>
-        <button type="button" id="step-next" class="primary">${final ? "Finish" : "Next &rarr;"}</button>
-        <span class="keys">or the arrow keys</span>
-      </div>
-      <p class="more">Read more: <a href="${s.link.href}">${s.link.label} &rarr;</a></p>`;
-    render(html, false);
+    const bars = STEPS.map((_, i) => `<span class="${i <= stepIdx ? "done" : ""}"></span>`).join("");
+    const html = `<div class="ex-head"><div><div class="kicker">Follow one change <span class="step-count">Step ${stepIdx + 1} of ${STEPS.length}</span></div><h3>${esc(s.title)}</h3></div>`
+      + `<button type="button" class="icon-btn" id="step-exit" aria-label="Exit the walk-through">&times;</button></div>`
+      + `<div class="ex-body"><div class="progress" aria-hidden="true">${bars}</div>
+        <p>${s.body}</p>
+        <pre class="payload" tabindex="0" aria-label="Example at this step"><code>${esc(s.payload)}</code></pre>
+        <div class="step-nav">
+          <button type="button" id="step-prev" ${stepIdx === 0 ? "disabled" : ""}>&larr; Previous</button>
+          <button type="button" id="step-next" class="btn-primary">${final ? "Finish" : "Next &rarr;"}</button>
+        </div>
+        ${readMore([s.link])}</div>`;
+    render(LAYER[s.layer], html, false);
     document.getElementById("step-prev").addEventListener("click", () => prevStep(true));
     document.getElementById("step-next").addEventListener("click", () => nextStep(true));
     document.getElementById("step-exit").addEventListener("click", () => { exitSteps(false); stepBtn.focus(); });
@@ -1119,7 +1278,7 @@ make down                    # stop everything, keeping the data</code></pre><bu
       return;
     }
     const start = performance.now();
-    const dur = 600;
+    const dur = 650;
     (function anim(now) {
       const p = Math.min(1, (now - start) / dur);
       const e = p < .5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
@@ -1135,16 +1294,20 @@ make down                    # stop everything, keeping the data</code></pre><bu
     stepping = true;
     showing = "steps";
     svg.classList.add("stepping");
+    // On narrow screens the walk-through text sits below the diagram; hiding the platform band keeps both on one screen.
+    if (narrow()) svg.setAttribute("viewBox", VIEW_STEPS);
+    const top = shell.getBoundingClientRect().top + window.scrollY - 64;
+    if (Math.abs(window.scrollY - top) > 120) window.scrollTo({ top, behavior: reducedMotion ? "auto" : "smooth" });
     stepBtn.setAttribute("aria-pressed", "true");
     caption.innerHTML = "Following one update to order 1. Use <b>Next</b>, or the arrow keys, to move along.";
     stepIdx = 0;
     stepPos = null;
     renderStep(null, true);
-    revealExplain();
   }
   function exitSteps(quiet) {
     stepping = false;
     svg.classList.remove("stepping");
+    svg.setAttribute("viewBox", VIEW_FULL);
     stepBtn.setAttribute("aria-pressed", "false");
     if (stepTok) { stepTok.remove(); stepTok = null; }
     stepPos = null;
@@ -1155,31 +1318,74 @@ make down                    # stop everything, keeping the data</code></pre><bu
     if (!quiet) showStart(false);
   }
   function nextStep(focusNext) {
-    if (stepIdx < STEPS.length - 1) { const p = stepIdx; stepIdx++; renderStep(p, focusNext); return; }
+    if (stepIdx < STEPS.length - 1) { const p = stepIdx; stepIdx++; renderStep(p, focusNext); return true; }
     exitSteps(false);
     caption.innerHTML = "That was one change, from the commit to the answer. Press <b>Play</b> to watch several, or click any box for its explanation.";
     stepBtn.focus();
+    return false;
   }
   function prevStep(focusNext) {
     if (stepIdx > 0) { const p = stepIdx; stepIdx--; renderStep(p, focusNext); }
   }
   stepBtn.addEventListener("click", () => { if (stepping) exitSteps(false); else enterSteps(); });
 
+  // ---------- Section navigation ----------
+  const sections = Array.from(document.querySelectorAll("[data-section]"));
+  const navLinks = Array.from(document.querySelectorAll(".navlinks a"));
+  function currentSectionIndex() {
+    const y = window.scrollY + 80 + window.innerHeight * 0.2;
+    let idx = 0;
+    sections.forEach((s, i) => { if (s.offsetTop <= y) idx = i; });
+    return idx;
+  }
+  function updateNav() {
+    const id = sections[currentSectionIndex()].id;
+    navLinks.forEach(a => a.setAttribute("aria-current", String(a.getAttribute("href") === "#" + id)));
+  }
+  let navTick = false;
+  window.addEventListener("scroll", () => {
+    if (navTick) return;
+    navTick = true;
+    requestAnimationFrame(() => { updateNav(); navTick = false; });
+  }, { passive: true });
+  updateNav();
+  // While a smooth scroll is still running, count from its target, not from where the page happens to be.
+  let navTarget = -1, navAt = 0;
+  function goSection(delta) {
+    const base = performance.now() - navAt < 900 && navTarget >= 0 ? navTarget : currentSectionIndex();
+    const i = Math.max(0, Math.min(sections.length - 1, base + delta));
+    navTarget = i; navAt = performance.now();
+    sections[i].scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "start" });
+  }
   document.addEventListener("keydown", e => {
     if (e.key === "Escape") {
       if (stepping) { exitSteps(false); stepBtn.focus(); return; }
       if (showing !== "start") { showStart(true); return; }
     }
-    if (!stepping || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
     const tag = (e.target.tagName || "").toLowerCase();
     if (tag === "input" || tag === "textarea" || tag === "select" || e.target.isContentEditable) return;
-    if (e.target.classList && e.target.classList.contains("payload") && e.target.scrollWidth > e.target.clientWidth) return;
+    const scrollable = e.target.closest && e.target.closest(".payload, .cmd pre, .diagram-scroll");
+    if (scrollable && e.target === scrollable && scrollable.scrollWidth > scrollable.clientWidth) return;
     const focusInside = explain.contains(document.activeElement);
-    if (e.key === "ArrowRight") { e.preventDefault(); nextStep(focusInside); }
-    else if (e.key === "ArrowLeft") { e.preventDefault(); prevStep(focusInside); }
+    if (e.key === "ArrowRight") {
+      e.preventDefault();
+      if (stepping) nextStep(focusInside); else goSection(1);
+    } else if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      if (stepping) prevStep(focusInside); else goSection(-1);
+    }
   });
 
-  // ---------- Copy button ----------
+  // ---------- Decision filters ----------
+  const filterBtns = Array.from(document.querySelectorAll("[data-filter]"));
+  filterBtns.forEach(b => b.addEventListener("click", () => {
+    const f = b.dataset.filter;
+    filterBtns.forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+    document.querySelectorAll("#decision-list .decision").forEach(c => { c.hidden = f !== "all" && c.dataset.cat !== f; });
+  }));
+
+  // ---------- Copy buttons ----------
   document.querySelectorAll(".copy").forEach(btn => btn.addEventListener("click", async () => {
     const text = btn.parentElement.querySelector("code").textContent;
     try { await navigator.clipboard.writeText(text); btn.textContent = "Copied"; }
