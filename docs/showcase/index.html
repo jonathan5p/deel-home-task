@@ -488,6 +488,9 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
       <details class="decision" data-cat="platform" style="--lc:var(--c-kafka)"><summary><span class="dname">One driver container per application</span><span class="dnum">D27</span></summary><div>
         <p>A failure, its memory and its logs belong to one job only. In production this becomes cluster mode on EMR or Kubernetes.</p>
         <a class="more" href="../architecture/decisions/#d27--one-driver-container-per-application-executors-on-shared-workers">Read more: D27 &rarr;</a></div></details>
+      <details class="decision" data-cat="platform" style="--lc:var(--c-serve)"><summary><span class="dname">Spark metrics pulled by Prometheus</span><span class="dnum">D42</span></summary><div>
+        <p>Spark serves its own metrics and Prometheus pulls them, finding the drivers by their Compose service names. A driver that nobody scrapes pays nothing, and Prometheus needs no access to the Docker socket.</p>
+        <a class="more" href="../architecture/decisions/#d42--spark-metrics-sparks-prometheus-servlet-scraped-by-dns-service-discovery">Read more: D42 &rarr;</a></div></details>
       <details class="decision" data-cat="lake" style="--lc:var(--c-bronze)"><summary><span class="dname">Landing, bronze, silver; gold built from silver</span><span class="dnum">D17</span></summary><div>
         <p>Each layer has one job, and an append-only silver lets gold read it as a stream. The cost is some latency per hop.</p>
         <a class="more" href="../architecture/decisions/#d17--layered-lake-landing-bronze-silver-gold-built-from-silver">Read more: D17 &rarr;</a></div></details>
@@ -841,7 +844,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
       kicker: "Operations", title: "Prometheus and the Spark dashboards", tech: ["Prometheus", "Grafana", "optional metrics profile"],
       hint: "Spark's metrics, charted and alerted on",
       what: "Every Spark driver, the master and the workers expose their metrics, and Prometheus scrapes them every 10 seconds and keeps 30 days. Grafana's &ldquo;Spark and lake&rdquo; folder charts them in a cluster and a streaming dashboard.",
-      how: ["It runs with the optional <code>metrics</code> profile. Two alert rules fire when a stream processes rows slower than they arrive or its batches take longer than the trigger.", "A small exporter reads the finished stages from the History Server, with their skew, shuffle, spill and the cost of Docker's network proxies, for the Spark stages dashboard."],
+      how: ["It runs with the optional <code>metrics</code> profile. Two alert rules fire when a stream processes rows slower than they arrive or its batches take longer than the trigger.", "A small exporter reads the finished stages from the History Server, with their skew, shuffle, spill and the cost of Docker's network proxies, for the Spark stages dashboard. It also measures each bronze and silver table through the REST catalog, with its file counts, sizes and small files, for the Iceberg tables dashboard."],
       why: [D("D42", "Spark's own metrics, pulled by Prometheus", "d42--spark-metrics-sparks-prometheus-servlet-scraped-by-dns-service-discovery")],
       docs: [L("Monitoring Spark", "../operations/monitoring/")] }
   ];
