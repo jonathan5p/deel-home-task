@@ -75,6 +75,8 @@ make up
 
 [SeaweedFS](https://github.com/seaweedfs/seaweedfs) provides the S3-compatible object store for the data lake. It runs as a single `seaweedfs` container (`weed mini`), starts with `make up`, and keeps its data in the `seaweedfs-data` volume. It creates the `lake` bucket on startup if it does not exist, and the service reports healthy only once the bucket is there.
 
+The plan was MinIO, but it is no longer maintained, so maintained S3-compatible stores were compared and SeaweedFS was chosen ([decision D13](decisions.md#d13--object-store-seaweedfs-instead-of-minio)).
+
 | Endpoint | From the host | From other containers |
 | --- | --- | --- |
 | S3 API | `http://localhost:8333` | `http://seaweedfs:8333` |
