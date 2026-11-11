@@ -25,7 +25,7 @@ Every Compose service, grouped by the profile that starts it. Services without a
 | `api-dev` | `app` | Image for the API's own checks (`make test`, `make typecheck`) | none |
 | `seaweedfs` | default | S3-compatible object store. Bucket `lake` holds landing files, Iceberg data and metadata, checkpoints and quality reports | 8333 (S3), 8888 (filer) |
 | `analytics-db` | default | Analytics PostgreSQL. Database `analytics` holds gold (`gold_internal`, `gold`), and database `iceberg_catalog` holds the Iceberg JDBC catalog. Consumers log in with read-only service logins in the `gold_reader` role (`make db-logins`) | 5433 |
-| `iceberg-rest` | `catalog` | Read-only Iceberg REST catalog over the JDBC catalog, for engines such as DuckDB; logs in as `lake_catalog_reader` | 8181 |
+| `iceberg-rest` | `catalog`, `metrics` | Read-only Iceberg REST catalog over the JDBC catalog, for engines such as DuckDB and the exporter's table statistics; logs in as `lake_catalog_reader` | 8181 |
 | `spark-master` | default | Standalone master | 8080 |
 | `spark-worker-1`, `spark-worker-2` | default | Executors, 5 cores and 5 GiB each | 8081, 8082 |
 | `landing-job` | `pipeline` | Kafka to raw Avro landing files | 4040 |
@@ -39,7 +39,7 @@ Every Compose service, grouped by the profile that starts it. Services without a
 | `spark-app` | `app` | Image for throwaway drivers started by `make spark-submit`, `make spark-sql`, `make data-quality`, `make bronze-replay` (UI 4043), `make gold-rebuild` and `make lake-maintenance` | `SPARK_UI_PORT` |
 | `spark-history` | `history`, `metrics` | Spark History Server over the shared `spark-events` volume | 18080 |
 | `prometheus` | `metrics` | Scrapes the Spark drivers, master and workers every 10 seconds and keeps 30 days of metrics; evaluates the streaming alert rules | 9090 |
-| `spark-stage-exporter` | `metrics` | Serves the completed stages the History Server lists as Prometheus metrics (Python, `spark-app` image) | none |
+| `spark-stage-exporter` | `metrics` | Serves the completed stages the History Server lists, and the data files of the bronze and silver Iceberg tables, as Prometheus metrics (Python, `spark-app` image) | none |
 | `conduktor-console`, `conduktor-db` | `monitoring` | Optional Kafka console and its metadata database | 8090 |
 
 Each job's driver runs in its own container in client mode, and its executors run on the shared workers (decision [D27](decisions.md#d27--one-driver-container-per-application-executors-on-shared-workers)). Each application is capped at `spark.cores.max=2`, so the four streaming jobs use 8 of the 10 cores and leave 2 for ad-hoc runs and maintenance. [The sizing strategy](sizing.md) explains how the cores and memory are shared.
@@ -81,7 +81,7 @@ flowchart LR
     end
 
     retention["gold-retention-job<br/>maintenance, Python"]
-    rest["iceberg-rest :8181<br/>catalog"]
+    rest["iceberg-rest :8181<br/>catalog, metrics"]
     history["spark-history :18080<br/>history, metrics"]
     prometheus["prometheus :9090<br/>metrics"]
     stageexp["spark-stage-exporter :9101<br/>metrics, Python"]
@@ -126,6 +126,8 @@ flowchart LR
     prometheus -. "scrapes /metrics" .-> cluster
     prometheus -. "scrapes /metrics" .-> stageexp
     stageexp -- "REST: completed stages, task quantiles" --> history
+    stageexp -- "PyIceberg: table metadata" --> rest
+    stageexp -- "S3: manifests" --> s3
 
     conduktor -- "Kafka console" --> kafka
     conduktor --> cdb
@@ -149,7 +151,7 @@ The profile of each container is in its label; containers without one start with
 | `api`, `grafana` | The `gold` views; Grafana also queries Prometheus | Nothing: their logins are read-only |
 | `spark-history` | The event logs in the `spark-events` volume | Nothing |
 | `prometheus` | The metrics pages of the drivers (`:4040`), the master (`:8080`), the workers (`:8081`) and the stage exporter (`:9101`) | Its samples, in the `prometheus-data` volume |
-| `spark-stage-exporter` | The History Server's REST API | Nothing: it serves its metrics from memory |
+| `spark-stage-exporter` | The History Server's REST API; the bronze and silver table metadata and manifests, through the REST catalog | Nothing: it serves its metrics from memory |
 
 ## Data flow
 

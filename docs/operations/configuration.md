@@ -10,7 +10,7 @@ from pipelines.settings import PipelineSettings
 settings = PipelineSettings.from_env(os.environ)  # only a job's entry point reads os.environ
 ```
 
-The code holds no deployment details: anything that depends on where it runs (brokers, topics, the lake, the catalog, the database) is a required variable with no default. The local values live in `.env`, and Docker Compose passes them to the `spark-app` driver containers and the pipeline job services; another environment sets its own values. The [latency probe](latency.md)'s own variables (`LAKE_CATALOG_URI`, `LAKE_S3_ENDPOINT`, `LAKE_S3_REGION` and the `SOURCE_DB_*` login) live in `.env` too, but only `make latency-probe` passes them, to the probe's own container, so the pipeline jobs and the other drivers never get the source database login. Only tuning settings have defaults; set them in the shell for one run, for example `LANDING_TRIGGER_SECONDS=30 make spark-submit ...`.
+The code holds no deployment details: anything that depends on where it runs (brokers, topics, the lake, the catalog, the database) is a required variable with no default. The local values live in `.env`, and Docker Compose passes them to the `spark-app` driver containers and the pipeline job services; another environment sets its own values. The [latency probe](latency.md)'s own variables (`LAKE_CATALOG_URI`, `LAKE_S3_ENDPOINT`, `LAKE_S3_REGION` and the `SOURCE_DB_*` login) live in `.env` too, but only `make latency-probe` passes them, to the probe's own container, so the pipeline jobs and the other drivers never get the source database login; Compose also passes the three `LAKE_*` ones to the `spark-stage-exporter` service for its table statistics. Only tuning settings have defaults; set them in the shell for one run, for example `LANDING_TRIGGER_SECONDS=30 make spark-submit ...`.
 
 | Variable | Settings | Default | Local value in `.env` | Purpose |
 | --- | --- | --- | --- | --- |
@@ -18,9 +18,9 @@ The code holds no deployment details: anything that depends on where it runs (br
 | `KAFKA_TOPICS` | `pipelines.settings.KafkaSettings` | required | the four `finance_db.operations.*` topics | Comma-separated CDC topics to read |
 | `LAKE_ROOT` | `pipelines.settings.LakeSettings` | required | `s3a://lake` | Root of the data lake for plain files (S3A) |
 | `ICEBERG_CATALOG` | `pipelines.settings.LakeSettings` | required | `lake` | Spark catalog name for Iceberg tables |
-| `LAKE_CATALOG_URI` | `pipelines.latency.settings.LakeReadSettings` | required | `http://iceberg-rest:8181` | Iceberg REST catalog the [latency probe](latency.md) reads the lake tables through |
-| `LAKE_S3_ENDPOINT` | `pipelines.latency.settings.LakeReadSettings` | required | `http://seaweedfs:8333` | URL of the lake's S3 endpoint for readers outside Spark (`https://` turns TLS on) |
-| `LAKE_S3_REGION` | `pipelines.latency.settings.LakeReadSettings` | required | `us-east-1` | Region of the lake's S3 endpoint |
+| `LAKE_CATALOG_URI` | `pipelines.latency.settings.LakeReadSettings`, `pipelines.settings.TableStatsSettings` | required | `http://iceberg-rest:8181` | Iceberg REST catalog the [latency probe](latency.md) reads the lake tables through and the exporter's table statistics read |
+| `LAKE_S3_ENDPOINT` | `pipelines.latency.settings.LakeReadSettings`, `pipelines.settings.TableStatsSettings` | required | `http://seaweedfs:8333` | URL of the lake's S3 endpoint for readers outside Spark, such as the latency probe and the exporter's table statistics, which read the table manifests (`https://` turns TLS on) |
+| `LAKE_S3_REGION` | `pipelines.latency.settings.LakeReadSettings`, `pipelines.settings.TableStatsSettings` | required | `us-east-1` | Region of the lake's S3 endpoint |
 | `LAKE_S3_ACCESS_KEY` | `pipelines.latency.settings.LakeReadSettings` | required | `lakeadmin` | Access key of the lake's S3 endpoint; Spark reads it from the same variable |
 | `LAKE_S3_SECRET_KEY` | `pipelines.latency.settings.LakeReadSettings` | required | `lakeadmin-secret` | Secret key of the lake's S3 endpoint |
 | `CHECKPOINT_ROOT` | `pipelines.settings.LakeSettings` | `<LAKE_ROOT>/checkpoints` | not set | Root for Structured Streaming checkpoints |
@@ -42,6 +42,10 @@ The code holds no deployment details: anything that depends on where it runs (br
 | `HISTORY_SERVER_URL` | `pipelines.settings.StageExporterSettings` | required | `http://spark-history:18080` | Spark History Server whose REST API the stage exporter reads |
 | `STAGE_EXPORTER_PORT` | `pipelines.settings.StageExporterSettings` | required | `9101` (set in `docker-compose.yaml`) | Port the stage exporter serves its Prometheus metrics on |
 | `STAGE_EXPORTER_POLL_SECONDS` | `pipelines.settings.StageExporterSettings` | `30` | not set | Seconds between two reads of the History Server (a positive integer) |
+| `TABLE_STATS_NAMESPACES` | `pipelines.settings.TableStatsSettings` | `bronze,silver` | not set | Comma-separated Iceberg namespaces whose tables the exporter measures |
+| `SMALL_FILE_BYTES` | `pipelines.settings.TableStatsSettings` | `33554432` (32 MiB) | not set | Data files below this size count as small (a positive integer) |
+| `TABLE_STATS_INTERVAL_SECONDS` | `pipelines.settings.TableStatsSettings` | `300` | not set | Seconds between two measurements of the tables (a positive integer) |
+| `PARTITION_STATS_INTERVAL_SECONDS` | `pipelines.settings.TableStatsSettings` | `3600` | not set | Seconds between two measurements of the small files per partition (a positive integer) |
 | `ANALYTICS_DB_URL` | `common.settings.AnalyticsDbSettings` | required | `jdbc:postgresql://analytics-db:5432/analytics` | JDBC URL of the analytics database (gold layer) |
 | `ANALYTICS_DB_USER` | `common.settings.AnalyticsDbSettings` | required | `analytics` | Analytics database user |
 | `ANALYTICS_DB_PASSWORD` | `common.settings.AnalyticsDbSettings` | required | `analytics` | Analytics database password |
