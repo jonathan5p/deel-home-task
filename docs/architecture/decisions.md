@@ -39,7 +39,7 @@ The design decisions a reviewer should know about, with the alternatives that we
   - On EMR, a step in YARN cluster mode runs the driver inside the cluster, or EMR Serverless runs the job.
   - On Kubernetes, the Spark Operator gives each application its own driver and executor pods, with restart policies.
 
-  The local setup isolates drivers but shares executors.
+  The local setup isolates drivers but shares executors. See [the sizing strategy](sizing.md).
 
 ### D23 · Event logs always written, optional history server
 
@@ -163,7 +163,7 @@ The design decisions a reviewer should know about, with the alternatives that we
 
   - With `rank()`, both top-3 views still read their partial index with an index-only scan, and PostgreSQL stops ranking early (`Run Condition: rank() <= 3`).
   - The plans keep these indexes with a stale visibility map: 10% of rows updated and no vacuum.
-- **New use cases** get their indexes the same way: write the query, read its plan on representative data, add the index the plan uses, and drop the indexes no plan uses any more.
+- **New use cases** get their indexes the same way: write the query, read its plan on representative data, add the index the plan uses, and drop the indexes no plan uses any more. [The sizing strategy](sizing.md#postgresql-query-cost) tracks the same queries on the real run.
 
 ### D37 · Gold retention by monthly partitions
 

@@ -1,6 +1,6 @@
 ## Data Engineering Take-Home Task
 
-This README is the run guide. The [docs site](https://jonathan5p.github.io/deel-home-task/) (sources in [`docs/`](docs/README.md), built with `make docs`) has the architecture, the design decisions and the table reference.
+This README is the run guide. The [docs site](https://jonathan5p.github.io/deel-home-task/) (sources in [`docs/`](docs/README.md), built with `make docs`) has the architecture, the sizing strategy, the design decisions and the table reference.
 
 ### Welcome
 
@@ -384,6 +384,8 @@ flowchart LR
 Because every run has its own container, one application's memory, logs and lifecycle never affect another, and stopping `make spark-submit` (Ctrl+C) stops its driver. Executors reach the driver through the container's IP address, and the `common` and `pipelines` packages are shipped to them with `--py-files`.
 
 To run several applications at the same time, give each its own UI port and cap its cores: the standalone master gives an application every free core unless `spark.cores.max` is set, so a second application would wait until the first one ends.
+
+The [sizing strategy](docs/architecture/sizing.md) explains how the cores and memory are shared between the jobs, ties each setting to a variable, and names the metrics that show whether the sizing holds.
 
 While the pipeline jobs run (`make pipeline`), they hold ports 4040 and up (see [Running the pipeline](#running-the-pipeline)), so give ad-hoc runs another port, for example `make spark-submit SPARK_UI_PORT=4050` (the same applies to `make spark-sql`); otherwise Docker refuses to start the driver with `port is already allocated`.
 
