@@ -2,8 +2,6 @@
 
 This site is the report for Deel's data engineering take-home: what was asked, what was built, how to run and check it, and why it is built this way. The [repository README](https://github.com/jonathan5p/deel-home-task#readme) is the quick start; these pages go into depth.
 
-<!-- Showcase: the link to the interactive showcase (docs/showcase/) goes here, added by the showcase PR. -->
-
 ## The assignment
 
 ACME Delivery Services wants its logistics leaders to monitor orders with low latency. The task: a Spark Structured Streaming application that reads the Debezium change topics of a supplied PostgreSQL database and keeps a consistent dimensional model, with history and current state, that answers four business questions in near real time. The supplied text is kept as [the original README](reference/original-readme.md).
