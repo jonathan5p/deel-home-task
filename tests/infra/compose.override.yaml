@@ -1,4 +1,5 @@
 services:
+  api: { ports: !reset [] }
   analytics-db: { ports: !reset [] }
   seaweedfs: { ports: !reset [] }
   zookeeper: { ports: !reset [] }

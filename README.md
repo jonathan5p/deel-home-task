@@ -11,7 +11,7 @@ Welcome to Deel's Data Engineering Take-Home task, as mentioned in the Task spec
 Install [Docker](https://www.docker.com/products/docker-desktop/) with [Compose v2](https://docs.docker.com/compose/install/), GNU Make and [uv](https://docs.astral.sh/uv/) (`make up` uses it to render the gold DDL). With the Docker engine running, run these commands from the repository root:
 
 ```sh
-make up             # Render the gold DDL, build changed local images and start the default stack (source/CDC, analytics database, data lake, Spark cluster)
+make up             # Render the gold DDL, build changed local images and start the default stack (source/CDC, analytics database, analytics API, data lake, Spark cluster)
 make up PROFILES="monitoring history"  # Also start optional services (any combination of profiles)
 make down           # Stop/remove all project containers, including optional profiles; keep volumes
 make spark-submit   # Submit a job to the Spark cluster (defaults to a one-minute UI check job)
@@ -57,7 +57,7 @@ Consumers of gold never use the `analytics` owner. Each one logs in with a servi
 
 | Login | Used by | Credentials in `.env` | Statement timeout |
 | --- | --- | --- | --- |
-| `api_reader` | the metrics API | `API_READER_USER`, `API_READER_PASSWORD` | 5 s |
+| `api_reader` | the analytics API | `API_READER_USER`, `API_READER_PASSWORD` | 5 s |
 
 ```sh
 docker compose exec -e PGPASSWORD=api_reader analytics-db psql -h localhost -U api_reader -d analytics -c "select * from gold.data_freshness"
@@ -421,7 +421,7 @@ pyproject.toml              workspace root: members, development tools and their
 uv.lock                     locked versions for the whole workspace (install with uv sync --frozen)
 .python-version             Python 3.14.10, the same version the Spark image runs
 analytics/
-  api/                      project "api": the FastAPI metrics API over the gold views, depends on common
+  api/                      project "api": the FastAPI analytics API over the gold views, depends on common
     src/api/
       settings.py           API settings (analytics database, connection pool)
       models.py             response models
@@ -950,6 +950,37 @@ docker compose logs -f maintenance-job       # one summary line per table and ru
 
 When a stream is reset deliberately, the guard follows its new checkpoint. Iceberg also stores a stream's first snapshot in its checkpoint (`sources/0/offsets/0`), and a restart with `trigger(availableNow=True)` (the jobs' `--available-now` flag) goes back to it: once that snapshot is expired, an `--available-now` run of a stream reading an Iceberg table fails, while the long-running jobs, which use a processing-time trigger, resume normally. Reset the checkpoint of such a one-off run, or run the stream as a long-running job.
 
+#### Analytics API
+
+The analytics API (`analytics/api`, [FastAPI](https://fastapi.tiangolo.com/)) serves the four business questions and the freshness of gold over HTTP. It starts with `make up` as the `api` service, on http://localhost:8000, with its interactive documentation on http://localhost:8000/docs and the OpenAPI document on http://localhost:8000/openapi.json. It reads only the `gold` views, as the read-only login `api_reader` (see [read-only service logins](#read-only-service-logins)), through a connection pool (`API_DB_POOL_*` in [configuration](#configuration)).
+
+| Endpoint | Answer |
+| --- | --- |
+| `GET /metrics/open-orders-by-delivery-date-and-status` | `[{"delivery_date", "status_code", "open_orders"}]`, ordered by delivery date and status |
+| `GET /metrics/top-delivery-dates-by-open-orders` | `[{"delivery_date", "open_orders"}]`, most open orders first; ties for third place included |
+| `GET /metrics/pending-items-by-product` | `[{"product_id", "pending_items", "pending_quantity"}]`, ordered by product |
+| `GET /metrics/top-customers-by-pending-orders` | `[{"customer_id", "customer_name", "pending_orders"}]`, most pending orders first; ties for third place included |
+| `GET /health` | `200 {"status": "ok", "database": "reachable"}`, or `503 {"status": "unavailable", "database": "unreachable"}` |
+| `GET /freshness` | `{"checked_at", "entities": [{"entity", "last_changed_at", "lag_seconds"}]}`, from `gold.data_freshness` at the database's clock, in UTC |
+
+Each metric returns the rows of its query in `analytics/sql/gold/`, in the same order; dates are ISO 8601 and unknown values `null`. While the database is unreachable, slower than the pool timeout or without readable gold views, the metric and freshness endpoints answer `503` with a `detail`; any other failure answers `500` without its details. The API starts even while the database is down, reports itself unhealthy (`docker compose ps api`) and reconnects when the database is back.
+
+The rows are read with plain SQL into small hand-written response models (`api/models.py`), which is enough for a read-only API over a handful of views; a larger project would use an ORM or SQL toolkit such as [SQLAlchemy](https://www.sqlalchemy.org/) for the queries, the mapping and the connections.
+
+```sh
+curl -s localhost:8000/health
+curl -s localhost:8000/metrics/top-customers-by-pending-orders
+curl -s localhost:8000/freshness
+docker compose logs -f api   # Access log and errors
+```
+
+The image (`docker/api/Dockerfile`, `<project>-api`) is a slim Python 3.14 image with only the `api` and `common` projects and their dependencies, run by an unprivileged user. To run the API on the host instead, against the analytics database's host port:
+
+```sh
+ANALYTICS_DB_URL=postgresql://localhost:5433/analytics ANALYTICS_DB_USER=api_reader ANALYTICS_DB_PASSWORD=api_reader \
+  uv run --frozen uvicorn --factory api.main:create_app_from_env --port 8001
+```
+
 #### Tests, lint and format
 
 The checks run in throwaway containers with `analytics/` and `tests/` mounted, so they pick up edits without a rebuild: the pipelines and `common` in the Spark `app` image, with the cluster's exact Spark and Python versions, and the API and `common` in the API's own dev image (`docker/api/Dockerfile`, target `dev`), which has the API's dependencies and no Spark. They use their own Compose project, named after the checkout folder (`deel-checks-<folder>`, lowercased, with every character other than letters, digits, `_` and `-` replaced by `-`), with one app image (`<project>-spark-app`) and one API dev image (`<project>-api-dev`), so checks in different checkouts or worktrees never share an image and can run in parallel:
@@ -975,7 +1006,7 @@ Infra tests check the platform itself rather than the pipeline code. They need D
 make test-infra   # about five minutes: building images, starting the stack and the Spark runs
 ```
 
-They start an isolated Compose project named after the checkout folder (`deel-infra-tests-<folder>`, sanitised like the code-check project, with no host ports), so they never touch your running stack or its data, and runs from different worktrees can run in parallel. Each project builds one Spark image (`<project>-spark`, shared by the master and the workers), one app image (`<project>-spark-app`) and the API dev image (`<project>-api-dev`); at the end the project is removed with its volumes and those three images. Two full stacks at once need enough memory for Docker, so very heavy runs may still be worth staggering. They submit the apps in `tests/infra/apps/` with `make spark-submit` and check that:
+They start an isolated Compose project named after the checkout folder (`deel-infra-tests-<folder>`, sanitised like the code-check project, with no host ports), so they never touch your running stack or its data, and runs from different worktrees can run in parallel. Each project builds one Spark image (`<project>-spark`, shared by the master and the workers), one app image (`<project>-spark-app`), the API dev image (`<project>-api-dev`) and the API image (`<project>-api`); at the end the project is removed with its volumes and those four images. Two full stacks at once need enough memory for Docker, so very heavy runs may still be worth staggering. They submit the apps in `tests/infra/apps/` with `make spark-submit` and check that:
 
 - the Iceberg smoke job writes catalog metadata to PostgreSQL and table files to SeaweedFS;
 - executors write and read Avro files on `s3a://lake/` and write and read a Kafka topic with the bundled connectors;
@@ -989,6 +1020,7 @@ They start an isolated Compose project named after the checkout folder (`deel-in
 - gold retention drops only the monthly history partitions that end before the window (orders and order items alike), first gives every month the default partition holds a partition of its own, creates the months ahead, keeps the current-state row of an open order whose history it dropped, and drops nothing more when it runs again (each test rolls its rows back); `make gold-retention` and the first run of the `gold-retention-job` service drop a committed out-of-window month;
 - the rebuild job, run on the gold facts' fixture silver tables, ends with the same dimensions, history and current state as the gold job streaming the same changes, and with a cutoff the same as the gold job streaming only the changes up to it, late ones included (surrogate keys compared by the version they point at); `make gold-rebuild` refuses without `CONFIRM=1`;
 - the API's repository, run as `api_reader` in the API dev image on the business-question fixture, returns exactly the rows of each query in `analytics/sql/gold/`, and its freshness matches `gold.data_freshness` for every entity, with a lag for each one that has data;
+- the `api` service starts healthy; `/health` reports the database reachable; each metric endpoint returns exactly the rows of its query in `analytics/sql/gold/` on the business-question fixture; `/freshness` lists every entity; `/openapi.json` and `/docs` are served; and while `analytics-db` is stopped `/health` answers 503, then the API reconnects once the database is back;
 - the API's service login, connecting with its password, reads every `gold` view, is refused `gold_internal`, starts read-only with a 5 s statement timeout, cannot insert into a view or create a table in `gold` or `public` even after turning read-only off, and `make db-logins` restores a broken login and can run again;
 - `make gold-reset` refuses without `CONFIRM=1`, recreates `gold` and `gold_internal` empty, can run again, deletes the gold checkpoints and keeps the silver checkpoints and the Iceberg catalog, and the service logins can still read the gold views after it;
 - the gold job, run with `--available-now` on silver-shaped fixture tables in a catalog of their own (`gold_fixture`, with its own warehouse), keeps the SCD2 dimensions in PostgreSQL, checked through the versions and public views: a price change closes the previous version and opens a new one, each key has exactly one current version, replaying every batch from a fresh checkpoint changes nothing, a late older version goes into history without becoming current, a re-snapshot or audit-only update is folded and a late differing version between two equal ones unfolds the later one, and a delete leaves no current version that replays or late versions could revive (the test removes its rows afterwards).
