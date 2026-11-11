@@ -16,11 +16,12 @@ from pipelines.settings import LakeSettings
 
 
 def test_all_or_no_name_selects_every_check_in_registry_order() -> None:
-    assert selected_checks([], CHECKS) == ["landing", "bronze", "gold"]
-    assert selected_checks(["all"], CHECKS) == ["landing", "bronze", "gold"]
+    assert selected_checks([], CHECKS) == ["landing", "bronze", "silver", "gold"]
+    assert selected_checks(["all"], CHECKS) == ["landing", "bronze", "silver", "gold"]
     assert selected_checks(["bronze", "landing"], CHECKS) == ["landing", "bronze"]
     assert selected_checks(["bronze"], CHECKS) == ["bronze"]
     assert selected_checks(["gold", "landing"], CHECKS) == ["landing", "gold"]
+    assert selected_checks(["gold", "silver"], CHECKS) == ["silver", "gold"]
 
 
 def test_an_unknown_check_is_refused() -> None:

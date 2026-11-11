@@ -64,7 +64,7 @@ help:
 		'bronze-replay  Append the changes of a landing range that bronze lacks: TOPIC plus FROM_OFFSET and TO_OFFSET (optional PARTITION) or FROM_TIME and TO_TIME.' \
 		'spark-sql      Open the Spark SQL shell in its own driver container; SPARK_SQL_FILE runs a file instead; SPARK_SQL_VARS (key=value ...) and LANDING_ROOT set its variables.' \
 		'spark-history  Toggle the optional Spark History Server (localhost:18080): start it if stopped, stop it if running.' \
-		'data-quality   Run the CHECK data quality checks against the running stack (landing, bronze, gold or all); fails if any check fails.' \
+		'data-quality   Run the CHECK data quality checks against the running stack (landing, bronze, silver, gold or all); fails if any check fails.' \
 		'lake-maintenance  Compact the bronze and silver Iceberg tables, expire old snapshots and remove orphan files; fails if any table fails.' \
 		'pipeline       Start the stack, the History Server and the PIPELINE job (landing, bronze, silver, gold or all) as a long-running service.' \
 		'               silver and all also run lake-views once the silver tables exist.' \
