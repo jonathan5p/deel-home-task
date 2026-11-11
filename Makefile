@@ -34,10 +34,11 @@ DRIVER_CONF = --master "$$SPARK_MASTER_URL" \
 CHECKS_PROJECT ?= deel-checks-$(shell basename "$(CURDIR)" | LC_ALL=C tr 'A-Z' 'a-z' | LC_ALL=C sed 's/[^a-z0-9_-]/-/g')
 APP_BUILD ?= --build
 PYTEST_WORKERS ?= 4
-CODE_MOUNTS = -v "$(CURDIR)/analytics:/opt/app/analytics" -v "$(CURDIR)/tests:/opt/app/tests"
+CODE_MOUNTS = -v "$(CURDIR)/analytics:/opt/app/analytics" -v "$(CURDIR)/tests:/opt/app/tests" \
+	-v "$(CURDIR)/monitoring:/opt/app/monitoring:ro"
 RENDER_GOLD_DDL = uv run --frozen python -m pipelines.gold.ddl docker/analytics-db/initdb/02-gold-model.sql
 
-SPARK_TESTS = analytics/common/tests analytics/pipelines/tests
+SPARK_TESTS = analytics/common/tests analytics/pipelines/tests tests/grafana
 API_TESTS = analytics/api/tests analytics/common/tests
 API_INFRA_APPS = tests/infra/apps/api_answers.py
 APP_RUN = trap 'docker network rm $(CHECKS_PROJECT)_default >/dev/null 2>&1 || true' EXIT; trap 'exit 130' INT TERM; \
@@ -69,7 +70,7 @@ help:
 		'pipeline-logs  Follow the logs of the PIPELINE job (landing, bronze, silver, gold or all).' \
 		'pipeline-stop  Stop and remove the PIPELINE job (landing, bronze, silver, gold or all); the rest of the stack keeps running.' \
 		'lake-views     Create the silver and gold views, or replace those whose query or descriptions changed; fails while a silver table is missing.' \
-		'test           Run the unit tests with coverage (fails below 90%), in PYTEST_WORKERS parallel workers (default 4): pipelines and common in the app image, the API and common in the API dev image.' \
+		'test           Run the unit tests with coverage (fails below 90%), in PYTEST_WORKERS parallel workers (default 4): pipelines, common and the Grafana dashboard checks in the app image, the API and common in the API dev image.' \
 		'lint           Check linting and formatting with ruff in the app container.' \
 		'format         Format the code and apply safe lint fixes with ruff.' \
 		'typecheck      Check types with ty in the app image and the API dev image; any diagnostic fails.' \

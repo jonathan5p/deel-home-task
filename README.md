@@ -228,9 +228,10 @@ The Conduktor integration is prepared but runtime validation is still pending. `
 
 [Grafana](https://grafana.com/oss/grafana/) (`grafana`, image `grafana/grafana-oss`) starts with `make up` and serves the metrics on http://localhost:3000. Visitors are anonymous viewers, so no login is needed to look; sign in as `admin` / `admin` (`GRAFANA_ADMIN_USER`, `GRAFANA_ADMIN_PASSWORD` in `.env`, local development credentials) to administer it. Its own settings, users and sessions live in the `grafana-data` volume.
 
-Everything Grafana shows is provisioned as code from `docker/grafana/provisioning/`, mounted read-only:
+Monitoring configuration lives in the root `monitoring/` folder, one subfolder per tool (`monitoring/grafana/` now, room for Prometheus and Loki later). Everything Grafana shows is provisioned as code from `monitoring/grafana/provisioning/`, mounted read-only:
 
 - `datasources/gold.yaml` defines the **Gold** datasource (uid `gold`, the default one): the `analytics` database on `analytics-db:5432`, read only and not editable in the UI.
+- `dashboards/gold.yaml` loads every dashboard in `monitoring/grafana/dashboards/` into the **Gold** folder; they cannot be changed or deleted from the UI.
 
 Grafana connects as its own [service login](#read-only-service-logins), `grafana` (`GRAFANA_READER_USER`, `GRAFANA_READER_PASSWORD` in `.env`), a member of the read-only role `gold_reader`: it reads the views of the public `gold` schema and nothing else, has no rights on `gold_internal`, where the pipeline keeps its tables, and its sessions are read-only with a 30 s statement timeout, so a heavy panel query cannot hold the database. On an analytics volume created before this login existed, `make db-logins` creates it.
 
@@ -240,6 +241,22 @@ flowchart LR
     views -->|owner's rights| internal[gold_internal tables]
     grafana -. no access .-> internal
 ```
+
+#### Gold metrics dashboard
+
+`monitoring/grafana/dashboards/gold-metrics.json` is the **Gold metrics** dashboard (http://localhost:3000/d/gold-metrics), also Grafana's home page. It refreshes every 30 seconds and reads only the `gold` views:
+
+| Panel | Type | Reads |
+| --- | --- | --- |
+| Freshness: time since the newest change | one stat per entity, green under 5 minutes, yellow under an hour, red above | `gold.data_freshness` |
+| Open orders by delivery date and status | table | `gold.open_orders_by_delivery_date_and_status` |
+| Top 3 delivery dates by open orders | table, ties for third place included | `gold.top_delivery_dates_by_open_orders` |
+| Pending items by product | table: items and total quantity | `gold.pending_items_by_product` |
+| Top 3 customers by pending orders | table, ties for third place included | `gold.top_customers_by_pending_orders` |
+
+Each business-question panel runs exactly the query of its file in `analytics/sql/gold/`, so the dashboard and the documented queries always agree. Freshness is measured from the data, as the time since the source commit of the newest change gold holds, so it also grows while the source is idle.
+
+The dashboard is plain JSON, edited by hand or in Grafana and exported back (Share → Export → JSON, then replace the file). The tests in `tests/grafana/` (run by `make test`) check that it keeps one panel per question plus freshness, that every query uses the Gold datasource and reads only `gold` views, that each question panel's query equals its file, and the refresh interval.
 
 ### Debezium CDC
 
@@ -466,6 +483,8 @@ analytics/
                             retention.py and rebuild.py (the gold retention and rebuild jobs)
     tests/
   sql/gold/                 the four business questions as SQL on the gold views in PostgreSQL
+monitoring/grafana/         Grafana's provisioning (datasources, dashboard providers) and dashboards, as code
+tests/grafana/              static checks of the Grafana dashboards
 tests/infra/                infra tests that drive an isolated copy of the stack
   apps/                     Spark applications they submit (UI check, Iceberg smoke check, version and hold apps, fixture helpers)
 ```
@@ -1050,6 +1069,7 @@ They start an isolated Compose project named after the checkout folder (`deel-in
 - the API's repository, run as `api_reader` in the API dev image on the business-question fixture, returns exactly the rows of each query in `analytics/sql/gold/`, and its freshness matches `gold.data_freshness` for every entity, with a lag for each one that has data;
 - the `api` service starts healthy; `/health` reports the database reachable; each metric endpoint returns exactly the rows of its query in `analytics/sql/gold/` on the business-question fixture; `/freshness` lists every entity; `/openapi.json` and `/docs` are served; and while `analytics-db` is stopped `/health` answers 503, then the API reconnects once the database is back;
 - the API's service login, connecting with its password, reads every `gold` view, is refused `gold_internal`, starts read-only with a 5 s statement timeout, cannot insert into a view or create a table in `gold` or `public` even after turning read-only off, and `make db-logins` restores a broken login and can run again;
+- Grafana starts healthy with the Gold datasource provisioned read only and connected, and anonymous visitors can browse; its service login reads every `gold` view, is refused `gold_internal`, starts read-only with a 30 s statement timeout, and `make db-logins` restores it; the Gold metrics dashboard is provisioned in the Gold folder as the home page, each business-question panel returns through Grafana the same rows as its `gold` view on the current-state fixture, and the freshness panel returns one lag per entity;
 - `make gold-reset` refuses without `CONFIRM=1`, recreates `gold` and `gold_internal` empty, can run again, deletes the gold checkpoints and keeps the silver checkpoints and the Iceberg catalog, and the service logins can still read the gold views after it;
 - the gold job, run with `--available-now` on silver-shaped fixture tables in a catalog of their own (`gold_fixture`, with its own warehouse), keeps the SCD2 dimensions in PostgreSQL, checked through the versions and public views: a price change closes the previous version and opens a new one, each key has exactly one current version, replaying every batch from a fresh checkpoint changes nothing, a late older version goes into history without becoming current, a re-snapshot or audit-only update is folded and a late differing version between two equal ones unfolds the later one, and a delete leaves no current version that replays or late versions could revive (the test removes its rows afterwards).
 - the bronze replay, in its own Iceberg catalog on the stack, appends nothing for a range the bronze stream already wrote, appends each change of a range the stream never saw exactly once (including a re-sent copy inside the range), and quarantines a failing record once however many times it is replayed.

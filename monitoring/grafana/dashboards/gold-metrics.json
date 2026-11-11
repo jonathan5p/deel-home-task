@@ -1,0 +1,244 @@
+{
+  "uid": "gold-metrics",
+  "title": "Gold metrics",
+  "description": "The four business questions and the freshness of gold, read from the gold views.",
+  "tags": [
+    "gold"
+  ],
+  "editable": false,
+  "graphTooltip": 0,
+  "refresh": "30s",
+  "schemaVersion": 41,
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "utc",
+  "templating": {
+    "list": []
+  },
+  "annotations": {
+    "list": []
+  },
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Freshness: time since the newest change",
+      "description": "Per entity, the time since the source commit of the newest change gold holds (gold.data_freshness). It grows while the source is idle, even when the pipeline is healthy.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "gold"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 0,
+          "displayName": "${__data.fields.entity}",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 300
+              },
+              {
+                "color": "red",
+                "value": 3600
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": true,
+          "calcs": [],
+          "fields": "/^lag_seconds$/"
+        },
+        "orientation": "vertical",
+        "textMode": "value_and_name",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "gold"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "-- Time since the newest change gold holds, per entity; it also grows while the source is idle.\nSELECT entity, extract(epoch FROM (now() AT TIME ZONE 'UTC') - last_changed_at) AS lag_seconds\nFROM gold.data_freshness\nORDER BY entity;"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "table",
+      "title": "Open orders by delivery date and status",
+      "description": "Open orders (any status but COMPLETED, not deleted) per delivery date and status.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "gold"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 5
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "gold"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "-- Number of open orders by delivery date and status.\nSELECT delivery_date, status_code, open_orders\nFROM gold.open_orders_by_delivery_date_and_status\nORDER BY delivery_date, status_code;"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "table",
+      "title": "Top 3 delivery dates by open orders",
+      "description": "The delivery dates with the most open orders; ties for third place are included.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "gold"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 5
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "gold"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "-- Top 3 delivery dates with more open orders, ties for third place included.\nSELECT delivery_date, open_orders\nFROM gold.top_delivery_dates_by_open_orders\nORDER BY open_orders DESC, delivery_date;"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "Pending items by product",
+      "description": "Items of open orders per product: the number of items and their total quantity.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "gold"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 14
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "gold"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "-- Number of open pending items by product: items of open orders.\nSELECT product_id, pending_items, pending_quantity\nFROM gold.pending_items_by_product\nORDER BY product_id;"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "Top 3 customers by pending orders",
+      "description": "The customers with the most open orders; ties for third place are included.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "gold"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 14
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "gold"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "-- Top 3 customers with more pending (open) orders, ties for third place included.\nSELECT customer_id, customer_name, pending_orders\nFROM gold.top_customers_by_pending_orders\nORDER BY pending_orders DESC, customer_id;"
+        }
+      ]
+    }
+  ]
+}
