@@ -23,7 +23,7 @@ export BUILDX_NO_DEFAULT_ATTESTATIONS ?= 1
 
 DRIVER_RUN = name="spark-app-run-$$(date +%s)-$$$$"; \
 	trap 'docker stop "$$name" >/dev/null 2>&1 || true' EXIT INT TERM; \
-	$(COMPOSE) run --rm $(DRIVER_BUILD) --name "$$name" -p $(SPARK_UI_PORT):4040
+	$(COMPOSE) run --rm --use-aliases $(DRIVER_BUILD) --name "$$name" -p $(SPARK_UI_PORT):4040
 DRIVER_CONF = --master "$$SPARK_MASTER_URL" \
 	--conf spark.driver.host="$$(hostname -i)" \
 	--conf spark.hadoop.fs.s3a.access.key="$$LAKE_S3_ACCESS_KEY" \
@@ -43,7 +43,7 @@ CODE_MOUNTS = -v "$(CURDIR)/analytics:/opt/app/analytics" -v "$(CURDIR)/tests:/o
 MKDOCS = uv run --frozen --group docs mkdocs
 RENDER_GOLD_DDL = uv run --frozen python -m pipelines.gold.ddl docker/analytics-db/initdb/02-gold-model.sql
 
-SPARK_TESTS = analytics/common/tests analytics/pipelines/tests tests/grafana
+SPARK_TESTS = analytics/common/tests analytics/pipelines/tests tests/grafana tests/prometheus
 API_TESTS = analytics/api/tests analytics/common/tests
 API_INFRA_APPS = tests/infra/apps/api_answers.py
 # Each image's run keeps its coverage data on the host, so CI can combine them into one total.
@@ -95,7 +95,7 @@ help:
 		'docs-serve     Serve the docs site on http://localhost:8001, rebuilding on every change.' \
 		'test-infra     Run the infra tests in INFRA_WORKERS parallel workers (default 2), each against its own isolated copy of the stack (local only, a few minutes; every worker needs the Docker memory of a full stack; 0 runs serially).' \
 		'hooks          Install the pre-commit hooks in this clone (once).' \
-		'Optional profiles: monitoring (Conduktor), history (Spark History Server), maintenance (lake maintenance and gold retention every 24 hours), data-quality (every data quality check every 24 hours), catalog (read-only Iceberg REST catalog on localhost:8181). See README.md.'
+		'Optional profiles: monitoring (Conduktor), history (Spark History Server), maintenance (lake maintenance and gold retention every 24 hours), data-quality (every data quality check every 24 hours), catalog (read-only Iceberg REST catalog on localhost:8181), metrics (Prometheus on localhost:9090 scraping every Spark driver, the master and the workers, plus the History Server). See README.md.'
 
 up:
 	@$(RENDER_GOLD_DDL)

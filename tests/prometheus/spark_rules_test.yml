@@ -1,0 +1,51 @@
+rule_files:
+  - /etc/prometheus/rules/spark.yml
+
+evaluation_interval: 10s
+
+tests:
+  - interval: 10s
+    input_series:
+      - series: 'spark_streaming_inputRate_total{service="silver-job", query="silver orders"}'
+        values: "100x60"
+      - series: 'spark_streaming_processingRate_total{service="silver-job", query="silver orders"}'
+        values: "50x60"
+      - series: 'spark_streaming_inputRate_total{service="bronze-job", query="bronze orders"}'
+        values: "100x60"
+      - series: 'spark_streaming_processingRate_total{service="bronze-job", query="bronze orders"}'
+        values: "400x60"
+      - series: 'spark_streaming_latency{service="silver-job", query="silver orders"}'
+        values: "12000x60"
+      - series: 'spark_streaming_latency{service="bronze-job", query="bronze orders"}'
+        values: "9000x60"
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: StreamingQueryFallingBehind
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: StreamingQueryFallingBehind
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: silver-job
+              query: silver orders
+            exp_annotations:
+              summary: silver orders on silver-job processes rows slower than they arrive
+              description: >-
+                For 5 minutes the query's processing rate (50 rows/s) stayed below its input
+                rate, so its backlog grows.
+      - eval_time: 4m
+        alertname: StreamingBatchOverTrigger
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: StreamingBatchOverTrigger
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: silver-job
+              query: silver orders
+            exp_annotations:
+              summary: silver orders on silver-job takes longer than its trigger
+              description: >-
+                For 5 minutes the micro-batches took longer than the 10 s trigger (the last one
+                12000 ms), so batches start late and the delay adds up.

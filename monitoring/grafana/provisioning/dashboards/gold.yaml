@@ -7,4 +7,6 @@ providers:
     disableDeletion: true
     allowUiUpdates: false
     options:
-      path: /etc/grafana/dashboards
+      # A file, not the directory: Grafana walks a directory recursively, so the Spark and lake
+      # dashboards in its subdirectory would be loaded into this folder too.
+      path: /etc/grafana/dashboards/gold-metrics.json

@@ -57,7 +57,7 @@ ADD --chmod=644 --checksum=sha256:0b00ae3d55c3d1213ca47b5651dc4c2a0080fc9b6192dd
     https://repo1.maven.org/maven2/software/amazon/awssdk/apache-client/2.54.17/apache-client-2.54.17.jar \
     /opt/spark/jars/
 
-COPY docker/spark/spark-defaults.conf /opt/spark/conf/spark-defaults.conf
+COPY docker/spark/spark-defaults.conf docker/spark/metrics.properties /opt/spark/conf/
 
 USER spark
 
