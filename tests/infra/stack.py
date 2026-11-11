@@ -22,6 +22,7 @@ IMAGES = (
     f"{PROJECT}-spark-app",
     f"{PROJECT}-api-dev",
     f"{PROJECT}-api",
+    f"{PROJECT}-iceberg-rest",
 )
 COMPOSE_FILES = ("docker-compose.yaml", "tests/infra/compose.override.yaml")
 CLUSTER_SERVICES = (

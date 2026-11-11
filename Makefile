@@ -85,7 +85,7 @@ help:
 		'docs-serve     Serve the docs site on http://localhost:8001, rebuilding on every change.' \
 		'test-infra     Run the infra tests against an isolated copy of the stack (local only, a few minutes).' \
 		'hooks          Install the pre-commit hooks in this clone (once).' \
-		'Optional profiles: monitoring (Conduktor), history (Spark History Server), maintenance (lake maintenance and gold retention every 24 hours), data-quality (every data quality check every 24 hours). See README.md.'
+		'Optional profiles: monitoring (Conduktor), history (Spark History Server), maintenance (lake maintenance and gold retention every 24 hours), data-quality (every data quality check every 24 hours), catalog (read-only Iceberg REST catalog on localhost:8181). See README.md.'
 
 up:
 	@$(RENDER_GOLD_DDL)

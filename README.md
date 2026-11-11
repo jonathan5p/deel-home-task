@@ -24,7 +24,7 @@ make spark-submit   # Submit a job to the Spark cluster (defaults to a one-minut
 make help           # Show lifecycle commands
 ```
 
-Optional services are grouped in Compose profiles and are not started by a plain `make up`: `monitoring` (Conduktor, see **Optional Kafka monitoring**), `history` (Spark History Server, see **Spark History Server**), `maintenance` (scheduled lake maintenance and gold retention, see **Lake maintenance** and **Gold retention**) and `data-quality` (scheduled data quality checks, see **Data quality checks**). Pass them with `PROFILES`, separated by spaces.
+Optional services are grouped in Compose profiles and are not started by a plain `make up`: `monitoring` (Conduktor, see **Optional Kafka monitoring**), `history` (Spark History Server, see **Spark History Server**), `maintenance` (scheduled lake maintenance and gold retention, see **Lake maintenance** and **Gold retention**), `data-quality` (scheduled data quality checks, see **Data quality checks**) and `catalog` (the read-only Iceberg REST catalog, see **Query the lake from DuckDB**). Pass them with `PROFILES`, separated by spaces.
 
 #### Destructive reset
 
@@ -70,7 +70,9 @@ Consumers of gold never use the `analytics` owner. Each one logs in with a servi
 docker compose exec -e PGPASSWORD=api_reader analytics-db psql -h localhost -U api_reader -d analytics -c "select * from gold.data_freshness"
 ```
 
-The gold DDL creates `gold_reader` and its grants, so `make gold-reset` restores them. `docker/analytics-db/initdb/03-service-logins.sh` creates the logins on an empty volume; a new login is one more `create_login <login> <password> <statement timeout>` line in it. On an existing volume, create the logins, or update them after changing their credentials in `.env`, with:
+The lake's [REST catalog](#query-the-lake-from-duckdb) has a read-only login of its own, `lake_catalog_reader` (`LAKE_CATALOG_READER_USER`, `LAKE_CATALOG_READER_PASSWORD`), which is not a member of `gold_reader`: it can read the tables of the `iceberg_catalog` database and nothing else, and its sessions start read-only.
+
+The gold DDL creates `gold_reader` and its grants, so `make gold-reset` restores them. `docker/analytics-db/initdb/03-service-logins.sh` creates the logins on an empty volume; a new gold login is one more `create_login <login> <password> <statement timeout>` line in it. On an existing volume, create the logins, or update them after changing their credentials in `.env`, with:
 
 ```sh
 make up          # Recreates analytics-db when its credentials changed
@@ -84,7 +86,7 @@ A volume created before `gold_reader` existed needs the gold DDL applied first (
 `docker/analytics-db/initdb/01-gold-and-catalog.sql` creates:
 
 - the `gold` schema in the `analytics` database, for the dimensional model;
-- the `iceberg_catalog` database, where the Iceberg JDBC catalog creates its own tables on first use.
+- the `iceberg_catalog` database with the Iceberg JDBC catalog's own tables, `iceberg_tables` and `iceberg_namespace_properties` (schema version V1), so the read-only REST catalog can start before Spark has written anything. On an older volume Spark created them on first use.
 
 PostgreSQL runs init scripts **only when the data volume is empty**, so editing the script does not change an existing database. To apply a changed script, recreate only the analytics volume (for gold DDL changes, use `make gold-reset` below instead). **Data loss:** this deletes all gold data and the Iceberg catalog, which then no longer points to the lake tables.
 
@@ -180,6 +182,45 @@ Every Spark job gets an [Apache Iceberg](https://iceberg.apache.org/) catalog na
 - table data and metadata files live in SeaweedFS under `s3://lake/warehouse/<namespace>/<table>/`.
 
 The Spark image bundles Iceberg 1.12.0 (`iceberg-spark-runtime-4.1_2.13`, `iceberg-aws-bundle`) and the PostgreSQL JDBC driver 42.7.14, with pinned checksums, so jobs need no `--packages`. The driver reads the database and S3 credentials from its environment (the `.env` values above).
+
+#### Query the lake from DuckDB
+
+The optional `catalog` profile serves the same catalog through the [Iceberg REST catalog API](https://iceberg.apache.org/rest-catalog-spec/), so any engine that speaks it can attach the lake by name. The `iceberg-rest` service runs Apache's REST catalog server (`apache/iceberg-rest-fixture` 1.10.1, plus the PostgreSQL JDBC driver) on top of the JDBC catalog that Spark writes, so both see the same tables; Spark keeps using JDBC. It logs in with the read-only `lake_catalog_reader`, so clients can list and read but not create or change anything through it.
+
+```sh
+make up PROFILES=catalog   # REST catalog on http://localhost:8181
+make db-logins             # Once on an existing volume: creates lake_catalog_reader
+```
+
+On a volume created before this service existed, run `make up` first so `analytics-db` gets the new login's credentials, then `make db-logins`. Then, in DuckDB 2.0 or later:
+
+```sql
+INSTALL iceberg;
+LOAD iceberg;
+CREATE SECRET lake_s3 (
+    TYPE s3, KEY_ID 'lakeadmin', SECRET 'lakeadmin-secret',
+    ENDPOINT 'localhost:8333', URL_STYLE 'path', USE_SSL false, REGION 'us-east-1'
+);
+ATTACH 'warehouse' AS lake (TYPE iceberg, URI 'http://localhost:8181', AUTHORIZATION_TYPE 'none', ACCESS_DELEGATION_MODE 'none');
+
+SHOW ALL TABLES;
+SELECT _change_op, count(*) AS changes FROM lake.bronze.orders GROUP BY _change_op;
+
+-- Live orders by status: the latest version of each order, unless it was deleted.
+SELECT status, count(*) AS orders
+FROM (
+    SELECT * FROM lake.silver.orders
+    QUALIFY row_number() OVER (PARTITION BY order_id ORDER BY _commit_sequence DESC) = 1
+)
+WHERE NOT _is_deleted
+GROUP BY status;
+```
+
+DuckDB 1.x takes `ENDPOINT 'http://localhost:8181'` instead of `URI`.
+
+DuckDB reads the lake's tables only. The lake's Iceberg views (the silver `_history` and `_current` views and `lake.gold.*`) are stored in Spark SQL, which DuckDB cannot run, so in DuckDB write the equivalent SQL over the silver tables.
+
+The S3 secret above uses the lake's admin key: the REST catalog is read-only, but S3 access with that key is not.
 
 #### Kafka, Avro and plain files in the lake
 
