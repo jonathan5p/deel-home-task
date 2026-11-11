@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DASHBOARD = REPO_ROOT / "docker/grafana/dashboards/gold-metrics.json"
+DASHBOARD = REPO_ROOT / "monitoring/grafana/dashboards/gold-metrics.json"
 QUERIES = REPO_ROOT / "analytics/sql/gold"
 DATASOURCE_UID = "gold"
 PANEL_QUERIES = {
