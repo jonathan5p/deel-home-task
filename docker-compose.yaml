@@ -342,6 +342,7 @@ services:
     <<: *spark-app
     profiles: [maintenance]
     hostname: maintenance-job
+    init: true
     restart: unless-stopped
     depends_on:
       spark-master:
@@ -381,6 +382,7 @@ services:
     <<: *spark-app
     profiles: [maintenance]
     hostname: gold-retention-job
+    init: true
     restart: unless-stopped
     depends_on:
       analytics-db:
@@ -403,6 +405,7 @@ services:
     <<: *spark-app
     profiles: [data-quality]
     hostname: data-quality-job
+    init: true
     restart: unless-stopped
     depends_on:
       spark-master:
