@@ -408,12 +408,12 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
         <button type="button" id="reset-btn">Reset</button>
         <span class="hint" id="hint">Hover a part for a one-line summary; click it for details.</span>
         <span class="toolbar-sep" aria-hidden="true"></span>
-        <button type="button" id="details-btn" aria-expanded="true" aria-controls="explain">
-          <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path id="details-icon" d="M10 3v10" stroke="currentColor" stroke-width="1.5"/></svg>
-          <span id="details-label">Hide details</span>
+        <button type="button" id="details-btn" aria-expanded="false" aria-controls="explain">
+          <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path id="details-icon" d="M12.5 3v10" stroke="currentColor" stroke-width="1.5"/></svg>
+          <span id="details-label">Show details</span>
         </button>
       </div>
-      <div class="flow-body">
+      <div class="flow-body details-hidden">
         <div class="flow-main">
           <p class="scroll-hint">Scroll the diagram sideways to see every part.</p>
           <div class="diagram-scroll" id="diagram-scroll">
@@ -1000,7 +1000,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
   }
   let detailsStored = null;
   try { detailsStored = localStorage.getItem("showcase-details"); } catch (e) { /* storage unavailable */ }
-  setDetails(detailsStored !== "hidden", false);
+  setDetails(detailsStored === "shown", false);
   detailsBtn.addEventListener("click", () => {
     const open = detailsBtn.getAttribute("aria-expanded") !== "true";
     if (!open) {
