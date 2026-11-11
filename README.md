@@ -7,6 +7,7 @@
 ![Python](https://img.shields.io/badge/Python-3.14.10-3776AB?logo=python&logoColor=white)
 ![Apache Spark](https://img.shields.io/badge/Apache%20Spark-4.1.4-E25A1C?logo=apachespark&logoColor=white)
 ![Apache Iceberg](https://img.shields.io/badge/Apache%20Iceberg-1.12.0-4E8EE9)
+![Iceberg REST catalog](https://img.shields.io/badge/Iceberg%20REST%20catalog-1.10.1-4E8EE9)
 ![Kafka](https://img.shields.io/badge/Kafka-Confluent%207.5.0-231F20?logo=apachekafka&logoColor=white)
 ![Debezium](https://img.shields.io/badge/Debezium-2.4-91D443)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15%20source%20%7C%2018.6%20analytics-4169E1?logo=postgresql&logoColor=white)
