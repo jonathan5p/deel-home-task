@@ -11,9 +11,9 @@ from tests.infra.bronze_setup import (
     Rows,
     Tables,
     change,
-    land,
-    read_tables,
+    read_with_spark,
     run_bronze_and_read_tables,
+    stage,
     submit,
 )
 from tests.infra.stack import Stack
@@ -88,10 +88,11 @@ def state_store_files(stack: Stack, entity: str) -> set[str]:
 
 
 def run_silver_and_read_tables(stack: Stack) -> Tables:
-    """Run the job, then the views job, then read the tables and views."""
+    """Run the job, then the views job, then read the tables and views. DuckDB cannot read the
+    Spark SQL views, so a Spark driver reads them, and the tables with them."""
     submit(stack, SILVER_APP, "--available-now")
     submit(stack, VIEWS_APP)
-    return read_tables(stack, [*SILVER_TABLES, *SILVER_VIEWS], commit_sequence)
+    return read_with_spark(stack, [*SILVER_TABLES, *SILVER_VIEWS], commit_sequence)
 
 
 def view_metadata_files(stack: Stack) -> dict[str, str]:
@@ -123,8 +124,8 @@ def run_silver_scenario(stack: Stack, bronze: Tables) -> SilverRuns:
     first = run_silver_and_read_tables(stack)
     first_view_files = view_metadata_files(stack)
 
-    land(stack, "batch-3", {entity: third_batch(entity) for entity in ENTITIES})
-    bronze_extended = run_bronze_and_read_tables(stack)
+    stage(stack, "batch-3", {entity: third_batch(entity) for entity in ENTITIES})
+    bronze_extended = run_bronze_and_read_tables(stack, land_staged=True)
     restarted = run_silver_and_read_tables(stack)
 
     idle = run_silver_and_read_tables(stack)

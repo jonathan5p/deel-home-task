@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from typing import TypedDict
 
 from pipelines.lake.columns import MetadataColumn
+from tests.infra.lake_reader import ROWS_PREFIX, catalog_descriptions, duckdb_rows, dumps
 from tests.infra.landing_avro import landing_avro
 from tests.infra.stack import Stack
 
@@ -12,10 +13,7 @@ LAKE_KEY = "test-fixtures/bronze"
 STAGING_KEY = f"{LAKE_KEY}/staging"
 LAND_APP = "tests/infra/apps/land_staged.py"
 BRONZE_APP = "analytics/pipelines/src/pipelines/bronze/job.py"
-ROWS_APP = "tests/infra/apps/table_rows.py"
-ROWS_PREFIX = "TABLE ROWS "
-DESCRIPTIONS_APP = "tests/infra/apps/table_descriptions.py"
-DESCRIPTIONS_PREFIX = "TABLE DESCRIPTION "
+SPARK_ROWS_APP = "tests/infra/apps/table_rows.py"
 
 ENTITIES = ("customers", "products", "orders", "order_items")
 TOPICS = {entity: f"test.operations.{entity}" for entity in ENTITIES}
@@ -185,30 +183,39 @@ def submit(stack: Stack, app: str, *args: str) -> str:
     return output
 
 
-def land(stack: Stack, batch: str, records: dict[str, list[Json]]) -> None:
-    """Stage records as Avro files, then land them through the landing job's file sink."""
+def stage(stack: Stack, batch: str, records: dict[str, list[Json]]) -> None:
+    """Stage records as Avro files, for the next bronze run to land first."""
     for entity, entity_records in records.items():
         stack.put_object(
             f"{STAGING_KEY}/{TOPICS[entity]}/{batch}.avro", landing_avro(entity_records)
         )
-    submit(stack, LAND_APP, f"s3a://lake/{STAGING_KEY}")
+
+
+def landing_staged(staging_key: str, app: str) -> tuple[str, ...]:
+    """The app and leading arguments that land the staged records through the landing job's file
+    sink, then run `app` in the same driver."""
+    return LAND_APP, f"s3a://lake/{staging_key}", app
 
 
 def read_tables(
     stack: Stack, tables: Sequence[str], order_by: Callable[[dict[str, str | None]], int]
 ) -> Tables:
     """Every row of each table, with every value as text, sorted by `order_by`."""
-    output = submit(stack, ROWS_APP, *tables)
-    read: Tables = {}
-    for line in output.splitlines():
-        if line.startswith(ROWS_PREFIX):
-            dump = json.loads(line.removeprefix(ROWS_PREFIX))
-            read[dump["table"]] = sorted(dump["rows"], key=order_by)
-    return read
+    return {table: sorted(rows, key=order_by) for table, rows in duckdb_rows(stack, tables).items()}
 
 
-def run_bronze_and_read_tables(stack: Stack) -> Tables:
-    submit(stack, BRONZE_APP, "--available-now")
+def read_with_spark(
+    stack: Stack, tables: Sequence[str], order_by: Callable[[dict[str, str | None]], int]
+) -> Tables:
+    """`read_tables` through a Spark driver, which also reads the Spark SQL views."""
+    output = submit(stack, SPARK_ROWS_APP, *tables)
+    read = dumps(output, ROWS_PREFIX)
+    return {dump["table"]: sorted(dump["rows"], key=order_by) for dump in read}
+
+
+def run_bronze_and_read_tables(stack: Stack, *, land_staged: bool = False) -> Tables:
+    app = landing_staged(STAGING_KEY, BRONZE_APP) if land_staged else (BRONZE_APP,)
+    submit(stack, *app, "--available-now")
     return read_tables(stack, TABLES, offset)
 
 
@@ -225,25 +232,23 @@ class StoredDescription(TypedDict):
 def table_descriptions(stack: Stack, tables: Sequence[str] = TABLES) -> list[StoredDescription]:
     """The comment and column docs of each table (every bronze table by default), as the catalog
     stores them."""
-    output = submit(stack, DESCRIPTIONS_APP, *tables)
     return [
-        json.loads(line.removeprefix(DESCRIPTIONS_PREFIX))
-        for line in output.splitlines()
-        if line.startswith(DESCRIPTIONS_PREFIX)
+        StoredDescription(table=dump["table"], comment=dump["comment"], columns=dump["columns"])
+        for dump in catalog_descriptions(stack, tables)
     ]
 
 
 def run_bronze_scenario(stack: Stack) -> BronzeRuns:
     """Land and process two batches, then run once more with nothing new to process."""
-    land(stack, "batch-1", {entity: first_batch(entity) for entity in ENTITIES})
-    first = run_bronze_and_read_tables(stack)
+    stage(stack, "batch-1", {entity: first_batch(entity) for entity in ENTITIES})
+    first = run_bronze_and_read_tables(stack, land_staged=True)
 
     stray = [change("customers", STRAY_OFFSET, "c")]
     stack.put_object(
         f"{LAKE_KEY}/landing/{TOPICS['customers']}/part-stray.avro", landing_avro(stray)
     )
-    land(stack, "batch-2", {entity: second_batch(entity) for entity in ENTITIES})
-    restarted = run_bronze_and_read_tables(stack)
+    stage(stack, "batch-2", {entity: second_batch(entity) for entity in ENTITIES})
+    restarted = run_bronze_and_read_tables(stack, land_staged=True)
 
     idle = run_bronze_and_read_tables(stack)
     return BronzeRuns(first=first, restarted=restarted, idle=idle)

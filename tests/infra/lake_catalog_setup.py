@@ -3,14 +3,10 @@ import subprocess
 from dataclasses import dataclass
 from typing import Any
 
-from tests.infra.bronze_setup import ENTITIES, read_tables
-from tests.infra.stack import REPO_ROOT, Stack
+from tests.infra.bronze_setup import ENTITIES, read_with_spark
+from tests.infra.lake_reader import duckdb_rows
+from tests.infra.stack import CATALOG_SERVICE, REPO_ROOT, Stack
 
-CATALOG = "iceberg-rest"
-READ_APP = "tests/infra/apps/lake_catalog_read.py"
-READ_PREFIX = "TABLE COUNTS "
-CATALOG_URI = "http://iceberg-rest:8181"
-S3_ENDPOINT = "seaweedfs:8333"
 READ_TABLES = tuple(
     f"lake.{layer}.{entity}" for layer in ("bronze", "silver") for entity in ENTITIES
 )
@@ -50,17 +46,13 @@ class LakeCatalog:
     spark_counts: dict[str, int]
 
 
-def start_catalog(stack: Stack) -> None:
-    stack.compose("--profile", "catalog", "up", "--detach", "--build", "--wait", CATALOG)
-
-
 def rest(stack: Stack, path: str, *, body: Json | None = None) -> tuple[int, Json]:
     """Call the REST catalog from inside its own container; its status code and JSON answer."""
     post = ["-X", "POST", "-H", "Content-Type: application/json", "-d", json.dumps(body)]
     run = stack.compose(
         "exec",
         "-T",
-        CATALOG,
+        CATALOG_SERVICE,
         "curl",
         "-sS",
         "-w",
@@ -97,35 +89,19 @@ def catalog_namespaces(stack: Stack) -> set[str]:
 
 
 def duckdb_counts(stack: Stack) -> dict[str, int]:
-    """Row counts of the read tables as DuckDB reads them through the REST catalog, from the app
-    image."""
-    run = stack.compose(
-        "run",
-        "--rm",
-        "--no-deps",
-        "spark-app",
-        "python",
-        READ_APP,
-        CATALOG_URI,
-        S3_ENDPOINT,
-        *READ_TABLES,
-        check=False,
-    )
-    assert run.returncode == 0, run.stdout + run.stderr
-    line = next(line for line in run.stdout.splitlines() if line.startswith(READ_PREFIX))
-    counts: dict[str, int] = json.loads(line.removeprefix(READ_PREFIX))
-    return counts
+    """Row counts of the read tables as DuckDB reads them through the REST catalog."""
+    return {table: len(rows) for table, rows in duckdb_rows(stack, READ_TABLES).items()}
 
 
 def spark_counts(stack: Stack) -> dict[str, int]:
-    tables = read_tables(stack, READ_TABLES, lambda _: 0)
+    tables = read_with_spark(stack, READ_TABLES, lambda _: 0)
     return {table: len(rows) for table, rows in tables.items()}
 
 
 def run_catalog_scenario(stack: Stack) -> LakeCatalog:
     """Start the REST catalog over the lake the earlier scenarios left, then list and read it
     through REST and through the catalog database."""
-    start_catalog(stack)
+    stack.start_catalog()
     namespaces = rest_namespaces(stack)
     return LakeCatalog(
         rest_namespaces=namespaces,
