@@ -140,7 +140,7 @@ The "Measured" column is filled in from that run.
 
 ## Scaling to production
 
-The local layout mirrors a production deployment but shares one small cluster (decision [D27](decisions.md#d27--one-driver-container-per-application-executors-on-shared-workers)). This is what would change:
+The local layout mirrors a production deployment but shares one small cluster (decision [D27](decisions.md#d27--one-driver-container-per-application-executors-on-shared-workers)). This is what would change for Spark; [from toy project to production](production.md) covers the rest of the platform:
 
 - **Deployment.** Each streaming job runs as its own application on a managed runtime:
   - Amazon EMR: a long-running step in YARN cluster mode, so the driver runs in the cluster with YARN's restart attempts. EMR Serverless is an option for the batch jobs.

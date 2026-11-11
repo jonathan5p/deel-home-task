@@ -1,0 +1,128 @@
+# From toy project to production
+
+The project runs on one machine because the assignment asks for a stack reviewers can start from the README ([decision D8](decisions.md#d8--fully-local-no-cloud-services)). The pipeline logic, the data model and the checks are built as they would be in production; the platform around them is simplified. This page lists what was left out or simplified, and what a production deployment needs instead.
+
+Two things make the move cheaper than it looks:
+
+- **The code holds no deployment details.** Brokers, topics, the lake root, the catalog and the database are required environment variables, so another environment is a new set of values, not a code change ([configuration](../operations/configuration.md)).
+- **Every component speaks a standard protocol.** The lake speaks S3, the tables are standard Iceberg, the source is Kafka with Debezium, and gold is plain PostgreSQL.
+
+## Summary
+
+| Area | Here | In production |
+| --- | --- | --- |
+| [Catalog](#catalog) | Iceberg JDBC catalog in the analytics PostgreSQL, plus Apache's reference REST server, read-only | A catalog service: Apache Polaris, AWS Glue Data Catalog, Unity Catalog or Project Nessie |
+| [Object store](#object-store) | One SeaweedFS container | AWS S3 or another managed S3-compatible store |
+| [Kafka](#kafka-and-the-source) | One broker, one partition per topic, JSON without a schema registry | Managed Kafka, replicated, with more partitions and a schema registry |
+| [Security](#authentication-tls-and-secrets) | Local credentials in `.env`, plain-text connections, no API authentication | A secrets manager, TLS everywhere, IAM roles, authenticated API and dashboards |
+| [Spark](#spark-deployment-and-sizing) | Standalone cluster, client-mode driver containers, shared executors | YARN on EMR, EMR Serverless or Kubernetes, executors per application, sized from measured metrics |
+| [Scheduling](#orchestration-and-scheduling) | Compose services that loop with `sleep` | An orchestrator or scheduled cluster jobs, with retries and alerts |
+| [Monitoring](#monitoring-and-alerting) | Spark UI, History Server, a freshness view | Metrics in a time-series system, dashboards and alerts |
+| [Data quality](#data-quality) | Custom layer-to-layer checks | A data quality framework, with result history and alerting |
+| [Schema changes](#schema-evolution-and-migrations) | Explicit schemas, idempotent DDL, manual steps | Reviewed evolution rules and a migration tool |
+| [Testing and delivery](#testing-and-delivery) | Infra tests run locally only | Infra tests and deployments in CI/CD |
+| [Infrastructure](#infrastructure-as-code) | One Compose file | Infrastructure as code |
+| [Availability](#high-availability-and-backups) | One instance of everything, local volumes | Replicated services, backups and a recovery runbook |
+
+## Catalog
+
+**Here.** Spark uses Iceberg's JDBC catalog, stored in the analytics PostgreSQL ([D9](decisions.md#d9--iceberg-with-a-jdbc-catalog-on-the-analytics-postgresql)). For other engines, the `catalog` profile serves it through `apache/iceberg-rest-fixture`, Apache's reference implementation of the REST catalog, with a read-only login ([Iceberg REST catalog](infrastructure.md#iceberg-rest-catalog)).
+
+**In production.** A catalog service that every engine shares, with access control, credential vending and an audit log: [Apache Polaris](https://polaris.apache.org/), [AWS Glue Data Catalog](https://docs.aws.amazon.com/glue/latest/dg/catalog-and-crawler.html), [Unity Catalog](https://www.unitycatalog.io/) or [Project Nessie](https://projectnessie.org/). Spark then uses the REST catalog too, and the catalog no longer shares a database with gold.
+
+## Object store
+
+**Here.** One SeaweedFS container with static access keys ([D13](decisions.md#d13--object-store-seaweedfs-instead-of-minio)).
+
+**In production.** AWS S3, or another managed S3-compatible store: a configuration change of the endpoint and the credentials. Add bucket encryption, versioning or object lock on the landing files, and lifecycle rules for old quality reports and event logs. Checkpoints already live in the object store, so they move with it.
+
+## Kafka and the source
+
+**Here.** One Kafka broker with ZooKeeper, one partition per topic, and JSON messages without a schema registry. The source database and the Debezium connector are used as supplied ([D29](decisions.md#d29--the-source-database-and-the-debezium-connector-stay-as-provided)).
+
+**In production.**
+
+- Managed Kafka, such as Amazon MSK or Confluent Cloud, with a replication factor of three and enough partitions per topic for the read parallelism the sizing needs.
+- A schema registry, with Avro or Protobuf messages and compatibility rules, so a source change is checked before it reaches the pipeline. Landing keeps the raw bytes, so it stays valid when the format changes ([D18](decisions.md#d18--landing-as-raw-avro-files-one-folder-per-topic)).
+- Debezium on a managed Kafka Connect cluster, with the source-side recommendations applied: `decimal.handling.mode=string` and a publication limited to the four tables (#84).
+
+## Authentication, TLS and secrets
+
+**Here.** Every credential is a local development default in `.env`, marked as such, and every connection is plain text. The API has no authentication, and Grafana lets anonymous visitors view. Consumers already log in with read-only service logins that can read only the `gold` views ([read-only service logins](infrastructure.md#read-only-service-logins)).
+
+**In production.**
+
+- Secrets in a secrets manager (AWS Secrets Manager, HashiCorp Vault), injected at run time and rotated.
+- IAM roles for S3 and the catalog instead of static keys.
+- TLS on Kafka, PostgreSQL, the object store and every HTTP endpoint.
+- Authentication on the API (OAuth or an API gateway) and single sign-on for Grafana.
+
+## Spark deployment and sizing
+
+**Here.** A Spark standalone cluster with two workers. Every application gets a throwaway driver container in client mode, and all applications share the executors, each capped with `spark.cores.max` ([D27](decisions.md#d27--one-driver-container-per-application-executors-on-shared-workers)).
+
+**In production.**
+
+- **Driver placement.** On Amazon EMR, each streaming job is a step in YARN cluster mode, so the driver runs in the cluster with YARN's restart attempts; EMR Serverless suits the batch jobs. On Kubernetes, the Spark Operator gives each application its own driver and executor pods with a restart policy.
+- **Executors per application**, sized from the batch size and the state each job holds, with dynamic allocation for the batch jobs.
+- **Sizing from measured metrics.** The [sizing strategy](sizing.md) names the variables and metrics; the cluster and the stream partitions should be sized from a real run's numbers (#58, #195). [Scaling to production](sizing.md#scaling-to-production) covers parallelism, rates and memory.
+- **Event logs on the object store**, with the History Server's cleaner removing old logs.
+
+## Orchestration and scheduling
+
+**Here.** Lake maintenance, gold retention and the data quality checks run as optional Compose services that run their job, sleep for a set number of hours and start again; a failed run waits for the next one ([maintenance and recovery](../operations/maintenance-and-recovery.md)). The streaming jobs are Compose services restarted by Docker.
+
+**In production.** The periodic jobs become scheduled jobs on the cluster (a scheduled Databricks job, an EMR step) or tasks in an orchestrator (Apache Airflow, Dagster, AWS Step Functions with EventBridge) that submits them. The orchestrator adds retries, backfills, dependencies between jobs, run history and alerts on failure. The recovery operations, the bronze replay and the gold rebuild, become parameterised jobs there instead of `make` targets.
+
+## Monitoring and alerting
+
+**Here.** Each job's Spark UI, the History Server for past runs, the `gold.data_freshness` view and the API's `/freshness` endpoint. A Prometheus and Grafana stack for Spark's own metrics is in progress (#69).
+
+**In production.**
+
+- Spark, Kafka and PostgreSQL metrics in a time-series system, with dashboards (#126).
+- Alerts on what breaks the promise to the users: a batch duration above its trigger, a growing consumer lag, freshness above the target, a failed data quality check, a stopped stream.
+- Per-batch pipeline statistics in an observability catalog, apart from business data (#127, [D33](decisions.md#d33--pipeline-metrics-in-a-separate-observability-catalog-proposed)).
+
+## Data quality
+
+**Here.** The project builds its own checks: each one compares a layer with the one before it, from Kafka to gold, and writes a JSON report to the lake ([data quality checks](../lakehouse/data-quality.md)). They keep the stack small and show the reconciliation logic.
+
+**In production.** A data quality framework instead: [Deequ](https://github.com/awslabs/deequ) or [PyDeequ](https://github.com/awslabs/python-deequ) on Spark, [Great Expectations](https://greatexpectations.io/) or [Soda](https://www.soda.io/). They add declarative checks, profiling, anomaly detection, a history of results and alerting (#112, #116). The reconciliation between layers stays, as checks written in the framework.
+
+## Schema evolution and migrations
+
+**Here.** Every table is built from explicit Avro schemas, so a source change never alters the lake silently; bronze documents which source changes are automatic and which need a manual step ([bronze](../lakehouse/bronze.md)). The gold DDL is idempotent SQL applied on start, without a migration tool.
+
+**In production.**
+
+- A reviewed schema evolution policy across the lake and the analytics database: which changes flow through automatically, which need a migration, and how consumers are told (#196).
+- A schema registry in front of the pipeline, as above.
+- A migration tool for the analytics database, such as Flyway, Liquibase or dbmate (#70).
+
+## Testing and delivery
+
+**Here.** CI runs lint, type checks and the unit tests on every pull request, and builds and deploys this site. The infra tests start full copies of the stack and run locally only ([testing and CI](../development/testing.md)).
+
+**In production.** The infra tests also run in CI, on runners with enough memory for the stack, on every pull request that touches the platform or nightly. A delivery pipeline builds and versions the images, deploys them to a staging environment, runs the data quality checks there, and promotes them.
+
+## Infrastructure as code
+
+**Here.** One `docker-compose.yaml` with profiles, driven by `make`.
+
+**In production.** The cloud resources (Kafka, the cluster, buckets, databases, IAM, networking) described as code, with Terraform, OpenTofu or the AWS CDK, and the services on Kubernetes as Helm charts or operators. Every environment is created from the same code.
+
+## High availability and backups
+
+**Here.** One instance of every service, with data in local Docker volumes.
+
+**In production.**
+
+- PostgreSQL as a managed, replicated service (Amazon RDS or Aurora, Multi-AZ), with point-in-time recovery.
+- Kafka replicated across availability zones, with retention long enough to recover from a stopped stream.
+- The lake on S3, with versioning on the landing files.
+- A tested recovery runbook. The building blocks exist: [replaying a landing range into bronze](../operations/maintenance-and-recovery.md#replaying-a-landing-range-into-bronze), [rebuilding gold from silver](../operations/maintenance-and-recovery.md#rebuilding-gold-from-silver) and [rebuilding bronze from landing](../operations/maintenance-and-recovery.md#rebuilding-bronze-from-landing).
+
+## Further ideas
+
+The ideas milestone collects the experiments that would come next, such as a fast path from bronze to gold if latency matters (#87), and ClickHouse for gold if the facts outgrow PostgreSQL ([D3](decisions.md#d3--gold-in-postgresql-not-clickhouse)).
