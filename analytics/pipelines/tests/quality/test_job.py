@@ -74,6 +74,42 @@ def test_a_run_prints_each_check_then_the_run_summary_and_writes_one_report(
     assert [list(results) for results in reports] == [["landing", "bronze"]]
 
 
+def test_a_check_that_raises_fails_with_its_error_and_the_run_still_reports(
+    spark: SparkSession,
+) -> None:
+    lines: list[str] = []
+    reports: list[Results] = []
+
+    def raising(_: SparkSession, __: Mapping[str, str]) -> list[CheckResult]:
+        raise LookupError("topic-a is not hosted by Kafka")
+
+    def passing(_: SparkSession, __: Mapping[str, str]) -> list[CheckResult]:
+        return [result("a", passed=True)]
+
+    def write(_: SparkSession, lake: LakeSettings, results: Results) -> str:
+        reports.append(results)
+        return f"{lake.root}/quality/reports/run.json"
+
+    passed = run(
+        spark,
+        LAKE_ENV,
+        ["landing", "bronze"],
+        checks={"landing": raising, "bronze": passing},
+        write=write,
+        out=lines.append,
+    )
+
+    assert not passed
+    (report,) = reports
+    (failure,) = report["landing"]
+    assert failure.check == "check_completed"
+    assert failure.subject == "landing"
+    assert not failure.passed
+    assert failure.details == {"error": "LookupError", "message": "topic-a is not hosted by Kafka"}
+    assert [r.passed for r in report["bronze"]] == [True]
+    assert lines[-1].startswith("DATA QUALITY ")
+
+
 def test_the_bronze_check_builds_its_settings_from_the_environment(
     spark: SparkSession, tmp_path: Path
 ) -> None:
