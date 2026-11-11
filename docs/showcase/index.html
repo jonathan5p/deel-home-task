@@ -605,7 +605,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
         <li>AWS S3 and a catalog service instead of SeaweedFS and the JDBC catalog.</li>
         <li>Managed, replicated Kafka with more partitions and a schema registry.</li>
         <li>Spark on EMR or Kubernetes, sized from measured streaming metrics.</li>
-        <li>Metrics, dashboards and alerts, and a data quality framework that keeps its results.</li>
+        <li>Kafka and PostgreSQL metrics next to Spark's, alerts that notify someone, and a data quality framework that keeps its results.</li>
         <li>Secrets, TLS and authentication, infrastructure as code and deployments from CI.</li>
       </ul>
       <p style="margin-top:16px"><a class="more" href="../architecture/production/">The way to production &rarr;</a></p>
@@ -759,12 +759,12 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
       why: [D("D35", "consumers read the public views", "d35--public-views-over-an-internal-schema")],
       docs: [L("Analytics API", "../serving/api/")] },
     { id: "grafana", x: 1074, y: 112, w: 124, h: 56, layer: "serve", form: "answer", t: "Grafana", s: "Gold metrics",
-      kicker: "Serving", title: "Grafana dashboard", tech: ["Grafana", "provisioned as code"],
+      kicker: "Serving", title: "Grafana dashboards", tech: ["Grafana", "provisioned as code"],
       hint: "one panel per question",
-      what: "A dashboard with one panel per question and the freshness of each table, refreshed every 30 seconds.",
+      what: "A dashboard with one panel per question and the freshness of each table, refreshed every 30 seconds. A second folder, &ldquo;Spark and lake&rdquo;, charts the Spark metrics from Prometheus.",
       how: ["It is provisioned from files in the repository and runs the same SQL as the API."],
       why: [D("D35", "consumers read the public views", "d35--public-views-over-an-internal-schema")],
-      docs: [L("Grafana", "../serving/grafana/")] },
+      docs: [L("Grafana", "../serving/grafana/"), L("Monitoring Spark", "../operations/monitoring/")] },
     { id: "sparksql", x: 1074, y: 252, w: 124, h: 56, layer: "serve", form: "answer", t: "Spark SQL", s: "on the lake",
       kicker: "Serving", title: "Spark SQL on the lake", tech: ["Spark SQL"],
       hint: "query any lake table or view",
@@ -780,7 +780,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
       why: [D("D9", "the Iceberg catalog", "d9--iceberg-with-a-jdbc-catalog-on-the-analytics-postgresql")],
       docs: [L("Query the lake from DuckDB", "../serving/lake-access/#query-the-lake-from-duckdb")] },
 
-    { id: "seaweedfs", x: 14, y: 424, w: 156, h: 60, layer: "landing", t: "SeaweedFS", s: "S3 object store",
+    { id: "seaweedfs", x: 14, y: 424, w: 124, h: 60, layer: "landing", t: "SeaweedFS", s: "S3 object store",
       related: ["landing", "bronze", "quarantine", "silver"],
       kicker: "Platform", title: "SeaweedFS, the lake's storage", tech: ["SeaweedFS", "S3 API"],
       hint: "where the lake's files live",
@@ -788,7 +788,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
       how: ["Moving to AWS S3 is a configuration change."],
       why: [D("D13", "SeaweedFS instead of MinIO", "d13--object-store-seaweedfs-instead-of-minio")],
       docs: [L("Data lake (SeaweedFS)", "../architecture/infrastructure/#data-lake-seaweedfs")] },
-    { id: "catalog", x: 186, y: 424, w: 156, h: 60, layer: "source", t: "Iceberg catalog", s: "in PostgreSQL",
+    { id: "catalog", x: 150, y: 424, w: 151, h: 60, layer: "source", t: "Iceberg catalog", s: "in PostgreSQL",
       related: ["bronze", "silver", "sviews", "lakegold", "quarantine", "rest", "gold"],
       kicker: "Platform", title: "The analytics PostgreSQL and the Iceberg catalog", tech: ["PostgreSQL 18.6", "Iceberg JDBC catalog"],
       hint: "the lake's catalog and gold's database",
@@ -796,7 +796,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
       how: ["Keeping the catalog here means one service less to run."],
       why: [D("D9", "Iceberg with a JDBC catalog", "d9--iceberg-with-a-jdbc-catalog-on-the-analytics-postgresql"), D("D20", "a separate analytics PostgreSQL", "d20--a-separate-analytics-postgresql")],
       docs: [L("Analytics database", "../architecture/infrastructure/#analytics-database")] },
-    { id: "spark", x: 358, y: 424, w: 156, h: 60, layer: "kafka", t: "Spark cluster", s: "master, 2 workers",
+    { id: "spark", x: 313, y: 424, w: 140, h: 60, layer: "kafka", t: "Spark cluster", s: "master, 2 workers",
       related: ["landing", "bronze", "silver", "gold"],
       kicker: "Platform", title: "The Spark cluster", tech: ["Spark 4.1.4", "Iceberg 1.12.0", "standalone"],
       hint: "runs every job",
@@ -804,7 +804,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
       how: ["The streaming jobs restart on failure and continue from their checkpoints. Each setting is sized from what drives it: input rate, partitions, trigger interval and state size."],
       why: [D("D27", "one driver container per application", "d27--one-driver-container-per-application-executors-on-shared-workers")],
       docs: [L("Spark sizing strategy", "../architecture/sizing/"), L("Running the pipeline", "../operations/running-the-pipeline/")] },
-    { id: "dq", x: 530, y: 424, w: 156, h: 60, layer: "ok", t: "Data quality", s: "Kafka to gold",
+    { id: "dq", x: 465, y: 424, w: 122, h: 60, layer: "ok", t: "Data quality", s: "Kafka to gold",
       related: ["landing", "bronze", "silver", "gold", "quarantine", "lakegold"], relatedDq: true,
       kicker: "Operations", title: "Data quality checks", tech: ["Spark job", "on demand or scheduled"],
       hint: "each layer checked against the one before",
@@ -812,7 +812,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
       how: ["Each check only looks at what the next layer has already committed, so normal lag is never reported as missing data. Every run writes a report to the lake."],
       why: [D("D39", "the gold check uses the lake gold views", "d39--gold-in-the-lake-as-iceberg-views-over-silver")],
       docs: [L("Data quality checks", "../lakehouse/data-quality/")] },
-    { id: "maint", x: 702, y: 424, w: 156, h: 60, layer: "bronze", t: "Maintenance", s: "compaction, expiry",
+    { id: "maint", x: 599, y: 424, w: 147, h: 60, layer: "bronze", t: "Maintenance", s: "compaction, expiry",
       related: ["bronze", "silver", "quarantine", "sviews", "lakegold"],
       kicker: "Operations", title: "Lake maintenance", tech: ["Iceberg procedures", "daily"],
       hint: "keeps the lake tables healthy",
@@ -820,7 +820,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
       how: ["Before it removes a snapshot, it checks that no stream still needs it."],
       why: [D("D31", "maintenance must not outrun the streams", "d31--late-arrivals-are-history-deduplication-happens-in-silver")],
       docs: [L("Lake maintenance", "../operations/maintenance-and-recovery/#lake-maintenance")] },
-    { id: "retention", x: 874, y: 424, w: 156, h: 60, layer: "gold", t: "Gold upkeep", s: "retention, rebuild",
+    { id: "retention", x: 758, y: 424, w: 134, h: 60, layer: "gold", t: "Gold upkeep", s: "retention, rebuild",
       related: ["gold"],
       kicker: "Operations", title: "Gold retention and rebuild", tech: ["Python", "PostgreSQL"],
       hint: "36 months in gold; rebuild from silver",
@@ -828,14 +828,22 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
       how: ["Gold can also be rebuilt from silver with the same merge the stream uses, optionally up to a point in time."],
       why: [D("D37", "retention by monthly partitions", "d37--gold-retention-by-monthly-partitions"), D("D38", "rebuild from silver", "d38--rebuild-gold-from-silver-with-an-optional-cutoff")],
       docs: [L("Gold retention", "../operations/maintenance-and-recovery/#gold-retention"), L("Rebuilding gold", "../operations/maintenance-and-recovery/#rebuilding-gold-from-silver")] },
-    { id: "history", x: 1046, y: 424, w: 156, h: 60, layer: "kafka", t: "History Server", s: "Spark event logs",
+    { id: "history", x: 904, y: 424, w: 142, h: 60, layer: "kafka", t: "History Server", s: "Spark event logs",
       related: ["spark"],
       kicker: "Operations", title: "Spark History Server", tech: ["optional", "started by make pipeline"],
       hint: "inspect finished or crashed jobs",
       what: "Every job writes event logs, so a finished or crashed job can still be inspected in the History Server.",
       how: [],
       why: [D("D23", "event logs are always written", "d23--event-logs-always-written-optional-history-server")],
-      docs: [L("Spark History Server", "../architecture/infrastructure/#spark-history-server-optional")] }
+      docs: [L("Spark History Server", "../architecture/infrastructure/#spark-history-server-optional")] },
+    { id: "prometheus", x: 1058, y: 424, w: 144, h: 60, layer: "serve", t: "Prometheus", s: "Spark dashboards",
+      related: ["spark", "landing", "bronze", "silver", "gold"],
+      kicker: "Operations", title: "Prometheus and the Spark dashboards", tech: ["Prometheus", "Grafana", "optional metrics profile"],
+      hint: "Spark's metrics, charted and alerted on",
+      what: "Every Spark driver, the master and the workers expose their metrics, and Prometheus scrapes them every 10 seconds and keeps 30 days. Grafana's &ldquo;Spark and lake&rdquo; folder charts them in a cluster and a streaming dashboard.",
+      how: ["It runs with the optional <code>metrics</code> profile. Two alert rules fire when a stream processes rows slower than they arrive or its batches take longer than the trigger."],
+      why: [D("D42", "Spark's own metrics, pulled by Prometheus", "d42--spark-metrics-sparks-prometheus-servlet-scraped-by-dns-service-discovery")],
+      docs: [L("Monitoring Spark", "../operations/monitoring/")] }
   ];
   const NODE = Object.fromEntries(NODES.map(n => [n.id, n]));
 
