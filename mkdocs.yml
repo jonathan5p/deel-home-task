@@ -8,6 +8,45 @@ site_dir: target/site
 strict: true
 dev_addr: 127.0.0.1:8001
 
+validation:
+  anchors: warn
+
+nav:
+  - Home: README.md
+  - Layers:
+      - layers/source-and-cdc.md
+      - layers/landing.md
+      - layers/bronze.md
+      - layers/silver.md
+      - layers/gold.md
+  - Operations:
+      - operations/running-the-pipeline.md
+      - operations/data-quality.md
+      - operations/maintenance-and-recovery.md
+      - operations/debugging.md
+  - Serving:
+      - serving/api.md
+      - serving/grafana.md
+  - Platform:
+      - platform/services.md
+      - platform/spark.md
+      - configuration.md
+  - Development:
+      - development/code-layout.md
+      - development/table-definitions.md
+      - development/testing.md
+  - Architecture:
+      - architecture/overview.md
+      - architecture/sizing.md
+      - architecture/decisions.md
+      - architecture/gold-model.md
+  - Reference:
+      - reference/index.md
+      - Bronze: reference/bronze/index.md
+      - Silver: reference/silver/index.md
+      - Gold: reference/gold/index.md
+  - original-readme.md
+
 theme:
   name: material
   features:

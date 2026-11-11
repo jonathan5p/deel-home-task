@@ -359,7 +359,7 @@ JOIN lake.gold.dim_product AS p
 
 This join finds no version for a change older than the product's first version (the tables are snapshotted a few milliseconds apart), and finds two when clock skew overlaps two ranges; the attributes the fact carries handle both cases as PostgreSQL does.
 
-**Validation.** `make data-quality CHECK=gold` compares each PostgreSQL `gold` view with its lake view computed over silver at the snapshots the gold job has committed, so it checks silver against gold and the lake views against PostgreSQL in one pass. It matches dimension versions through `_commit_sequence` rather than through a public column, and history from the first month PostgreSQL keeps (see the README's data quality checks).
+**Validation.** `make data-quality CHECK=gold` compares each PostgreSQL `gold` view with its lake view computed over silver at the snapshots the gold job has committed, so it checks silver against gold and the lake views against PostgreSQL in one pass. It matches dimension versions through `_commit_sequence` rather than through a public column, and history from the first month PostgreSQL keeps (see the [data quality checks](../operations/data-quality.md)).
 
 ## The four business questions
 

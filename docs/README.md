@@ -1,6 +1,38 @@
 # Deel CDC pipeline
 
-The design documentation of the pipeline that streams the supplied `finance_db` PostgreSQL database through Debezium and Kafka into an Iceberg lake (landing, bronze, silver) and a dimensional model in PostgreSQL (gold). The [repository README](https://github.com/jonathan5p/deel-home-task#readme) is the run guide: how to start the stack, run the pipeline and use each tool. These pages explain how the system is built and why.
+The documentation of the pipeline that streams the supplied `finance_db` PostgreSQL database through Debezium and Kafka into an Iceberg lake (landing, bronze, silver) and a dimensional model in PostgreSQL (gold). The [repository README](https://github.com/jonathan5p/deel-home-task#readme) is the quick start: how to install the stack, reproduce the results and debug it. These pages cover each part of the project in depth, how it is built and why.
+
+## Layers
+
+- [Source database and CDC](layers/source-and-cdc.md): the supplied database, the Debezium topics and the change event format.
+- [Landing](layers/landing.md): the raw Avro copy of every Kafka record, and how to inspect it with Spark SQL.
+- [Bronze](layers/bronze.md): the typed change log, its quarantine, the content hash and schema evolution.
+- [Silver](layers/silver.md): the deduplicated version history and its history and current views.
+- [Gold](layers/gold.md): the dimensional model in PostgreSQL, the gold job and the gold views in the lake.
+
+## Operations
+
+- [Running the pipeline](operations/running-the-pipeline.md): the streaming jobs as Compose services, their UIs and cores.
+- [Data quality checks](operations/data-quality.md): the chain of checks from Kafka to gold, and their reports.
+- [Maintenance and recovery](operations/maintenance-and-recovery.md): lake maintenance, gold retention, the gold rebuild, the bronze replay and rebuild.
+- [Debugging](operations/debugging.md): where to look, common errors, resets and the optional Kafka console.
+
+## Serving
+
+- [Analytics API](serving/api.md): the business questions and freshness over HTTP.
+- [Grafana](serving/grafana.md): the gold metrics dashboard, provisioned as code.
+
+## Platform
+
+- [Services and storage](platform/services.md): the Compose stack, the analytics database and its logins, and the SeaweedFS lake.
+- [Spark cluster](platform/spark.md): the cluster, the Iceberg catalog, the bundled connectors, submitting jobs and the History Server.
+- [Configuration](configuration.md): every environment variable the code reads.
+
+## Development
+
+- [Code layout](development/code-layout.md): the uv workspace and its projects.
+- [Table and column definitions](development/table-definitions.md): the Avro schemas every table and column is named and described from.
+- [Testing and CI](development/testing.md): unit tests and coverage, infra tests, hooks and continuous integration.
 
 ## Architecture
 
@@ -12,5 +44,6 @@ The design documentation of the pipeline that streams the supplied `finance_db` 
 ## Reference
 
 - [Table reference](reference/index.md): every [bronze](reference/bronze/index.md), [silver](reference/silver/index.md) and [gold](reference/gold/index.md) table and view, with its columns, types and descriptions. It is rendered from the Avro schemas each time the site is built (`make docs`), so it never needs editing by hand.
+- [Supplied assignment README](original-readme.md): the README delivered with the take-home, as it was.
 
 Use the search box to find a table or a column.
