@@ -77,4 +77,4 @@ Then open the **Gold metrics** dashboard at <http://localhost:3000/d/gold-metric
 
 The four business questions can be read in three ways: over HTTP from the [analytics API](serving/api.md), on the [Grafana](serving/grafana.md) dashboard, or from a terminal with `psql` on the `gold` views, Spark SQL or DuckDB on the lake ([querying the lake](serving/lake-access.md)).
 
-Use the search box to find a table or a column.
+Use the search box to find a table or a column. Every diagram has a full-screen button; hold Alt (Option on a Mac) while scrolling or dragging to zoom and pan it.

@@ -16,6 +16,7 @@ dev = [
 docs = [
     "mkdocs-gen-files>=0.5",
     "mkdocs-material>=9.6",
+    "mkdocs-panzoom-plugin==0.5.3",
 ]
 
 [tool.pytest.ini_options]

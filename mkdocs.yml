@@ -77,6 +77,9 @@ theme:
 
 plugins:
   - search
+  - panzoom:
+      full_screen: true
+      always_show_hint: true
   - gen-files:
       scripts:
         - tools/docs/reference_pages.py
@@ -89,6 +92,11 @@ markdown_extensions:
       slugify: !!python/object/apply:pymdownx.slugs.slugify
         kwds:
           case: lower
+  - pymdownx.magiclink:
+      repo_url_shorthand: true
+      provider: github
+      user: jonathan5p
+      repo: deel-home-task
   - pymdownx.superfences:
       custom_fences:
         - name: mermaid
