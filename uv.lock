@@ -631,6 +631,7 @@ version = "0.1.0"
 source = { editable = "analytics/pipelines" }
 dependencies = [
     { name = "common" },
+    { name = "duckdb" },
     { name = "jinja2" },
     { name = "psycopg", extra = ["binary"] },
 ]
@@ -638,6 +639,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "common", editable = "analytics/common" },
+    { name = "duckdb", specifier = ">=2.0" },
     { name = "jinja2", specifier = ">=3.1" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.3" },
 ]
