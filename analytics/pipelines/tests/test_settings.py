@@ -13,6 +13,7 @@ from pipelines.settings import (
     PipelineSettings,
     SilverSettings,
     StageExporterSettings,
+    TableStatsSettings,
 )
 
 KAFKA = {"KAFKA_BOOTSTRAP_SERVERS": "broker:9092", "KAFKA_TOPICS": "topic-a, topic-b"}
@@ -380,3 +381,60 @@ def test_the_stage_exporter_needs_the_history_server_and_its_own_port() -> None:
 def test_the_stage_exporter_port_and_interval_must_be_positive_integers(name: str) -> None:
     with pytest.raises(InvalidSettingError, match=name):
         StageExporterSettings.from_env(STAGE_EXPORTER | {name: "0"})
+
+
+TABLE_STATS = {
+    "LAKE_CATALOG_URI": "http://catalog:8181",
+    "ICEBERG_CATALOG": "lake",
+    "LAKE_S3_ENDPOINT": "http://store:8333",
+    "LAKE_S3_REGION": "region-a",
+    "LAKE_S3_ACCESS_KEY": "key",
+    "LAKE_S3_SECRET_KEY": "secret",
+}
+
+
+def test_table_stats_cover_bronze_and_silver_with_a_32_mib_threshold_by_default() -> None:
+    settings = TableStatsSettings.from_env(TABLE_STATS)
+
+    assert settings.namespaces == ("bronze", "silver")
+    assert settings.small_file_bytes == 32 * 1024 * 1024
+    assert settings.table_interval_seconds == 300
+    assert settings.partition_interval_seconds == 3600
+
+
+def test_table_stats_tuning_can_be_overridden() -> None:
+    settings = TableStatsSettings.from_env(
+        TABLE_STATS
+        | {
+            "TABLE_STATS_NAMESPACES": "smoke",
+            "SMALL_FILE_BYTES": "1024",
+            "TABLE_STATS_INTERVAL_SECONDS": "5",
+            "PARTITION_STATS_INTERVAL_SECONDS": "10",
+        }
+    )
+
+    assert (settings.namespaces, settings.small_file_bytes) == (("smoke",), 1024)
+    assert (settings.table_interval_seconds, settings.partition_interval_seconds) == (5, 10)
+
+
+def test_table_stats_read_the_rest_catalog_with_the_lake_credentials() -> None:
+    assert TableStatsSettings.from_env(TABLE_STATS).catalog_properties() == {
+        "type": "rest",
+        "uri": "http://catalog:8181",
+        "s3.endpoint": "http://store:8333",
+        "s3.region": "region-a",
+        "s3.access-key-id": "key",
+        "s3.secret-access-key": "secret",
+        "s3.force-virtual-addressing": "false",
+    }
+
+
+def test_table_stats_keep_the_lake_secret_out_of_their_repr() -> None:
+    assert "secret" not in repr(TableStatsSettings.from_env(TABLE_STATS))
+
+
+def test_table_stats_need_the_catalog_and_the_lake() -> None:
+    with pytest.raises(MissingSettingsError) as error:
+        TableStatsSettings.from_env({})
+
+    assert error.value.names == TableStatsSettings.REQUIRED

@@ -26,6 +26,10 @@ MIN_ORPHAN_AGE_HOURS = 24
 DEFAULT_GOLD_RETENTION_MONTHS = 36
 DEFAULT_GOLD_PARTITION_MONTHS_AHEAD = 2
 DEFAULT_STAGE_EXPORTER_POLL_SECONDS = 30
+DEFAULT_TABLE_STATS_NAMESPACES = ("bronze", "silver")
+DEFAULT_SMALL_FILE_BYTES = 32 * 1024 * 1024
+DEFAULT_TABLE_STATS_INTERVAL_SECONDS = 300
+DEFAULT_PARTITION_STATS_INTERVAL_SECONDS = 3600
 
 
 @dataclass(frozen=True, slots=True)
@@ -323,3 +327,61 @@ class StageExporterSettings:
                 env, "STAGE_EXPORTER_POLL_SECONDS", DEFAULT_STAGE_EXPORTER_POLL_SECONDS
             ),
         )
+
+
+@dataclass(frozen=True, slots=True)
+class TableStatsSettings:
+    REQUIRED: ClassVar[tuple[str, ...]] = (
+        "LAKE_CATALOG_URI",
+        "ICEBERG_CATALOG",
+        "LAKE_S3_ENDPOINT",
+        "LAKE_S3_REGION",
+        "LAKE_S3_ACCESS_KEY",
+        "LAKE_S3_SECRET_KEY",
+    )
+
+    catalog_uri: str
+    catalog_name: str
+    s3_endpoint: str
+    s3_region: str
+    s3_access_key: str = field(repr=False)
+    s3_secret_key: str = field(repr=False)
+    namespaces: tuple[str, ...]
+    small_file_bytes: int
+    table_interval_seconds: int
+    partition_interval_seconds: int
+
+    @classmethod
+    def from_env(cls, env: Mapping[str, str]) -> Self:
+        uri, name, endpoint, region, access_key, secret_key = require(env, *cls.REQUIRED)
+        return cls(
+            catalog_uri=uri,
+            catalog_name=name,
+            s3_endpoint=endpoint,
+            s3_region=region,
+            s3_access_key=access_key,
+            s3_secret_key=secret_key,
+            namespaces=split_list(
+                "TABLE_STATS_NAMESPACES",
+                optional(env, "TABLE_STATS_NAMESPACES", ",".join(DEFAULT_TABLE_STATS_NAMESPACES)),
+            ),
+            small_file_bytes=positive_int(env, "SMALL_FILE_BYTES", DEFAULT_SMALL_FILE_BYTES),
+            table_interval_seconds=positive_int(
+                env, "TABLE_STATS_INTERVAL_SECONDS", DEFAULT_TABLE_STATS_INTERVAL_SECONDS
+            ),
+            partition_interval_seconds=positive_int(
+                env, "PARTITION_STATS_INTERVAL_SECONDS", DEFAULT_PARTITION_STATS_INTERVAL_SECONDS
+            ),
+        )
+
+    def catalog_properties(self) -> dict[str, str]:
+        """PyIceberg's properties for the REST catalog and the S3 files its tables point at."""
+        return {
+            "type": "rest",
+            "uri": self.catalog_uri,
+            "s3.endpoint": self.s3_endpoint,
+            "s3.region": self.s3_region,
+            "s3.access-key-id": self.s3_access_key,
+            "s3.secret-access-key": self.s3_secret_key,
+            "s3.force-virtual-addressing": "false",
+        }

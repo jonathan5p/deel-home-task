@@ -95,7 +95,7 @@ help:
 		'docs-serve     Serve the docs site on http://localhost:8001, rebuilding on every change.' \
 		'test-infra     Run the infra tests in INFRA_WORKERS parallel workers (default 2), each against its own isolated copy of the stack (local only, a few minutes; every worker needs the Docker memory of a full stack; 0 runs serially).' \
 		'hooks          Install the pre-commit hooks in this clone (once).' \
-		'Optional profiles: monitoring (Conduktor), history (Spark History Server), maintenance (lake maintenance and gold retention every 24 hours), data-quality (every data quality check every 24 hours), catalog (read-only Iceberg REST catalog on localhost:8181), metrics (Prometheus on localhost:9090 scraping every Spark driver, the master, the workers and the stage exporter, plus the History Server). See README.md.'
+		'Optional profiles: monitoring (Conduktor), history (Spark History Server), maintenance (lake maintenance and gold retention every 24 hours), data-quality (every data quality check every 24 hours), catalog (read-only Iceberg REST catalog on localhost:8181), metrics (Prometheus on localhost:9090 scraping every Spark driver, the master, the workers and the exporter of completed stages and Iceberg table statistics, plus the History Server and the REST catalog). See README.md.'
 
 up:
 	@$(RENDER_GOLD_DDL)
@@ -104,7 +104,7 @@ ifneq ($(filter metrics,$(PROFILES)),)
 endif
 	@$(COMPOSE) $(addprefix --profile ,$(PROFILES)) up -d --build
 	@$(COMPOSE) up -d --wait analytics-db
-ifneq ($(filter catalog,$(PROFILES)),)
+ifneq ($(filter catalog metrics,$(PROFILES)),)
 	@$(MAKE) --no-print-directory db-logins
 	@$(COMPOSE) --profile catalog restart iceberg-rest
 	@$(COMPOSE) --profile catalog up -d --wait iceberg-rest

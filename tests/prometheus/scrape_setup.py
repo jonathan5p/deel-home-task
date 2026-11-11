@@ -15,7 +15,9 @@ from analytics.pipelines.tests.observability.stage_exporter_setup import (
     summary,
     with_quantiles,
 )
+from analytics.pipelines.tests.observability.table_stats_setup import SMALL, FakeTables, files
 from pipelines.observability.stage_exporter import StageMetrics
+from pipelines.observability.table_stats import TableMetrics, TableStatsCollector
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CONFIG = REPO_ROOT / "monitoring/prometheus/prometheus.yml"
@@ -111,9 +113,13 @@ def captured(name: str) -> str:
 
 
 def stage_exporter_page() -> str:
-    """The stage exporter's page once it recorded the captured History Server stages, one of
-    them again with uneven task reads, so that every histogram has observations."""
+    """The exporter's page once it recorded the captured History Server stages, one of them again
+    with uneven task reads so that every histogram has observations, and measured a table."""
     registry = CollectorRegistry()
+    tables = FakeTables({("bronze", "orders"): files(("day=1", 10), ("day=2", 5_000))})
+    stats = TableStatsCollector(tables, TableMetrics(registry), ("bronze",), SMALL)
+    stats.collect_tables()
+    stats.collect_partitions()
     metrics = StageMetrics(registry)
     for stage_id in (SHUFFLE_WRITE_STAGE, SHUFFLE_READ_STAGE):
         metrics.record(APP_NAME, stage(stage_id), summary(stage_id))
