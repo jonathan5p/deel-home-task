@@ -65,7 +65,14 @@ jobs:
         run: make ${{ matrix.check }} APP_BUILD= CHECKS_PROJECT=ci PYTEST_WORKERS=auto
       - name: Combine the coverage of both images
         if: matrix.check == 'test'
-        run: make coverage-report APP_BUILD= CHECKS_PROJECT=ci
+        env:
+          COMPOSE_PROJECT_NAME: ci
+        run: |
+          docker compose run --rm --no-deps -v "$PWD/analytics:/opt/app/analytics" \
+            -v "$PWD/target/coverage:/opt/app/target/coverage" -e COVERAGE_FILE=/opt/app/target/coverage/.coverage \
+            spark-app sh -c 'export PYTHONPATH=/opt/app/analytics/api/src:$PYTHONPATH \
+              && coverage combine target/coverage/.coverage.app target/coverage/.coverage.api \
+              && coverage json --fail-under=0 -o target/coverage/coverage.json'
       - name: Write the coverage badge
         if: matrix.check == 'test'
         run: |

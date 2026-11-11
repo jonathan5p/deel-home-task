@@ -42,7 +42,7 @@ RENDER_GOLD_DDL = uv run --frozen python -m pipelines.gold.ddl docker/analytics-
 SPARK_TESTS = analytics/common/tests analytics/pipelines/tests tests/grafana
 API_TESTS = analytics/api/tests analytics/common/tests
 API_INFRA_APPS = tests/infra/apps/api_answers.py
-# Each image's run keeps its coverage data on the host, so coverage-report can combine them.
+# Each image's run keeps its coverage data on the host, so CI can combine them into one total.
 # The folder is world-writable because the images run as their own users (spark, api).
 COVERAGE_DIR = target/coverage
 COVERAGE_MOUNT = -v "$(CURDIR)/$(COVERAGE_DIR):/opt/app/$(COVERAGE_DIR)"
@@ -53,7 +53,7 @@ PIPELINE_JOBS = $(addsuffix -job,$(if $(filter all,$(PIPELINE)),$(PIPELINES),$(f
 PIPELINE_SERVICES = $(PIPELINE_JOBS) $(if $(filter silver all,$(PIPELINE)),lake-views)
 CHECK_PIPELINE = $(if $(and $(PIPELINE_JOBS),$(filter 1,$(words $(PIPELINE)))),,$(error Set PIPELINE to one of: $(PIPELINES) all (got "$(PIPELINE)"), e.g. make $@ PIPELINE=landing))
 
-.PHONY: help up down clean gold-reset db-logins gold-rebuild gold-retention spark-submit bronze-replay spark-sql spark-history data-quality lake-maintenance pipeline pipeline-logs pipeline-stop lake-views test coverage-report lint format typecheck schemas docs docs-serve test-infra hooks
+.PHONY: help up down clean gold-reset db-logins gold-rebuild gold-retention spark-submit bronze-replay spark-sql spark-history data-quality lake-maintenance pipeline pipeline-logs pipeline-stop lake-views test lint format typecheck schemas docs docs-serve test-infra hooks
 
 help:
 	@printf '%s\n' \
@@ -76,7 +76,6 @@ help:
 		'pipeline-stop  Stop and remove the PIPELINE job (landing, bronze, silver, gold or all); the rest of the stack keeps running.' \
 		'lake-views     Create the silver and gold views, or replace those whose query or descriptions changed; fails while a silver table is missing.' \
 		'test           Run the unit tests with coverage (fails below 90%), in PYTEST_WORKERS parallel workers (default 4): pipelines, common and the Grafana dashboard checks in the app image, the API and common in the API dev image.' \
-		'coverage-report  Combine the coverage of the last make test in both images into target/coverage/coverage.json and print the total.' \
 		'lint           Check linting and formatting with ruff in the app container.' \
 		'format         Format the code and apply safe lint fixes with ruff.' \
 		'typecheck      Check types with ty in the app image and the API dev image; any diagnostic fails.' \
@@ -159,11 +158,6 @@ test:
 		spark-app pytest -p no:cacheprovider -n $(PYTEST_WORKERS) --dist loadfile $(SPARK_TESTS)
 	@$(APP_RUN) $(COVERAGE_MOUNT) -e COVERAGE_FILE=/opt/app/$(COVERAGE_DIR)/.coverage.api \
 		api-dev pytest -p no:cacheprovider -n $(PYTEST_WORKERS) --dist loadfile $(API_TESTS)
-
-coverage-report:
-	@$(APP_RUN) $(COVERAGE_MOUNT) -e COVERAGE_FILE=/opt/app/$(COVERAGE_DIR)/.coverage spark-app sh -c \
-		'PYTHONPATH=/opt/app/analytics/api/src:$$PYTHONPATH && coverage combine $(COVERAGE_DIR)/.coverage.app $(COVERAGE_DIR)/.coverage.api \
-		&& coverage json --fail-under=0 -o $(COVERAGE_DIR)/coverage.json && coverage report --fail-under=0 | tail -1'
 
 lint:
 	@$(APP_RUN) spark-app sh -c 'ruff check && ruff format --check'
