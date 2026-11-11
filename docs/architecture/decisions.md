@@ -51,7 +51,7 @@ The numbers (D3, D13, ...) come from the project's decision log, and other pages
 
 **Alternatives considered.** Managed services (Amazon MSK, EMR, S3, RDS). Closer to production, but reviewers would need accounts and credentials, and every test run would cost money.
 
-**Outcome.** The local choices keep production in reach: the object store speaks S3 and the catalog is standard Iceberg, so moving to AWS S3 or another catalog is a configuration change. What a production deployment needs on top is listed in [the sizing strategy](sizing.md#scaling-to-production).
+**Outcome.** The local choices keep production in reach: the object store speaks S3 and the catalog is standard Iceberg, so moving to AWS S3 or another catalog is a configuration change. What is left to reach a real production environment is listed in [the way to production](production.md).
 
 ### D29 · The source database and the Debezium connector stay as provided
 
