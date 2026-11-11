@@ -127,10 +127,9 @@ The optional `catalog` profile serves the same catalog through the [Iceberg REST
 
 ```sh
 make up PROFILES=catalog   # REST catalog on http://localhost:8181
-make db-logins             # Once on an existing volume: creates lake_catalog_reader
 ```
 
-On a volume created before this service existed, run `make up` first so `analytics-db` gets the new login's credentials, then `make db-logins`. [Querying the lake](../serving/lake-access.md) shows how to attach it from DuckDB.
+With the `catalog` profile, `make up` also runs `make db-logins` once `analytics-db` is healthy, then restarts `iceberg-rest` and waits for it, so the catalog starts on a volume created before its login existed too. `make up` recreates `analytics-db` when its settings in `.env` changed, so the login gets the current credentials. [Querying the lake](../serving/lake-access.md) shows how to attach it from DuckDB.
 
 ### Kafka, Avro and plain files in the lake
 
