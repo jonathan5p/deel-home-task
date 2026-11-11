@@ -55,7 +55,7 @@ PIPELINE_JOBS = $(addsuffix -job,$(if $(filter all,$(PIPELINE)),$(PIPELINES),$(f
 PIPELINE_SERVICES = $(PIPELINE_JOBS) $(if $(filter silver all,$(PIPELINE)),lake-views)
 CHECK_PIPELINE = $(if $(and $(PIPELINE_JOBS),$(filter 1,$(words $(PIPELINE)))),,$(error Set PIPELINE to one of: $(PIPELINES) all (got "$(PIPELINE)"), e.g. make $@ PIPELINE=landing))
 
-.PHONY: help up down clean gold-reset db-logins gold-rebuild gold-retention spark-submit bronze-replay spark-sql spark-history data-quality lake-maintenance pipeline pipeline-logs pipeline-stop lake-views test lint format typecheck schemas docs docs-serve test-infra hooks
+.PHONY: help up down clean cdc-pause cdc-resume cdc-status gold-reset db-logins gold-rebuild gold-retention spark-submit bronze-replay spark-sql spark-history data-quality lake-maintenance pipeline pipeline-logs pipeline-stop lake-views test lint format typecheck schemas docs docs-serve test-infra hooks
 
 help:
 	@printf '%s\n' \
@@ -76,6 +76,9 @@ help:
 		'               silver and all also run lake-views once the silver tables exist.' \
 		'pipeline-logs  Follow the logs of the PIPELINE job (landing, bronze, silver, gold or all).' \
 		'pipeline-stop  Stop and remove the PIPELINE job (landing, bronze, silver, gold or all); the rest of the stack keeps running.' \
+		'cdc-pause      Pause the Debezium connector: no new source changes reach Kafka; the stack and the pipeline keep running.' \
+		'cdc-resume     Resume the Debezium connector from where it paused, without losing changes.' \
+		'cdc-status     Show the state of the Debezium connector and its task.' \
 		'lake-views     Create the silver and gold views, or replace those whose query or descriptions changed; fails while a silver table is missing.' \
 		'test           Run the unit tests with coverage (fails below 90%), in PYTEST_WORKERS parallel workers (default 4): pipelines, common and the Grafana dashboard checks in the app image, the API and common in the API dev image.' \
 		'lint           Check linting and formatting with ruff in the app container.' \
@@ -159,6 +162,20 @@ pipeline-logs:
 
 pipeline-stop:
 	$(CHECK_PIPELINE)@$(COMPOSE) --profile pipeline rm -sf $(PIPELINE_SERVICES)
+
+CDC_CONNECTOR = finance-db-connector
+CONNECT_API = $(COMPOSE) exec -T kafka-connect curl -fsS
+
+cdc-pause:
+	@$(CONNECT_API) -X PUT http://localhost:8083/connectors/$(CDC_CONNECTOR)/pause
+	@$(MAKE) --no-print-directory cdc-status
+
+cdc-resume:
+	@$(CONNECT_API) -X PUT http://localhost:8083/connectors/$(CDC_CONNECTOR)/resume
+	@$(MAKE) --no-print-directory cdc-status
+
+cdc-status:
+	@$(CONNECT_API) http://localhost:8083/connectors/$(CDC_CONNECTOR)/status; echo
 
 lake-views:
 	@$(COMPOSE) --profile app build spark-app

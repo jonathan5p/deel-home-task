@@ -13,6 +13,18 @@ make lake-views                       # create or update the silver and gold vie
 
 `make pipeline` rebuilds changed images like `make up`, starts the default stack and the Spark History Server, then starts the selected jobs. Running it again after a code change restarts only the jobs whose image changed. A change to the Spark image restarts the cluster, and a job's driver does not survive that; `make pipeline` restarts the jobs along with it, but after a plain `make up`, run `make pipeline` again. Without a valid `PIPELINE` (`landing`, `bronze`, `silver`, `gold` or `all`), the targets fail and list the valid names. `make down` stops the jobs with the rest of the stack.
 
+## Pausing the source changes
+
+To stop new source changes without stopping anything else, pause the Debezium connector:
+
+```sh
+make cdc-pause    # the connector stops reading the source; Kafka, the jobs and the stack keep running
+make cdc-status   # PAUSED or RUNNING, for the connector and its task
+make cdc-resume   # carries on from where it paused
+```
+
+While the connector is paused the streaming jobs keep running and simply find no new records, so the lake and gold stay as of the pause. Debezium keeps its position in the source's replication slot, so resuming loses no change; meanwhile PostgreSQL keeps the write-ahead log the slot still needs, so a long pause on a busy source grows its disk use.
+
 | Job | Service | Application UI |
 | --- | --- | --- |
 | landing | `landing-job` | <http://localhost:4040> |
