@@ -9,6 +9,7 @@ from tests.infra.bronze_setup import BronzeRuns, run_bronze_scenario
 from tests.infra.gold_dimensions_setup import GoldRuns, remove_fixture_rows, run_gold_scenario
 from tests.infra.gold_facts_setup import FactRuns, remove_fact_rows, run_fact_scenario
 from tests.infra.gold_lake_setup import LakeComparison, run_lake_scenario
+from tests.infra.lake_catalog_setup import LakeCatalog, run_catalog_scenario
 from tests.infra.landing_avro import landing_avro
 from tests.infra.silver_setup import SilverRuns, run_silver_scenario
 from tests.infra.stack import Stack
@@ -114,3 +115,9 @@ def lake_comparison(stack: Stack) -> Iterator[LakeComparison]:
         yield run_lake_scenario(stack)
     finally:
         remove_fact_rows(stack)
+
+
+@pytest.fixture(scope="module")
+def lake_catalog(stack: Stack, silver_runs: SilverRuns) -> LakeCatalog:
+    """The REST catalog over the bronze and silver tables and views the silver scenario leaves."""
+    return run_catalog_scenario(stack)

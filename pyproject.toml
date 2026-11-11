@@ -3,6 +3,7 @@ members = ["analytics/api", "analytics/common", "analytics/pipelines"]
 
 [dependency-groups]
 dev = [
+    "duckdb>=2.0",
     "fastavro>=1.12",
     "httpx2>=2.16",
     "pre-commit>=4.3",

@@ -2,6 +2,7 @@ services:
   api: { ports: !reset [] }
   analytics-db: { ports: !reset [] }
   seaweedfs: { ports: !reset [] }
+  iceberg-rest: { ports: !reset [] }
   zookeeper: { ports: !reset [] }
   kafka: { ports: !reset [] }
   spark-master: { ports: !reset [] }

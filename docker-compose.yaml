@@ -107,6 +107,8 @@ services:
       API_READER_PASSWORD: ${API_READER_PASSWORD}
       GRAFANA_READER_USER: ${GRAFANA_READER_USER}
       GRAFANA_READER_PASSWORD: ${GRAFANA_READER_PASSWORD}
+      LAKE_CATALOG_READER_USER: ${LAKE_CATALOG_READER_USER}
+      LAKE_CATALOG_READER_PASSWORD: ${LAKE_CATALOG_READER_PASSWORD}
     ports:
       - "5433:5432"
     volumes:
@@ -158,6 +160,40 @@ services:
       timeout: 5s
       retries: 10
       start_period: 10s
+
+  iceberg-rest:
+    build:
+      context: ./docker/iceberg-rest
+    image: ${COMPOSE_PROJECT_NAME}-iceberg-rest
+    profiles: [catalog]
+    environment:
+      CATALOG_CATALOG_NAME: ${ICEBERG_CATALOG}
+      CATALOG_URI: jdbc:postgresql://analytics-db:5432/iceberg_catalog
+      CATALOG_JDBC_USER: ${LAKE_CATALOG_READER_USER}
+      CATALOG_JDBC_PASSWORD: ${LAKE_CATALOG_READER_PASSWORD}
+      CATALOG_JDBC_SCHEMA__VERSION: V1
+      CATALOG_JDBC_INIT__CATALOG__TABLES: "false"
+      CATALOG_WAREHOUSE: s3://lake/warehouse
+      CATALOG_IO__IMPL: org.apache.iceberg.aws.s3.S3FileIO
+      CATALOG_S3_ENDPOINT: http://seaweedfs:8333
+      CATALOG_S3_PATH__STYLE__ACCESS: "true"
+      CATALOG_S3_ACCESS__KEY__ID: ${LAKE_S3_ACCESS_KEY}
+      CATALOG_S3_SECRET__ACCESS__KEY: ${LAKE_S3_SECRET_KEY}
+      CATALOG_CLIENT_REGION: us-east-1
+    ports:
+      - "8181:8181"
+    depends_on:
+      analytics-db:
+        condition: service_healthy
+      seaweedfs:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8181/v1/config >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
 
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
