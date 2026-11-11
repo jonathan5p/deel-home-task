@@ -36,6 +36,7 @@ APP_BUILD ?= --build
 PYTEST_WORKERS ?= 4
 CODE_MOUNTS = -v "$(CURDIR)/analytics:/opt/app/analytics" -v "$(CURDIR)/tests:/opt/app/tests" \
 	-v "$(CURDIR)/monitoring:/opt/app/monitoring:ro"
+PROPERDOCS = uv run --frozen --group docs properdocs
 RENDER_GOLD_DDL = uv run --frozen python -m pipelines.gold.ddl docker/analytics-db/initdb/02-gold-model.sql
 
 SPARK_TESTS = analytics/common/tests analytics/pipelines/tests tests/grafana
@@ -48,7 +49,7 @@ PIPELINE_JOBS = $(addsuffix -job,$(if $(filter all,$(PIPELINE)),$(PIPELINES),$(f
 PIPELINE_SERVICES = $(PIPELINE_JOBS) $(if $(filter silver all,$(PIPELINE)),lake-views)
 CHECK_PIPELINE = $(if $(and $(PIPELINE_JOBS),$(filter 1,$(words $(PIPELINE)))),,$(error Set PIPELINE to one of: $(PIPELINES) all (got "$(PIPELINE)"), e.g. make $@ PIPELINE=landing))
 
-.PHONY: help up down clean gold-reset db-logins gold-rebuild gold-retention spark-submit bronze-replay spark-sql spark-history data-quality lake-maintenance pipeline pipeline-logs pipeline-stop lake-views test lint format typecheck schemas test-infra hooks
+.PHONY: help up down clean gold-reset db-logins gold-rebuild gold-retention spark-submit bronze-replay spark-sql spark-history data-quality lake-maintenance pipeline pipeline-logs pipeline-stop lake-views test lint format typecheck schemas docs docs-serve test-infra hooks
 
 help:
 	@printf '%s\n' \
@@ -76,6 +77,8 @@ help:
 		'typecheck      Check types with ty in the app image and the API dev image; any diagnostic fails.' \
 		'schemas        Render the full flat Avro schema of every lake table and view to target/schemas/<layer>/<table>.avsc, for reading.' \
 		'               Build output: git-ignored, regenerated each run; edit analytics/pipelines/src/pipelines/schemas/ instead.' \
+		'docs           Build the docs site (docs/ plus the table reference rendered from the schemas) into the git-ignored target/site/; warnings fail.' \
+		'docs-serve     Serve the docs site on http://localhost:8001, rebuilding on every change.' \
 		'test-infra     Run the infra tests against an isolated copy of the stack (local only, a few minutes).' \
 		'hooks          Install the pre-commit hooks in this clone (once).' \
 		'Optional profiles: monitoring (Conduktor), history (Spark History Server), maintenance (lake maintenance and gold retention every 24 hours). See README.md.'
@@ -162,6 +165,12 @@ typecheck:
 
 schemas:
 	@uv run --frozen python -m pipelines.schemas.render target/schemas
+
+docs:
+	@$(PROPERDOCS) build -f mkdocs.yml
+
+docs-serve:
+	@$(PROPERDOCS) serve -f mkdocs.yml
 
 test-infra:
 	@$(RENDER_GOLD_DDL)
