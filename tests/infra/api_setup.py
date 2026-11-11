@@ -41,7 +41,7 @@ def api_reader_credentials(stack: Stack) -> tuple[str, str]:
 
 
 def api_answers(stack: Stack) -> dict[str, dict[str, list[object]]]:
-    """Run the repository as the API login in an app container and collect its answers."""
+    """Run the repository as the API login in the API dev image and collect its answers."""
     user, password = api_reader_credentials(stack)
     run = subprocess.run(
         [
@@ -54,7 +54,7 @@ def api_answers(stack: Stack) -> dict[str, dict[str, list[object]]]:
             f"ANALYTICS_DB_USER={user}",
             "-e",
             f"ANALYTICS_DB_PASSWORD={password}",
-            "spark-app",
+            "api-dev",
             "python",
             ANSWERS_APP,
         ],

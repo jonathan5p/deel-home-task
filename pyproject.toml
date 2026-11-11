@@ -26,6 +26,7 @@ addopts = [
 [tool.coverage.run]
 source = ["api", "common", "pipelines"]
 branch = true
+disable_warnings = ["module-not-imported"]
 
 [tool.coverage.report]
 fail_under = 90
@@ -59,8 +60,6 @@ known-first-party = ["api", "common", "pipelines", "tests"]
 
 [tool.ty.environment]
 python-version = "3.14"
-# PySpark is not installed from PyPI: it comes from the Spark image.
-extra-paths = ["/opt/spark/python"]
 
 [tool.ty.terminal]
 error-on-warning = true

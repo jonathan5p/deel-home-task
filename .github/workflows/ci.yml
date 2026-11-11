@@ -51,5 +51,15 @@ jobs:
           load: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Build the API dev image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/api/Dockerfile
+          target: dev
+          tags: ci-api-dev
+          load: true
+          cache-from: type=gha,scope=api-dev
+          cache-to: type=gha,mode=max,scope=api-dev
       - name: make ${{ matrix.check }}
         run: make ${{ matrix.check }} APP_BUILD= CHECKS_PROJECT=ci

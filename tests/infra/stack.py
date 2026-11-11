@@ -17,7 +17,7 @@ def project_name(prefix: str, folder: str) -> str:
 
 
 PROJECT = project_name("deel-infra-tests-", REPO_ROOT.name)
-IMAGES = (f"{PROJECT}-spark", f"{PROJECT}-spark-app")
+IMAGES = (f"{PROJECT}-spark", f"{PROJECT}-spark-app", f"{PROJECT}-api-dev")
 COMPOSE_FILES = ("docker-compose.yaml", "tests/infra/compose.override.yaml")
 CLUSTER_SERVICES = (
     "analytics-db",
@@ -61,7 +61,7 @@ class Stack:
         )
 
     def up(self) -> None:
-        self.compose("--profile", "app", "build", "spark-app")
+        self.compose("--profile", "app", "build", "spark-app", "api-dev")
         self.compose("up", "--detach", "--build", "--wait", *CLUSTER_SERVICES)
         wait_until(self.kafka_ready, timeout=120, message="Kafka never accepted connections")
 
