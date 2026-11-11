@@ -18,6 +18,7 @@ nav:
       - architecture/infrastructure.md
       - architecture/sizing.md
       - architecture/decisions.md
+      - architecture/production.md
   - Lakehouse:
       - lakehouse/index.md
       - lakehouse/source-and-cdc.md
@@ -42,6 +43,9 @@ nav:
       - development/code-layout.md
       - development/table-definitions.md
       - development/testing.md
+  - How it was built:
+      - process/how-we-worked.md
+      - process/ai-agents.md
   - Reference:
       - reference/index.md
       - Bronze: reference/bronze/index.md
