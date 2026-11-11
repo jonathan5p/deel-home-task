@@ -1,33 +1,34 @@
-from pathlib import Path
+import re
 
 import pytest
 
 from analytics.pipelines.tests.schemas.reference_setup import (
     BRONZE,
     DIM_THING,
-    PAGE,
-    PAGE_TABLE,
+    LAYER,
+    LAYER_PAGE,
     THING_FRESHNESS,
-    page_files,
+    THINGS_PAGE,
+    THINGS_RELATION,
 )
 from analytics.pipelines.tests.schemas.render_setup import SILVER, SILVER_ARCHIVE, THINGS
 from pipelines.lake.types import SPARK_TYPES
 from pipelines.schemas.definitions import ColumnType, load_entities
+from pipelines.schemas.gold_definitions import load_gold_tables
 from pipelines.schemas.reference import (
-    GENERATED_NOTE,
     LAKE_TYPES,
+    LAYERS,
     ReferenceColumn,
     gold_relations,
+    index_page,
     lake_relations,
-    main,
+    layer_page,
     reference_pages,
-    render_page,
-    rendered_files,
-    stale_files,
-    write_files,
+    relation_page,
 )
 
 PAGES = reference_pages()
+LAKE_SUFFIXES = (("bronze", ("", "_quarantine")), ("silver", ("", "_history", "_current")))
 
 
 @pytest.mark.parametrize("column_type", list(ColumnType))
@@ -66,7 +67,7 @@ def test_a_gold_relation_has_its_public_description_and_postgres_types() -> None
         {THING_FRESHNESS.name: THING_FRESHNESS, DIM_THING.name: DIM_THING}
     )
 
-    assert dim_things.name == "dim_things"
+    assert dim_things.name == "gold.dim_things"
     assert dim_things.description == "Things not deleted in the source"
     assert [(column.name, column.type) for column in dim_things.columns] == [
         ("thing_id", "bigint"),
@@ -79,76 +80,46 @@ def test_a_gold_relation_has_its_public_description_and_postgres_types() -> None
     assert freshness.notes == ()
 
 
-def test_a_page_has_its_title_the_generated_note_and_a_section_per_relation() -> None:
-    text = render_page(PAGE)
-
-    assert text.startswith(f"# Bronze tables\n\n{GENERATED_NOTE}\n\n")
-    assert text.endswith(PAGE_TABLE)
+def test_a_relation_page_has_its_description_notes_and_columns() -> None:
+    assert relation_page(THINGS_RELATION) == THINGS_PAGE
 
 
-def test_the_reference_has_one_page_per_layer() -> None:
-    assert [page.file_name for page in PAGES] == ["bronze.md", "silver.md", "gold.md"]
+def test_a_layer_page_links_each_of_its_relations() -> None:
+    assert layer_page(LAYER, [THINGS_RELATION]) == LAYER_PAGE
 
 
-def test_the_lake_pages_cover_every_table_and_view_of_every_entity() -> None:
+def test_the_index_links_each_layer_with_its_number_of_relations() -> None:
+    text = index_page({LAYER: [THINGS_RELATION]})
+
+    assert text.startswith("# Table reference\n")
+    assert text.endswith("| [Bronze](bronze/index.md) | 1 | Typed changes |\n")
+
+
+def test_the_reference_has_an_index_a_page_per_layer_and_a_page_per_relation() -> None:
     entities = [entity.name for entity in load_entities()]
-    bronze, silver, _ = PAGES
-
-    assert {relation.name for relation in bronze.relations} == {
-        f"bronze.{entity}{suffix}" for entity in entities for suffix in ("", "_quarantine")
+    lake = {
+        f"reference/{layer}/{entity}{suffix}.md"
+        for layer, suffixes in LAKE_SUFFIXES
+        for entity in entities
+        for suffix in suffixes
     }
-    assert {relation.name for relation in silver.relations} == {
-        f"silver.{entity}{suffix}" for entity in entities for suffix in ("", "_history", "_current")
-    }
+    gold = {f"reference/gold/{name}.md" for name in load_gold_tables()}
+    layers = {f"reference/{layer.name}/index.md" for layer in LAYERS}
+
+    assert set(PAGES) == {"reference/index.md", *layers, *lake, *gold}
 
 
-def test_every_relation_and_column_in_the_reference_is_described() -> None:
-    relations = [relation for page in PAGES for relation in page.relations]
+def test_every_relation_page_describes_every_column() -> None:
+    relation_pages = [text for path, text in PAGES.items() if not path.endswith("index.md")]
 
-    assert all(relation.description.strip() for relation in relations)
-    assert all(column.description.strip() for r in relations for column in r.columns)
-
-
-def test_stale_files_names_missing_changed_and_extra_pages(tmp_path: Path) -> None:
-    (tmp_path / "bronze.md").write_text("old", encoding="utf-8")
-    (tmp_path / "retired.md").write_text("gone", encoding="utf-8")
-    (tmp_path / "notes.txt").write_text("not a page", encoding="utf-8")
-
-    stale = stale_files(tmp_path, {"bronze.md": "new", "silver.md": "new"})
-
-    assert stale == ["bronze.md", "retired.md", "silver.md"]
+    for text in relation_pages:
+        rows = [line for line in text.splitlines() if line.startswith("| `")]
+        assert rows
+        assert all(not re.search(r"\|\s*\|$", row) for row in rows)
 
 
-def test_a_missing_folder_makes_every_page_stale(tmp_path: Path) -> None:
-    assert stale_files(tmp_path / "missing", {"bronze.md": "text"}) == ["bronze.md"]
-
-
-def test_writing_the_pages_replaces_retired_ones_and_leaves_them_up_to_date(
-    tmp_path: Path,
-) -> None:
-    (tmp_path / "retired.md").write_text("gone", encoding="utf-8")
-    files = {"bronze.md": "bronze", "gold.md": "gold"}
-
-    write_files(tmp_path, files)
-
-    assert page_files(tmp_path) == files
-    assert stale_files(tmp_path, files) == []
-
-
-def test_the_command_writes_the_pages_and_its_check_then_passes(tmp_path: Path) -> None:
-    out_dir = tmp_path / "tables"
-
-    main([str(out_dir)])
-    main([str(out_dir), "--check"])
-
-    assert page_files(out_dir) == rendered_files(PAGES)
-
-
-def test_the_check_fails_and_writes_nothing_when_a_page_is_out_of_date(tmp_path: Path) -> None:
-    main([str(tmp_path)])
-    (tmp_path / "gold.md").write_text("edited by hand", encoding="utf-8")
-
-    with pytest.raises(SystemExit, match=r"out of date with the schemas \(gold\.md\)"):
-        main([str(tmp_path), "--check"])
-
-    assert (tmp_path / "gold.md").read_text(encoding="utf-8") == "edited by hand"
+def test_every_link_of_a_layer_page_names_a_page_of_that_layer() -> None:
+    for layer in LAYERS:
+        text = PAGES[f"reference/{layer.name}/index.md"]
+        for target in re.findall(r"\]\(([^)/]+\.md)\)", text):
+            assert f"reference/{layer.name}/{target}" in PAGES

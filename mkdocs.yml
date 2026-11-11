@@ -1,0 +1,47 @@
+site_name: Deel CDC pipeline
+site_description: Architecture, design and table reference of the CDC pipeline from PostgreSQL to the Iceberg lake and gold
+site_url: https://jonathan5p.github.io/deel-home-task/
+repo_url: https://github.com/jonathan5p/deel-home-task
+edit_uri: edit/main/docs/
+docs_dir: docs
+site_dir: target/site
+strict: true
+
+theme:
+  name: material
+  features:
+    - navigation.indexes
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+plugins:
+  - search
+  - gen-files:
+      scripts:
+        - tools/docs/reference_pages.py
+
+markdown_extensions:
+  - admonition
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format

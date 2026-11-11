@@ -12,6 +12,10 @@ dev = [
     "ruff>=0.17.4",
     "ty==0.0.98",
 ]
+docs = [
+    "mkdocs-gen-files>=0.5",
+    "mkdocs-material>=9.6",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["analytics/api/tests", "analytics/common/tests", "analytics/pipelines/tests", "tests/grafana"]

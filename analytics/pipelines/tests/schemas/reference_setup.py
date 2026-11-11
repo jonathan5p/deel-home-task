@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from analytics.pipelines.tests.schemas.render_setup import PRICE, THING_ID
 from pipelines.schemas.definitions import (
     ColumnDefinition,
@@ -8,7 +6,7 @@ from pipelines.schemas.definitions import (
     TableTemplate,
 )
 from pipelines.schemas.gold_definitions import GoldTable
-from pipelines.schemas.reference import ReferenceColumn, ReferencePage, Relation
+from pipelines.schemas.reference import Layer, ReferenceColumn, Relation
 
 CHANGED_AT = ColumnDefinition(
     "_changed_at", ColumnType.TIMESTAMP_MILLIS, "Commit time | in the source", not_null=True
@@ -33,21 +31,18 @@ THING_FRESHNESS = GoldTable(
     columns=(CHANGED_AT,),
 )
 
-PAGE = ReferencePage(
+LAYER = Layer(name="bronze", title="Bronze", summary="Typed changes", intro="Bronze intro.")
+THINGS_RELATION = Relation(
     layer="bronze",
-    relations=(
-        Relation(
-            name="bronze.things",
-            description="Changes | of things",
-            columns=(
-                ReferenceColumn("thing_id", "bigint", nullable=False, description="Identifier"),
-                ReferenceColumn("thing_name", "string", nullable=True, description="Name"),
-            ),
-            notes=("Partitioned by day of `_changed_at`.",),
-        ),
+    table="things",
+    description="Changes | of things",
+    columns=(
+        ReferenceColumn("thing_id", "bigint", nullable=False, description="Identifier"),
+        ReferenceColumn("thing_name", "string", nullable=True, description="Name"),
     ),
+    notes=("Partitioned by day of `_changed_at`.",),
 )
-PAGE_TABLE = """## bronze.things
+THINGS_PAGE = """# bronze.things
 
 Changes \\| of things
 
@@ -58,8 +53,11 @@ Partitioned by day of `_changed_at`.
 | `thing_id` | bigint | no | Identifier |
 | `thing_name` | string | yes | Name |
 """
+LAYER_PAGE = """# Bronze
 
+Bronze intro.
 
-def page_files(root: Path) -> dict[str, str]:
-    """The text of every Markdown page under `root`, by file name."""
-    return {path.name: path.read_text(encoding="utf-8") for path in sorted(root.glob("*.md"))}
+| Relation | Description |
+| --- | --- |
+| [bronze.things](things.md) | Changes \\| of things |
+"""

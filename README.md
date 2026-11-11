@@ -504,7 +504,7 @@ Outside Docker the Spark tests are skipped, so coverage is only meaningful with 
 
 #### Table and column definitions
 
-The [table reference](docs/reference/tables/) lists every bronze, silver and gold table and column with its type, nullability and description. It is rendered from these schemas: `make docs-tables` updates it, and a pre-commit hook and CI fail when it is out of date.
+The [docs site](https://jonathan5p.github.io/deel-home-task/) has a table reference with every bronze, silver and gold table and column, its type, nullability and description. It is rendered from these schemas each time the site is built: `make docs` builds it into the git-ignored `target/site/`, `make docs-serve` serves it locally, and the `docs` workflow publishes it to GitHub Pages from `main`.
 
 The pipelines name and describe their tables and columns from one set of [Avro schemas](https://avro.apache.org/docs/1.12.0/specification/) (`.avsc`, JSON) in `analytics/pipelines/src/pipelines/schemas/`, shipped as package data of `pipelines` (in the wheel and in the executors' `packages.zip`):
 
