@@ -11,7 +11,7 @@ Welcome to Deel's Data Engineering Take-Home task, as mentioned in the Task spec
 Install [Docker](https://www.docker.com/products/docker-desktop/) with [Compose v2](https://docs.docker.com/compose/install/), GNU Make and [uv](https://docs.astral.sh/uv/) (`make up` uses it to render the gold DDL). With the Docker engine running, run these commands from the repository root:
 
 ```sh
-make up             # Render the gold DDL, build changed local images and start the default stack (source/CDC, analytics database, metrics API, data lake, Spark cluster)
+make up             # Render the gold DDL, build changed local images and start the default stack (source/CDC, analytics database, analytics API, data lake, Spark cluster)
 make up PROFILES="monitoring history"  # Also start optional services (any combination of profiles)
 make down           # Stop/remove all project containers, including optional profiles; keep volumes
 make spark-submit   # Submit a job to the Spark cluster (defaults to a one-minute UI check job)
@@ -57,7 +57,7 @@ Consumers of gold never use the `analytics` owner. Each one logs in with a servi
 
 | Login | Used by | Credentials in `.env` | Statement timeout |
 | --- | --- | --- | --- |
-| `api_reader` | the metrics API | `API_READER_USER`, `API_READER_PASSWORD` | 5 s |
+| `api_reader` | the analytics API | `API_READER_USER`, `API_READER_PASSWORD` | 5 s |
 
 ```sh
 docker compose exec -e PGPASSWORD=api_reader analytics-db psql -h localhost -U api_reader -d analytics -c "select * from gold.data_freshness"
@@ -421,7 +421,7 @@ pyproject.toml              workspace root: members, development tools and their
 uv.lock                     locked versions for the whole workspace (install with uv sync --frozen)
 .python-version             Python 3.14.10, the same version the Spark image runs
 analytics/
-  api/                      project "api": the FastAPI metrics API over the gold views, depends on common
+  api/                      project "api": the FastAPI analytics API over the gold views, depends on common
     src/api/
       settings.py           API settings (analytics database, connection pool)
       models.py             response models
@@ -950,9 +950,9 @@ docker compose logs -f maintenance-job       # one summary line per table and ru
 
 When a stream is reset deliberately, the guard follows its new checkpoint. Iceberg also stores a stream's first snapshot in its checkpoint (`sources/0/offsets/0`), and a restart with `trigger(availableNow=True)` (the jobs' `--available-now` flag) goes back to it: once that snapshot is expired, an `--available-now` run of a stream reading an Iceberg table fails, while the long-running jobs, which use a processing-time trigger, resume normally. Reset the checkpoint of such a one-off run, or run the stream as a long-running job.
 
-#### Metrics API
+#### Analytics API
 
-The metrics API (`analytics/api`, [FastAPI](https://fastapi.tiangolo.com/)) serves the four business questions and the freshness of gold over HTTP. It starts with `make up` as the `api` service, on http://localhost:8000, with its interactive documentation on http://localhost:8000/docs and the OpenAPI document on http://localhost:8000/openapi.json. It reads only the `gold` views, as the read-only login `api_reader` (see [read-only service logins](#read-only-service-logins)), through a connection pool (`API_DB_POOL_*` in [configuration](#configuration)).
+The analytics API (`analytics/api`, [FastAPI](https://fastapi.tiangolo.com/)) serves the four business questions and the freshness of gold over HTTP. It starts with `make up` as the `api` service, on http://localhost:8000, with its interactive documentation on http://localhost:8000/docs and the OpenAPI document on http://localhost:8000/openapi.json. It reads only the `gold` views, as the read-only login `api_reader` (see [read-only service logins](#read-only-service-logins)), through a connection pool (`API_DB_POOL_*` in [configuration](#configuration)).
 
 | Endpoint | Answer |
 | --- | --- |
@@ -964,6 +964,8 @@ The metrics API (`analytics/api`, [FastAPI](https://fastapi.tiangolo.com/)) serv
 | `GET /freshness` | `{"checked_at", "entities": [{"entity", "last_changed_at", "lag_seconds"}]}`, from `gold.data_freshness` at the database's clock, in UTC |
 
 Each metric returns the rows of its query in `analytics/sql/gold/`, in the same order; dates are ISO 8601 and unknown values `null`. While the database is unreachable, slower than the pool timeout or without readable gold views, the metric and freshness endpoints answer `503` with a `detail`; any other failure answers `500` without its details. The API starts even while the database is down, reports itself unhealthy (`docker compose ps api`) and reconnects when the database is back.
+
+The rows are read with plain SQL into small hand-written response models (`api/models.py`), which is enough for a read-only API over a handful of views; a larger project would use an ORM or SQL toolkit such as [SQLAlchemy](https://www.sqlalchemy.org/) for the queries, the mapping and the connections.
 
 ```sh
 curl -s localhost:8000/health
