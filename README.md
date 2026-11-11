@@ -4,9 +4,7 @@
 
 Welcome to Deel's Data Engineering Take-Home task, as mentioned in the Task specification document, this is the pre-built stack that will help you on your solution development. This repository contains a pre-configured database containing the database represented by the following DER:
 
-
 ![Database Diagram](./diagrams/database-diagram.png)
-
 
 ### Database Configuration
 
@@ -157,7 +155,7 @@ docker compose exec analytics-db psql -U analytics -d analytics -c "select * fro
 | Endpoint | From the host | From other containers |
 | --- | --- | --- |
 | S3 API | `http://localhost:8333` | `http://seaweedfs:8333` |
-| Filer UI (browse buckets and files) | http://localhost:8888/buckets/lake/ | `http://seaweedfs:8888` |
+| Filer UI (browse buckets and files) | <http://localhost:8888/buckets/lake/> | `http://seaweedfs:8888` |
 
 | Setting | Value |
 | --- | --- |
@@ -202,7 +200,7 @@ To inspect the result:
 docker compose exec analytics-db psql -U analytics -d iceberg_catalog -c "select * from iceberg_tables"
 ```
 
-The table files are visible at http://localhost:8888/buckets/lake/warehouse/smoke/iceberg_check/.
+The table files are visible at <http://localhost:8888/buckets/lake/warehouse/smoke/iceberg_check/>.
 
 ### Optional Kafka monitoring
 
@@ -213,7 +211,7 @@ docker compose --profile monitoring up -d --no-deps --wait conduktor-db
 docker compose --profile monitoring up -d --no-deps --wait conduktor-console
 ```
 
-Open http://localhost:8090 and sign in with `admin@local.test` / `LocalConsole123!`. These are public development-only credentials. The current `8090:8080` mapping publishes on all host interfaces; use `127.0.0.1:8090:8080` if localhost-only binding is required. Console connects to the existing broker at `kafka:29092`.
+Open <http://localhost:8090> and sign in with `admin@local.test` / `LocalConsole123!`. These are public development-only credentials. The current `8090:8080` mapping publishes on all host interfaces; use `127.0.0.1:8090:8080` if localhost-only binding is required. Console connects to the existing broker at `kafka:29092`.
 
 Only Console and its metadata PostgreSQL database are added. Topic management, message browsing/production, and basic cluster inspection do not require Cortex. Historical metrics dashboards and alerting are not included; no ksqlDB service is required.
 
@@ -298,15 +296,15 @@ bootstrap.servers=localhost:9092
 
 | Service | UI | Resources |
 |---|---|---|
-| `spark-master` | http://localhost:8080 | Cluster manager; accepts jobs at `SPARK_MASTER_URL` |
-| `spark-worker-1` | http://localhost:8081 | 5 cores, 5 GiB executor memory |
-| `spark-worker-2` | http://localhost:8082 | 5 cores, 5 GiB executor memory |
-| `spark-history` (optional) | http://localhost:18080 | History server for finished, crashed and running applications; started with `make spark-history` |
-| `spark-app` (one container per run) | http://localhost:4040 | Driver of an application started by `make spark-submit`; its UI is only available while it runs |
-| `landing-job` (optional) | http://localhost:4040 | Driver of the landing job, a long-running service started by `make pipeline` (see [Running the pipeline](#running-the-pipeline)) |
-| `bronze-job` (optional) | http://localhost:4041 | Driver of the bronze job, started the same way |
-| `silver-job` (optional) | http://localhost:4042 | Driver of the silver job, started the same way |
-| `gold-job` (optional) | http://localhost:4045 | Driver of the gold job, a long-running service started by `make pipeline PIPELINE=gold` (see [Gold job](#gold-job)) |
+| `spark-master` | <http://localhost:8080> | Cluster manager; accepts jobs at `SPARK_MASTER_URL` |
+| `spark-worker-1` | <http://localhost:8081> | 5 cores, 5 GiB executor memory |
+| `spark-worker-2` | <http://localhost:8082> | 5 cores, 5 GiB executor memory |
+| `spark-history` (optional) | <http://localhost:18080> | History server for finished, crashed and running applications; started with `make spark-history` |
+| `spark-app` (one container per run) | <http://localhost:4040> | Driver of an application started by `make spark-submit`; its UI is only available while it runs |
+| `landing-job` (optional) | <http://localhost:4040> | Driver of the landing job, a long-running service started by `make pipeline` (see [Running the pipeline](#running-the-pipeline)) |
+| `bronze-job` (optional) | <http://localhost:4041> | Driver of the bronze job, started the same way |
+| `silver-job` (optional) | <http://localhost:4042> | Driver of the silver job, started the same way |
+| `gold-job` (optional) | <http://localhost:4045> | Driver of the gold job, a long-running service started by `make pipeline PIPELINE=gold` (see [Gold job](#gold-job)) |
 
 Spark runs PySpark on **Python 3.14** (3.14.10), the newest version PySpark 4.1.4 supports. The official `apache/spark` images ship Python 3.10, so the Dockerfile installs CPython 3.14 with [uv](https://docs.astral.sh/uv/) at build time and points `PYSPARK_PYTHON` at it; every driver and executor uses it.
 
@@ -363,7 +361,7 @@ When it starts, it lists every application whose event logs are in the volume, i
 
 #### Checking the application UI
 
-The application UI at http://localhost:4040 exists only while a driver runs. The default job, [`tests/infra/apps/spark_ui_check.py`](tests/infra/apps/spark_ui_check.py), is a dummy streaming query that runs for one minute so the UI can be inspected. It reads Spark's built-in `rate` source and counts rows per 10-second window every five seconds. While the job runs, open http://localhost:4040:
+The application UI at <http://localhost:4040> exists only while a driver runs. The default job, [`tests/infra/apps/spark_ui_check.py`](tests/infra/apps/spark_ui_check.py), is a dummy streaming query that runs for one minute so the UI can be inspected. It reads Spark's built-in `rate` source and counts rows per 10-second window every five seconds. While the job runs, open <http://localhost:4040>:
 
 | Tab | What to look at |
 |---|---|
@@ -412,7 +410,7 @@ Spark reads each topic folder through its file-sink commit log (`_spark_metadata
 
 Extra informations and tips about the task execution can be found in the task description document shared by our recruiting team.
 
-For any questions, feel free to reach us out through data-platform@deel.com
+For any questions, feel free to reach us out through <data-platform@deel.com>
 
 ### Application code
 
@@ -627,16 +625,16 @@ make lake-views                       # create or update the silver and gold vie
 
 | Job | Service | Application UI |
 | --- | --- | --- |
-| landing | `landing-job` | http://localhost:4040 |
-| bronze | `bronze-job` | http://localhost:4041 |
-| silver | `silver-job` | http://localhost:4042 |
-| gold | `gold-job` | http://localhost:4045 |
+| landing | `landing-job` | <http://localhost:4040> |
+| bronze | `bronze-job` | <http://localhost:4041> |
+| silver | `silver-job` | <http://localhost:4042> |
+| gold | `gold-job` | <http://localhost:4045> |
 
 Where to look while a job runs:
 
 - **Application UI** on the job's port (table above), including the Structured Streaming tab with one query per topic.
-- **History Server** at http://localhost:18080, for current and past runs, since every driver writes event logs to the `spark-events` volume.
-- **Landing files** in the SeaweedFS filer UI at http://localhost:8888/buckets/lake/landing/, one folder per topic.
+- **History Server** at <http://localhost:18080>, for current and past runs, since every driver writes event logs to the `spark-events` volume.
+- **Landing files** in the SeaweedFS filer UI at <http://localhost:8888/buckets/lake/landing/>, one folder per topic.
 
 Each job service submits its application with the same settings as `make spark-submit`, plus `spark.cores.max=2` and the service name as the driver host, so executors on the workers can connect back to it. The services restart unless they were stopped (`restart: unless-stopped`): a job whose driver fails is restarted and resumes from its checkpoints, without skipping or duplicating records. A container stopped with `make pipeline-stop` or `docker stop`/`docker kill` stays stopped until the next `make pipeline`.
 
