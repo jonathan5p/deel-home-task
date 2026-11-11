@@ -1,8 +1,6 @@
-# Gold dimensional model
+# Gold model
 
-**Gold is stored in PostgreSQL and computed in the lake.** Bronze and silver are Iceberg tables in the lake (SeaweedFS); gold is the `analytics` database on the `analytics-db` PostgreSQL service, in two schemas: `gold_internal` (the tables the pipeline writes) and `gold` (the views consumers read). The lake has the same model as Iceberg views over silver, `lake.gold.<relation>`, which store nothing (see [Gold in the lake](#gold-in-the-lake)).
-
-Gold is the serving layer: a star schema in PostgreSQL that answers the four business questions with near-real-time current state and keeps the history of every change. Spark builds it from the silver history tables in the lake.
+The design of gold in PostgreSQL: what it reads from silver, its tables and public views, the star schema and its rules, and the business-question views with the indexes behind them. How the gold job writes it, and the same model as views in the lake, are in [the gold writer](writer.md).
 
 ## Inputs from silver
 
@@ -34,7 +32,7 @@ Gold applies the rule without dropping rows: bronze replays can append a missing
 
 Gold has two schemas:
 
-- **`gold_internal`** holds the tables. Only the gold streaming queries write them, and they keep the metadata they need: `_commit_sequence` to skip replayed batches and to order versions, `_is_deleted` for soft deletes and the fold rule, and `_content_hash` for the fold rule. It also holds the staging tables the gold job loads every micro-batch into (see [Writing gold](#writing-gold)), and the dimension versions views, the one place that derives the dimensions' `_is_folded`, `_valid_to` and `_is_current`: the public dimension views and the facts' as-of lookups both read them.
+- **`gold_internal`** holds the tables. Only the gold streaming queries write them, and they keep the metadata they need: `_commit_sequence` to skip replayed batches and to order versions, `_is_deleted` for soft deletes and the fold rule, and `_content_hash` for the fold rule. It also holds the staging tables the gold job loads every micro-batch into (see [Writing gold](writer.md#writing-gold)), and the dimension versions views, the one place that derives the dimensions' `_is_folded`, `_valid_to` and `_is_current`: the public dimension views and the facts' as-of lookups both read them.
 - **`gold`** holds one view per table, with the same name, for consumers: the business question views, the API and anyone browsing the model, plus `open_orders`, the current orders that are open. The views leave out `_commit_sequence`, `_content_hash`, `_is_deleted` and `_is_folded`, and `gold.current_orders` also leaves out `is_open`; the current-state views leave out deleted rows, the dimension views leave out folded and deleted versions, and the history views leave out unchanged changes and add each change's validity range.
 
 Consumers never need to know how the pipeline orders or deduplicates changes, and the tables can change for the pipeline without breaking them.
@@ -226,141 +224,6 @@ Example: product 3 costs 3.00 from a change committed at 10:00, with an unchange
 
 Example: customer 3 has order 10 `PENDING` with two items of product 5 (quantities 4 and 6), and order 11 `COMPLETED` with one item of product 5. Customer 3 has one pending order; product 5 has two pending items with a total quantity of 10.
 
-## Current state and retention
-
-**Current state is stored in tables** updated by the streaming queries, in the same database transaction as the history insert. The metric views read only these small tables, so they stay fast as history grows.
-
-The alternatives were rejected:
-
-- A view that picks the latest version from history gets slower as history grows.
-- A materialized view recomputes everything on every refresh, too slow for one refresh per micro-batch.
-- Both would lose orders that are still open but whose last change is older than the retention window.
-
-**Retention:** the history facts keep 3 years by default in PostgreSQL. They are range-partitioned by month on `_changed_at`, so retention drops whole partitions instead of deleting rows. The retention job creates the monthly partitions ahead and drops the expired ones; the DDL creates only each history table's default partition, which catches every row outside the monthly partitions. Current-state tables and the dimensions are never trimmed, so an order that is still open keeps its current row however old it is. The gold views in the lake keep the full history, from silver.
-
-The retention job (`pipelines/gold/retention.py`, run once by `make up` and `make pipeline` and then daily by the `gold-retention-job` service) calls `gold_internal.apply_history_retention(keep_months, months_ahead, as_of)` in one transaction that first takes the [gold writer lock](#dimension-keys-of-the-facts):
-
-1. `ensure_history_partitions(months_ahead, as_of)` creates a partition for every month from the month of `as_of` to `months_ahead` months ahead, and for every month the default partition holds rows of, moving those rows into it. The default partition fills up whenever history arrives for a month without a partition: everything the gold job writes before the first retention run, a late change, or every month before the current one when gold is reloaded from silver. A partition cannot be created while the default partition holds rows of its month, so the rows are moved in the same transaction. Without this step those rows would never be dropped.
-2. Every monthly partition whose upper bound is on or before the first day of the month `keep_months` months before `as_of` is dropped; the bound is read from the partition, not from its name. A month partly inside the window is kept, so the window holds at least `keep_months` full months.
-
-```mermaid
-sequenceDiagram
-    participant R as retention job
-    participant P as PostgreSQL
-    R->>P: BEGIN
-    R->>P: pg_advisory_xact_lock (gold writer lock)
-    R->>P: apply_history_retention(36, 2, today)
-    P->>P: partition the months held by the default partition and the months ahead
-    P->>P: DROP the partitions that end before the window
-    P-->>R: dropped partitions
-    R->>P: COMMIT
-```
-
-Taking the writer lock first means retention waits for a running merge and a merge waits for retention, always in the same order (the advisory lock, then the table locks), so the two never deadlock. Dropping a partition takes a short exclusive lock on its history table; `DETACH PARTITION ... CONCURRENTLY` would avoid it, but PostgreSQL does not allow it on a table with a default partition.
-
-## Writing gold
-
-The gold job (`pipelines/gold/job.py`) runs four streaming queries, one per silver table: `customers` into `dim_customer`, `products` into `dim_product`, `orders` into `fact_order_history` and `current_orders`, and `order_items` into `fact_order_item_history` and `current_order_items`. Each has its checkpoint in `<CHECKPOINT_ROOT>/gold/<table>/`, named after its dimension or history fact, and writes every micro-batch in two steps:
-
-1. **Stage.** Spark's JDBC writer replaces the rows of the stream's staging table, `gold_internal.stage_<table>` (overwrite with `truncate`, so the table and its descriptions stay). The staging tables are unlogged: they hold only the batch being written, so they need no crash safety and write faster.
-2. **Merge, in one transaction.** The driver connects with psycopg and, in one PostgreSQL transaction, takes the [gold writer lock](#dimension-keys-of-the-facts), then for a dimension:
-   1. inserts the staged versions not stored yet (`ON CONFLICT (key, _commit_sequence) DO NOTHING`); nothing stored is ever updated, because the versions views derive `_is_folded`, `_valid_to` and `_is_current` from all of a key's versions ordered by `_commit_sequence` whenever they are read;
-   2. re-resolves the dimension keys of the history facts that look it up, for the keys the batch touched.
-
-   And for a history fact:
-   1. appends the staged changes not stored yet to the history (`ON CONFLICT (key, _commit_sequence, _changed_at) DO NOTHING`), with their status, date and as-of dimension keys;
-   2. takes the latest staged change of each key (`DISTINCT ON (key) ... ORDER BY key, _commit_sequence DESC`) and merges it into the current-state table with PostgreSQL `MERGE`: a key not stored yet is inserted (`WHEN NOT MATCHED THEN INSERT`), and a stored row is replaced only if the change's `_commit_sequence` is higher (`WHEN MATCHED AND source._commit_sequence > target._commit_sequence THEN UPDATE`). The writer lock keeps two merges from inserting the same new key at once.
-
-```mermaid
-sequenceDiagram
-    participant S as silver table
-    participant J as gold job (driver)
-    participant X as executors
-    participant P as PostgreSQL
-    S->>J: micro-batch of new silver rows
-    J->>X: write the batch
-    X->>P: TRUNCATE + INSERT stage_* (JDBC)
-    J->>P: BEGIN
-    J->>P: pg_advisory_xact_lock (gold writer lock)
-    alt dimension
-        J->>P: INSERT new versions ON CONFLICT DO NOTHING
-        J->>P: UPDATE the fact rows whose dimension keys change
-    else history fact
-        J->>P: INSERT changes into history ON CONFLICT DO NOTHING
-        J->>P: MERGE the latest change per key into current state if newer
-    end
-    J->>P: COMMIT
-    J->>S: commit the batch in the checkpoint
-```
-
-**Idempotency.** Both steps can run again with the same input and leave the same result: staging is replaced, the inserts skip stored versions and changes, the current state only takes a higher `_commit_sequence`, and the versions views and the re-resolution derive their values from what is stored, not from the batch. A batch replayed after a failure, a whole silver table reprocessed from a fresh checkpoint, a duplicate change and a late older change all end in the same rows. No transaction spans Spark's checkpoint and PostgreSQL, so a batch that fails between them is simply replayed.
-
-**Generic writer.** The staging tables' columns, the INSERT and MERGE column lists, the dimension versions views and the re-resolution SQL are built from the gold schemas, never written by hand: `pipelines/gold/scd2.py` for the dimensions (with the SQL in the templates `scd2_insert.sql.j2` and `scd2_versions.sql.j2` next to it) and `pipelines/gold/facts.py` for the history facts and their current-state tables (with the SQL in the templates `fact_history.sql.j2`, `fact_current.sql.j2`, `fact_dimension_version_lookup.sql.j2` and `fact_resolve.sql.j2`). A column is loaded from the silver column its `from` names (`<entity>.<lake name>`), a metadata column from the silver column of the same name, `_valid_from` from `_changed_at`, and any other column from a rename the dimension declares (`unit_price` from `unity_price`) or a lookup the fact declares (`status_key` and `is_open`, the date keys and the as-of dimension columns, in `pipelines/gold/dimensions.py`). The surrogate keys are left to PostgreSQL, the dimensions' derived columns to their versions views, and the looked-up columns to the merge. The gold views in the lake are built from the same declarations.
-
-**Freshness.** `gold.data_freshness` reports, per entity, how up to date gold is. For now it is computed from the data, as the source commit time of the newest change gold holds, so it ages when the source stops changing even though the pipeline is healthy. Later it will be filled from the pipeline statistics, with the same shape. Those statistics (per micro-batch rows, durations, last `_commit_sequence`, last event time) are planned in a separate `observability` catalog in the lake, apart from the business data (#127).
-
-## Rebuilding from silver
-
-Silver keeps every change, so gold can always be rebuilt from it. `make gold-rebuild CONFIRM=1 [TO_TIME=...]` resets gold (`make gold-reset`) and runs the batch job `pipelines/gold/rebuild.py`:
-
-1. For each load, dimensions first, it reads the silver table in batch and keeps the changes with `_changed_at` at or before `TO_TIME` (all of them without one).
-2. It writes them with the gold job's own sink: the staging load, then one merge transaction under the [gold writer lock](#dimension-keys-of-the-facts). The merges are idempotent and independent of arrival order, so one batch per load gives the same rows as any sequence of micro-batches over the same changes.
-3. It applies [retention](#current-state-and-retention), which first partitions the months the reload put in the default partition.
-
-A rebuild up to a cutoff therefore matches what the stream would have built had it processed exactly the changes committed up to that time, late arrivals included. The generated surrogate keys get new values. The gold job is left stopped; started again on the fresh checkpoints, it re-reads silver from the start, the merges skip what the rebuild stored, and it continues past the cutoff.
-
-```mermaid
-sequenceDiagram
-    participant M as make gold-rebuild
-    participant S as silver tables
-    participant J as rebuild job (driver)
-    participant P as PostgreSQL
-    M->>P: gold-reset: drop and recreate the gold schemas
-    M->>J: spark-submit rebuild.py --to-time
-    loop dim_customer, dim_product, fact_order_history, fact_order_item_history
-        J->>S: read the table, _changed_at <= cutoff
-        J->>P: stage, then merge in one transaction under the writer lock
-    end
-    J->>P: apply_history_retention under the writer lock
-```
-
-## Gold in the lake
-
-The lake has the gold model too, for consumers that read the lake rather than PostgreSQL: one Iceberg view per public gold relation in `lake.gold` (`dim_customer`, `dim_product`, `dim_date`, `dim_order_status`, `fact_order_history`, `fact_order_item_history`, `current_orders`, `current_order_items`, `open_orders`, the four business-question views and `data_freshness`). Silver is already an append-only store of every version, so the lake keeps no copy of gold: the views compute it from silver on every read, and nothing writes them but `make lake-views`, which creates them after the silver views and replaces only those whose query or descriptions changed. The gold job writes PostgreSQL only. The lake keeps the full history; PostgreSQL's retention window does not apply to it.
-
-```mermaid
-flowchart LR
-    S[lake.silver.entity] --> H[lake.silver.entity_history]
-    S --> J[gold job] --> P[(PostgreSQL gold)]
-    H --> D[lake.gold dimensions and history facts]
-    S --> C[lake.gold current state]
-```
-
-**Same rules, read time instead of write time.** The views apply the rules of [Rules](#rules) and give the rows the PostgreSQL `gold` views show:
-
-- **Folding and validity** come from silver's `<entity>_history` views, which apply the fold rule of [Inputs from silver](#inputs-from-silver) and give each remaining version `_valid_from`, `_valid_to` and `_is_current`. The dimension views leave deletes out, so the version before a delete ends at it and a deleted key has no current version; the history facts keep the delete as the key's last row, never current.
-- **Current state** is the latest change of each key by `_commit_sequence`, folded or not, read from the silver table, without deleted keys: the change PostgreSQL's current-state tables hold, with the same `_changed_at`.
-- **Key lookups** (`status_key` with the `UNKNOWN` fallback, the date keys) join the `dim_order_status` and `dim_date` views. Those two generate their rows (a `VALUES` list and a `sequence` of days); an infra test checks they equal PostgreSQL's seeds.
-- **As-of attributes** (`unit_price` and `line_amount` of the item history) come from the product version that is not deleted and whose [`_valid_from`, `_valid_to`) contains the change's `_changed_at`, or the product's first version for an older change, the highest `_commit_sequence` winning when clock skew overlaps two ranges. A late product version needs no re-resolution: the next read takes it into account.
-- **Freshness** is the newest `_changed_at` of each silver table.
-- **Open orders and the business questions** are the same SQL as in PostgreSQL, over the lake views: `open_orders` keeps the current orders whose status is open, and the four business-question views read it.
-- **Described from the gold schemas:** each view and column has the description of the PostgreSQL `gold` view and column of the same name.
-
-**Natural keys, no surrogate keys.** PostgreSQL generates the surrogate keys (`customer_key`, `product_key`), and the lake cannot reproduce them, so the lake views leave them out. Facts refer to the dimensions by their natural keys (`customer_id`, `product_id`) and carry the dimension attributes resolved as of each change (`unit_price`, `line_amount`). To look up any other attribute of the version valid at a change, join on the natural key and the validity range:
-
-```sql
-SELECT i.order_item_id, i._changed_at, p.product_name
-FROM lake.gold.fact_order_item_history AS i
-JOIN lake.gold.dim_product AS p
-  ON p.product_id = i.product_id
- AND p._valid_from <= i._changed_at
- AND (p._valid_to IS NULL OR i._changed_at < p._valid_to);
-```
-
-This join finds no version for a change older than the product's first version (the tables are snapshotted a few milliseconds apart), and finds two when clock skew overlaps two ranges; the attributes the fact carries handle both cases as PostgreSQL does.
-
-**Validation.** `make data-quality CHECK=gold` compares each PostgreSQL `gold` view with its lake view computed over silver at the snapshots the gold job has committed, so it checks silver against gold and the lake views against PostgreSQL in one pass. It matches dimension versions through `_commit_sequence` rather than through a public column, and history from the first month PostgreSQL keeps (see the README's data quality checks).
-
 ## The four business questions
 
 Each question is a view in `gold`, built on `gold.open_orders` and the `gold` views of the current items and the dimensions, and described like every other view (from its schema in `schemas/gold/<view>.avsc`):
@@ -387,6 +250,19 @@ Each question is a view in `gold`, built on `gold.open_orders` and the `gold` vi
 SELECT delivery_date, open_orders
 FROM gold.top_delivery_dates_by_open_orders
 ORDER BY open_orders DESC, delivery_date;
+```
+
+### Querying the views
+
+```sh
+docker compose exec -T analytics-db psql -U analytics -d analytics < analytics/sql/gold/01_open_orders_by_delivery_date_and_status.sql
+docker compose exec analytics-db psql -U analytics -d analytics -c "select * from gold.top_customers_by_pending_orders order by pending_orders desc, customer_id"
+```
+
+`gold.data_freshness` shows, per entity (customers, products, orders, order items), how up to date gold is. For now it is computed from the data, as the source commit time of the newest change gold holds, so it ages when the source stops changing even though the pipeline is healthy. Later the pipeline metrics (#127) will fill it; its shape stays the same.
+
+```sh
+docker compose exec analytics-db psql -U analytics -d analytics -c "select * from gold.data_freshness"
 ```
 
 ### Indexes behind the views

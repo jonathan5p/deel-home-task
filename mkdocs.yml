@@ -8,6 +8,47 @@ site_dir: target/site
 strict: true
 dev_addr: 127.0.0.1:8001
 
+validation:
+  anchors: warn
+
+nav:
+  - Home: README.md
+  - Architecture:
+      - architecture/overview.md
+      - architecture/infrastructure.md
+      - architecture/sizing.md
+      - architecture/decisions.md
+  - Lakehouse:
+      - lakehouse/index.md
+      - lakehouse/source-and-cdc.md
+      - lakehouse/landing.md
+      - lakehouse/bronze.md
+      - lakehouse/silver.md
+      - Gold:
+          - lakehouse/gold/index.md
+          - lakehouse/gold/model.md
+          - lakehouse/gold/writer.md
+      - lakehouse/data-quality.md
+  - Serving:
+      - serving/api.md
+      - serving/grafana.md
+      - serving/lake-access.md
+  - Operations:
+      - operations/running-the-pipeline.md
+      - operations/maintenance-and-recovery.md
+      - operations/debugging.md
+      - operations/configuration.md
+  - Development:
+      - development/code-layout.md
+      - development/table-definitions.md
+      - development/testing.md
+  - Reference:
+      - reference/index.md
+      - Bronze: reference/bronze/index.md
+      - Silver: reference/silver/index.md
+      - Gold: reference/gold/index.md
+      - reference/original-readme.md
+
 theme:
   name: material
   features:

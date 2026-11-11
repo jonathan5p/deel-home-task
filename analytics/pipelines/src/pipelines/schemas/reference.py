@@ -76,7 +76,7 @@ LAYERS: tuple[Layer, ...] = (
             "Gold lives in the analytics PostgreSQL. Each relation is a table in `gold_internal`"
             " with a view of the same name in `gold`, or a view in `gold` only. The public views"
             " leave out pipeline metadata such as `_commit_sequence` and `_is_deleted`;"
-            " [the gold model](../../architecture/gold-model.md) describes what each view shows."
+            " [the gold model](../../lakehouse/gold/model.md) describes what each view shows."
             " **Type** is the PostgreSQL type, and **Nullable** `no` means `NOT NULL`."
         ),
     ),
