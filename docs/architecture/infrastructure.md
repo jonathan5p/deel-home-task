@@ -1,6 +1,6 @@
 # Infrastructure
 
-Every service runs in one Docker Compose project. The [architecture overview](overview.md#components) shows how they connect; this page covers how each one is set up: the Compose stack and its profiles, the analytics database, the SeaweedFS lake and the Spark cluster with its Iceberg catalogs.
+Every service runs in one Docker Compose project. The [architecture overview](overview.md#containers-and-connections) shows how they connect; this page covers how each one is set up: the Compose stack and its profiles, the analytics database, the SeaweedFS lake and the Spark cluster with its Iceberg catalogs.
 
 ## Starting the stack
 

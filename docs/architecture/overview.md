@@ -102,6 +102,7 @@ flowchart LR
 | `api-dev` | `app` | Image for the API's own checks (`make test`, `make typecheck`) | none |
 | `seaweedfs` | default | S3-compatible object store. Bucket `lake` holds landing files, Iceberg data and metadata, checkpoints and quality reports | 8333 (S3), 8888 (filer) |
 | `analytics-db` | default | Analytics PostgreSQL. Database `analytics` holds gold (`gold_internal`, `gold`), and database `iceberg_catalog` holds the Iceberg JDBC catalog. Consumers log in with read-only service logins in the `gold_reader` role (`make db-logins`) | 5433 |
+| `iceberg-rest` | `catalog` | Read-only Iceberg REST catalog over the JDBC catalog, for engines such as DuckDB; logs in as `lake_catalog_reader` | 8181 |
 | `spark-master` | default | Standalone master | 8080 |
 | `spark-worker-1`, `spark-worker-2` | default | Executors, 5 cores and 5 GiB each | 8081, 8082 |
 | `landing-job` | `pipeline` | Kafka to raw Avro landing files | 4040 |
@@ -111,11 +112,110 @@ flowchart LR
 | `gold-job` | `pipeline` | Silver to the PostgreSQL gold model | 4045 |
 | `maintenance-job` | `maintenance` | Compacts, expires and cleans the lake's Iceberg tables on a schedule | 4044 |
 | `gold-retention-job` | `maintenance` | Drops gold history months outside the retention window on a schedule (Python, no Spark) | none |
+| `data-quality-job` | `data-quality` | Runs every data quality check on a schedule and writes their reports to the lake | none |
 | `spark-app` | `app` | Image for throwaway drivers started by `make spark-submit`, `make spark-sql`, `make data-quality`, `make bronze-replay` (UI 4043), `make gold-rebuild` and `make lake-maintenance` | `SPARK_UI_PORT` |
 | `spark-history` | `history` | Spark History Server over the shared `spark-events` volume | 18080 |
 | `conduktor-console`, `conduktor-db` | `monitoring` | Optional Kafka console and its metadata database | 8090 |
 
 Each job's driver runs in its own container in client mode, and its executors run on the shared workers (decision [D27](decisions.md#d27--one-driver-container-per-application-executors-on-shared-workers)). Each application is capped at `spark.cores.max=2`, so the four streaming jobs use 8 of the 10 cores and leave 2 for ad-hoc runs and maintenance. [The sizing strategy](sizing.md) explains how the cores and memory are shared.
+
+## Containers and connections
+
+Every container of the Compose project, optional profiles included, and the connections between them. An arrow points from the client to the service it connects to, and its label names what flows. The ports are the ones on the Compose network, which containers use to reach each other; the host ports are in the table above. A Spark application is drawn as its driver container, but its executors on the workers do most of the reading and writing, so they open the same connections to Kafka, SeaweedFS and `analytics-db`.
+
+```mermaid
+flowchart LR
+    subgraph cdc["Source and CDC"]
+        tdb[("transactions-db :5432<br/>PostgreSQL finance_db")]
+        connect["kafka-connect :8083<br/>Debezium"]
+        dinit["debezium-init<br/>one-shot"]
+        zk["zookeeper :2181"]
+        kafka[["kafka :29092"]]
+    end
+
+    subgraph cluster["Spark standalone cluster"]
+        master["spark-master<br/>:7077, UI :8080"]
+        workers["spark-worker-1, spark-worker-2<br/>executors, UI :8081"]
+    end
+
+    subgraph drivers["Spark drivers, one container per application"]
+        landing["landing-job<br/>pipeline"]
+        bronze["bronze-job<br/>pipeline"]
+        silver["silver-job<br/>pipeline"]
+        views["lake-views<br/>pipeline, one-shot"]
+        goldjob["gold-job<br/>pipeline"]
+        maint["maintenance-job<br/>maintenance"]
+        dq["data-quality-job<br/>data-quality"]
+        app["spark-app<br/>app: make spark-submit, spark-sql,<br/>data-quality, bronze-replay,<br/>gold-rebuild, lake-maintenance"]
+    end
+
+    subgraph storage["Storage"]
+        s3[("seaweedfs<br/>S3 :8333, filer :8888<br/>bucket lake")]
+        adb[("analytics-db :5432<br/>analytics: gold_internal, gold<br/>iceberg_catalog")]
+        events[("spark-events volume")]
+    end
+
+    retention["gold-retention-job<br/>maintenance, Python"]
+    rest["iceberg-rest :8181<br/>catalog"]
+    history["spark-history :18080<br/>history"]
+
+    subgraph serving["Serving"]
+        api["api :8000<br/>FastAPI"]
+        grafana["grafana :3000"]
+    end
+
+    subgraph monitoring["Profile monitoring"]
+        conduktor["conduktor-console :8080"]
+        cdb[("conduktor-db :5432")]
+    end
+
+    apidev["api-dev<br/>app: API checks only"]
+
+    dinit -- "REST: registers the connector" --> connect
+    connect -- "logical replication of operations.*" --> tdb
+    connect -- "writes the CDC topics" --> kafka
+    kafka -- "coordination" --> zk
+
+    workers -- "register" --> master
+    drivers -- "submit the application" --> master
+    workers -. "executors connect back to their driver" .-> drivers
+
+    landing -- "reads the CDC topics" --> kafka
+    dq -- "reads the CDC topics" --> kafka
+    drivers -- "S3: landing files, Iceberg data and metadata,<br/>checkpoints, quality reports" --> s3
+    drivers -- "JDBC: Iceberg catalog in iceberg_catalog" --> adb
+    goldjob -- "JDBC staging, psycopg merge:<br/>writes gold_internal" --> adb
+    dq -- "JDBC: reads gold and gold_internal" --> adb
+    retention -- "psycopg: history partitions" --> adb
+    drivers -. "event logs" .-> events
+    history -. "reads the event logs" .-> events
+
+    rest -- "JDBC, read-only lake_catalog_reader:<br/>iceberg_catalog" --> adb
+    rest -- "S3: Iceberg metadata" --> s3
+    api -- "gold views, api_reader" --> adb
+    grafana -- "gold views, grafana" --> adb
+
+    conduktor -- "Kafka console" --> kafka
+    conduktor --> cdb
+```
+
+The profile of each container is in its label; containers without one start with `make up`. Each Spark job reads and writes the lake as follows (`<CHECKPOINT_ROOT>` defaults to `s3a://lake/checkpoints`, and every Iceberg commit also updates the catalog in `iceberg_catalog`):
+
+| Container | Reads | Writes |
+| --- | --- | --- |
+| `kafka-connect` | The write-ahead log of `finance_db` | The four CDC topics, and its own config, offset and status topics |
+| `landing-job` | The CDC topics | Avro files in `s3a://lake/landing/<topic>/`, its checkpoints |
+| `bronze-job` | The committed landing files | `lake.bronze.<entity>` and `lake.bronze.<entity>_quarantine`, its checkpoints |
+| `silver-job` | `lake.bronze.<entity>` | `lake.silver.<entity>`, its checkpoints and RocksDB state |
+| `lake-views` | The silver tables | The silver views and the `lake.gold` views (definitions only) |
+| `gold-job` | `lake.silver.<entity>` | `gold_internal` in `analytics`, its checkpoints |
+| `maintenance-job` | The lake tables and the downstream streams' checkpoints | Compacted data files, expired snapshots, removed orphan files, refreshed views |
+| `data-quality-job` | Kafka, landing, bronze, silver, PostgreSQL gold and the checkpoints | Reports in `<LAKE_ROOT>/quality/reports/` |
+| `gold-retention-job` | `gold_internal` | Monthly history partitions in `gold_internal`: creates the months ahead, drops expired ones |
+| `spark-app` | What its `make` target needs | What its `make` target writes, for example `make bronze-replay` appends to bronze |
+| `iceberg-rest` | `iceberg_catalog` and the Iceberg metadata files | Nothing: its login is read-only |
+| `api`, `grafana` | The `gold` views | Nothing: their logins are read-only |
+| `spark-history` | The event logs in the `spark-events` volume | Nothing |
 
 ## Data flow
 
