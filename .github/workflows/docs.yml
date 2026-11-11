@@ -1,6 +1,16 @@
 name: Docs
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "mkdocs.yml"
+      - "tools/docs/**"
+      - "analytics/pipelines/src/pipelines/schemas/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/docs.yml"
   pull_request:
     branches: [main]
     paths:
@@ -11,10 +21,6 @@ on:
       - "pyproject.toml"
       - "uv.lock"
       - ".github/workflows/docs.yml"
-  workflow_run:
-    workflows: [CI]
-    types: [completed]
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -27,32 +33,15 @@ concurrency:
 jobs:
   build:
     name: build
-    if: >-
-      github.event_name != 'workflow_run' ||
-      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
-    permissions:
-      contents: read
-      actions: read
     steps:
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - uses: astral-sh/setup-uv@v10.3.3
         with:
           version: "0.13.7"
       - name: Build the docs site
         run: make docs
-      - name: Add the coverage badge of the latest green CI run on main
-        if: github.event_name != 'pull_request'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          CI_RUN_ID: ${{ github.event.workflow_run.id }}
-        run: |
-          run_id="${CI_RUN_ID:-$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --branch main \
-            --event push --status success --limit 1 --json databaseId --jq '.[0].databaseId')}"
-          gh run download "$run_id" --repo "$GITHUB_REPOSITORY" --name coverage-badge --dir target/site/badges
       - uses: actions/upload-pages-artifact@v4
         if: github.event_name != 'pull_request'
         with:
