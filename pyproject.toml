@@ -15,6 +15,7 @@ dev = [
 docs = [
     "mkdocs-gen-files>=0.5",
     "mkdocs-material>=9.6",
+    "properdocs>=1.6",
 ]
 
 [tool.pytest.ini_options]

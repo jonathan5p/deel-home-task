@@ -23,6 +23,7 @@ dev = [
 docs = [
     { name = "mkdocs-gen-files", specifier = ">=0.5" },
     { name = "mkdocs-material", specifier = ">=9.6" },
+    { name = "properdocs", specifier = ">=1.6" },
 ]
 
 [[package]]

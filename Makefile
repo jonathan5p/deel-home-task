@@ -36,7 +36,7 @@ APP_BUILD ?= --build
 PYTEST_WORKERS ?= 4
 CODE_MOUNTS = -v "$(CURDIR)/analytics:/opt/app/analytics" -v "$(CURDIR)/tests:/opt/app/tests" \
 	-v "$(CURDIR)/monitoring:/opt/app/monitoring:ro"
-MKDOCS = NO_MKDOCS_2_WARNING=1 DISABLE_MKDOCS_2_WARNING=true uv run --frozen --group docs mkdocs
+PROPERDOCS = uv run --frozen --group docs properdocs
 RENDER_GOLD_DDL = uv run --frozen python -m pipelines.gold.ddl docker/analytics-db/initdb/02-gold-model.sql
 
 SPARK_TESTS = analytics/common/tests analytics/pipelines/tests tests/grafana
@@ -167,10 +167,10 @@ schemas:
 	@uv run --frozen python -m pipelines.schemas.render target/schemas
 
 docs:
-	@$(MKDOCS) build
+	@$(PROPERDOCS) build -f mkdocs.yml
 
 docs-serve:
-	@$(MKDOCS) serve
+	@$(PROPERDOCS) serve -f mkdocs.yml
 
 test-infra:
 	@$(RENDER_GOLD_DDL)
