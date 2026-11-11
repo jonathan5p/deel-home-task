@@ -19,7 +19,7 @@ Two things make the move cheaper than it looks:
 | [Security](#authentication-tls-and-secrets) | Local credentials in `.env`, plain-text connections, no API authentication | A secrets manager, TLS everywhere, IAM roles, authenticated API and dashboards | |
 | [Spark](#spark-deployment-and-sizing) | Standalone cluster, client-mode driver containers, shared executors | YARN on EMR, EMR Serverless or Kubernetes, executors per application, sized from measured metrics | #58, #195 |
 | [Scheduling](#orchestration-and-scheduling) | Compose services that loop with `sleep` | An orchestrator or scheduled cluster jobs, with retries and alerts | |
-| [Monitoring](#monitoring-and-alerting) | Spark UI, History Server, a freshness view | Metrics in a time-series system, dashboards and alerts | #69, #126, #127, #194 |
+| [Monitoring](#monitoring-and-alerting) | Spark UI, History Server, a freshness view, Spark metrics in Prometheus and Grafana | Metrics in a time-series system, dashboards and alerts | #69, #126, #127, #194 |
 | [Data quality](#data-quality) | Custom layer-to-layer checks | A data quality framework, with result history and alerting | #112, #116 |
 | [Schema changes](#schema-evolution-and-migrations) | Explicit schemas, idempotent DDL, manual steps | Reviewed evolution rules and a migration tool | #196, #70 |
 | [Testing and delivery](#testing-and-delivery) | Infra tests run locally only | Infra tests and deployments in CI/CD | |
@@ -78,7 +78,7 @@ Two things make the move cheaper than it looks:
 
 ## Monitoring and alerting
 
-**Here.** Each job's Spark UI, the History Server for past runs, the `gold.data_freshness` view and the API's `/freshness` endpoint. A Prometheus and Grafana stack for Spark's own metrics is in progress (#69), and so is a probe that measures the end-to-end latency per entity (#194).
+**Here.** Each job's Spark UI, the History Server for past runs, the `gold.data_freshness` view and the API's `/freshness` endpoint. With the `metrics` profile, Prometheus scrapes Spark's own metrics, Grafana charts them and two alert rules fire without notifying anyone ([Monitoring Spark](../operations/monitoring.md)). A probe measures the end-to-end latency per entity ([End-to-end latency](../operations/latency.md)).
 
 **In production.**
 
