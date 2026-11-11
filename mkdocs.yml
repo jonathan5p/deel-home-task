@@ -92,6 +92,11 @@ markdown_extensions:
       slugify: !!python/object/apply:pymdownx.slugs.slugify
         kwds:
           case: lower
+  - pymdownx.magiclink:
+      repo_url_shorthand: true
+      provider: github
+      user: jonathan5p
+      repo: deel-home-task
   - pymdownx.superfences:
       custom_fences:
         - name: mermaid
