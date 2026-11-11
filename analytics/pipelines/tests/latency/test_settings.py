@@ -26,6 +26,7 @@ def test_latency_settings_read_the_lake_its_readers_and_both_databases() -> None
     assert settings.lake_read.catalog_uri == "http://catalog:8181"
     assert settings.source_db.conninfo() == "postgresql://source:5432/source"
     assert settings.analytics_db.user == "owner"
+    assert settings.extension_directory == "/opt/extensions"
 
 
 def test_every_trigger_interval_defaults_to_the_job_default_and_can_be_set() -> None:
@@ -47,6 +48,7 @@ def test_latency_settings_report_every_missing_variable_at_once() -> None:
     assert "SOURCE_DB_PASSWORD" in error.value.names
     assert "LAKE_CATALOG_URI" in error.value.names
     assert "ANALYTICS_DB_URL" in error.value.names
+    assert "DUCKDB_EXTENSION_DIRECTORY" in error.value.names
 
 
 def test_a_trigger_interval_must_be_a_positive_integer() -> None:

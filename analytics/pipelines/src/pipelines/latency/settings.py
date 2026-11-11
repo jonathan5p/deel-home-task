@@ -25,6 +25,7 @@ from pipelines.settings import (
 DEFAULT_PROBES = 5
 DEFAULT_POLL_SECONDS = 1.0
 DEFAULT_TIMEOUT_SECONDS = 300.0
+EXTENSION_DIRECTORY = "DUCKDB_EXTENSION_DIRECTORY"
 
 TRIGGER_SETTINGS: Mapping[Layer, tuple[str, int]] = {
     Layer.LANDING: ("LANDING_TRIGGER_SECONDS", DEFAULT_LANDING_TRIGGER_SECONDS),
@@ -101,12 +102,14 @@ class LatencySettings:
     source_db: SourceDbSettings
     analytics_db: AnalyticsDbSettings
     trigger_seconds: Mapping[Layer, int]
+    extension_directory: str
 
     @classmethod
     def from_env(cls, env: Mapping[str, str]) -> Self:
-        topics, *_ = require(
+        topics, extension_directory, *_ = require(
             env,
             "KAFKA_TOPICS",
+            EXTENSION_DIRECTORY,
             *LakeSettings.REQUIRED,
             *LakeReadSettings.REQUIRED,
             *SourceDbSettings.REQUIRED,
@@ -122,6 +125,7 @@ class LatencySettings:
                 layer: positive_int(env, name, default)
                 for layer, (name, default) in TRIGGER_SETTINGS.items()
             },
+            extension_directory=extension_directory,
         )
 
     @property

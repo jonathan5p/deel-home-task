@@ -14,6 +14,7 @@ from pipelines.latency.duck import (
     SOURCE_ALIAS,
     DuckDbSinkLogStore,
     DuckDbTextStore,
+    MissingExtensionError,
     connect,
     postgres_runner,
     query_runner,
@@ -56,6 +57,7 @@ SETUP_ERRORS = (
     ProbeSetupError,
     UnknownEntityError,
     SinkLogError,
+    MissingExtensionError,
     duckdb.Error,
 )
 

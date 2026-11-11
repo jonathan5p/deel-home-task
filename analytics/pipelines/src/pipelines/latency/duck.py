@@ -8,11 +8,20 @@ from pipelines.latency.settings import LakeReadSettings, LatencySettings
 from pipelines.latency.sql import Row, duckdb_path, identifier, literal
 
 EXTENSIONS = ("httpfs", "avro", "iceberg", "postgres")
-EXTENSION_DIRECTORY = "/tmp/duckdb-extensions"
 REST_WAREHOUSE = "warehouse"
 SOURCE_ALIAS = "source_db"
 GOLD_ALIAS = "analytics_db"
 SINK_LOG_FOLDER = "_spark_metadata"
+
+type DuckDbConfig = dict[str, str | bool | int | float | list[str]]
+
+
+class MissingExtensionError(RuntimeError):
+    def __init__(self, extension: str, directory: str) -> None:
+        super().__init__(
+            f"the DuckDB extension {extension} is not installed in {directory};"
+            " rebuild the spark-app image"
+        )
 
 
 def s3_secret_statement(lake_read: LakeReadSettings) -> str:
@@ -50,8 +59,6 @@ def setup_statements(settings: LatencySettings) -> list[str]:
     source = settings.source_db
     analytics = settings.analytics_db
     return [
-        *(f"INSTALL {extension}" for extension in EXTENSIONS),
-        *(f"LOAD {extension}" for extension in EXTENSIONS),
         s3_secret_statement(settings.lake_read),
         catalog_attach_statement(settings.lake.catalog, settings.lake_read),
         postgres_attach_statement(
@@ -67,8 +74,26 @@ def setup_statements(settings: LatencySettings) -> list[str]:
     ]
 
 
+def connection_config(settings: LatencySettings) -> DuckDbConfig:
+    """The extensions come installed in the image, so a missing one fails instead of being
+    downloaded."""
+    return {
+        "extension_directory": settings.extension_directory,
+        "autoinstall_known_extensions": False,
+    }
+
+
+def load_extensions(connection: duckdb.DuckDBPyConnection, directory: str) -> None:
+    for extension in EXTENSIONS:
+        try:
+            connection.load_extension(extension)
+        except duckdb.IOException as error:
+            raise MissingExtensionError(extension, directory) from error
+
+
 def connect(settings: LatencySettings) -> duckdb.DuckDBPyConnection:
-    connection = duckdb.connect(config={"extension_directory": EXTENSION_DIRECTORY})
+    connection = duckdb.connect(config=connection_config(settings))
+    load_extensions(connection, settings.extension_directory)
     for statement in setup_statements(settings):
         connection.execute(statement)
     return connection

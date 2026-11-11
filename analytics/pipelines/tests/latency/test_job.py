@@ -1,5 +1,6 @@
 import json
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 
@@ -162,6 +163,15 @@ def test_the_summary_line_is_json_after_the_prefix() -> None:
 def test_missing_settings_fail_setup_with_exit_code_2(capsys: pytest.CaptureFixture[str]) -> None:
     assert main([], {}) == 2
     assert "LATENCY setup failed: Missing required environment variables" in capsys.readouterr().err
+
+
+def test_a_missing_duckdb_extension_fails_setup_with_exit_code_2(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    env = ENV | {"DUCKDB_EXTENSION_DIRECTORY": str(tmp_path)}
+
+    assert main([], env) == 2
+    assert "is not installed in" in capsys.readouterr().err
 
 
 def test_invalid_options_exit_with_code_2() -> None:

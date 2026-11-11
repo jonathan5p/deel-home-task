@@ -80,9 +80,14 @@ def relation(table: str) -> str:
 
 
 def connect(catalog_uri: str, s3_endpoint: str, tables: Sequence[str]) -> duckdb.DuckDBPyConnection:
-    connection = duckdb.connect(config={"extension_directory": "/tmp/duckdb-extensions"})
-    connection.execute("INSTALL iceberg")
-    connection.execute("LOAD iceberg")
+    connection = duckdb.connect(
+        config={
+            "extension_directory": os.environ["DUCKDB_EXTENSION_DIRECTORY"],
+            "autoinstall_known_extensions": False,
+        }
+    )
+    for extension in ("httpfs", "avro", "iceberg"):
+        connection.load_extension(extension)
     connection.execute(
         "CREATE SECRET lake_s3 (TYPE s3,"
         f" KEY_ID {literal(os.environ['LAKE_S3_ACCESS_KEY'])},"

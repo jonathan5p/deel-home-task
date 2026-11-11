@@ -43,6 +43,7 @@ ENV = {
     "ANALYTICS_DB_URL": "jdbc:postgresql://db:5432/gold",
     "ANALYTICS_DB_USER": "owner",
     "ANALYTICS_DB_PASSWORD": "secret",
+    "DUCKDB_EXTENSION_DIRECTORY": "/opt/extensions",
 }
 
 

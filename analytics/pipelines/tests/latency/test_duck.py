@@ -8,9 +8,13 @@ import duckdb
 
 from analytics.pipelines.tests.latency.latency_setup import ENV
 from pipelines.latency.duck import (
+    EXTENSIONS,
     DuckDbSinkLogStore,
     DuckDbTextStore,
+    MissingExtensionError,
     catalog_attach_statement,
+    connection_config,
+    load_extensions,
     postgres_attach_statement,
     postgres_query_sql,
     postgres_uri,
@@ -55,11 +59,32 @@ def test_only_the_source_database_is_attached_writable() -> None:
     )
 
 
-def test_the_setup_loads_the_extensions_then_attaches_the_lake_and_both_databases() -> None:
+def test_the_connection_uses_the_installed_extensions_and_never_downloads_one() -> None:
+    assert connection_config(LatencySettings.from_env(ENV)) == {
+        "extension_directory": "/opt/extensions",
+        "autoinstall_known_extensions": False,
+    }
+
+
+def test_a_missing_extension_fails_naming_it_and_the_directory(tmp_path: Path) -> None:
+    connection = duckdb.connect(
+        config={"extension_directory": str(tmp_path), "autoinstall_known_extensions": False}
+    )
+
+    with pytest.raises(MissingExtensionError) as error:
+        load_extensions(connection, str(tmp_path))
+
+    assert str(error.value) == (
+        f"the DuckDB extension {EXTENSIONS[0]} is not installed in {tmp_path};"
+        " rebuild the spark-app image"
+    )
+
+
+def test_the_setup_attaches_the_lake_and_both_databases_without_installing() -> None:
     statements = setup_statements(LatencySettings.from_env(ENV))
 
-    assert statements[:2] == ["INSTALL httpfs", "INSTALL avro"]
-    assert "LOAD postgres" in statements
+    assert not [s for s in statements if s.startswith(("INSTALL", "LOAD"))]
+    assert statements[0].startswith("CREATE OR REPLACE SECRET lake_s3")
     assert statements[-3].startswith("ATTACH 'warehouse' AS \"catalog\"")
     assert statements[-2] == (
         "ATTACH 'postgresql://source:5432/source?user=writer&password=p%40ss%20word'"
