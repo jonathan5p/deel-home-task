@@ -6,6 +6,7 @@ from urllib.parse import quote
 from tests.infra.stack import REPO_ROOT, Stack
 
 PROMETHEUS = "prometheus"
+STAGE_EXPORTER = "spark-stage-exporter"
 METRICS_PROFILE = ("--profile", "metrics")
 RULE_TESTS = "tests/prometheus/spark_rules_test.yml"
 
@@ -19,6 +20,15 @@ def start_prometheus(stack: Stack) -> None:
 
 def remove_prometheus(stack: Stack) -> None:
     stack.compose(*METRICS_PROFILE, "rm", "--stop", "--force", PROMETHEUS)
+
+
+def start_stage_exporter(stack: Stack) -> None:
+    """The exporter and the History Server it reads; both need no host port."""
+    stack.compose(*METRICS_PROFILE, "up", "--detach", "--wait", STAGE_EXPORTER)
+
+
+def remove_stage_exporter(stack: Stack) -> None:
+    stack.compose(*METRICS_PROFILE, "rm", "--stop", "--force", STAGE_EXPORTER, "spark-history")
 
 
 def restart_prometheus(stack: Stack) -> None:

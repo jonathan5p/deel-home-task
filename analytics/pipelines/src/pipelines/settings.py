@@ -25,6 +25,7 @@ DEFAULT_ORPHAN_AGE_HOURS = 72
 MIN_ORPHAN_AGE_HOURS = 24
 DEFAULT_GOLD_RETENTION_MONTHS = 36
 DEFAULT_GOLD_PARTITION_MONTHS_AHEAD = 2
+DEFAULT_STAGE_EXPORTER_POLL_SECONDS = 30
 
 
 @dataclass(frozen=True, slots=True)
@@ -303,4 +304,22 @@ class PipelineSettings:
             kafka=KafkaSettings.from_env(env),
             lake=LakeSettings.from_env(env),
             analytics_db=AnalyticsDbSettings.from_env(env),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class StageExporterSettings:
+    history_server_url: str
+    port: int
+    poll_seconds: int
+
+    @classmethod
+    def from_env(cls, env: Mapping[str, str]) -> Self:
+        url, _ = require(env, "HISTORY_SERVER_URL", "STAGE_EXPORTER_PORT")
+        return cls(
+            history_server_url=url,
+            port=positive_int(env, "STAGE_EXPORTER_PORT", 0),
+            poll_seconds=positive_int(
+                env, "STAGE_EXPORTER_POLL_SECONDS", DEFAULT_STAGE_EXPORTER_POLL_SECONDS
+            ),
         )

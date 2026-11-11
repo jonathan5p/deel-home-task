@@ -11,3 +11,4 @@ services:
   maintenance-job: { ports: !reset [] }
   grafana: { ports: !reset [] }
   prometheus: { ports: !reset [] }
+  spark-history: { ports: !reset [] }

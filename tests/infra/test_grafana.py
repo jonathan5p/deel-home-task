@@ -10,7 +10,7 @@ from tests.infra.grafana_setup import (
 )
 from tests.infra.stack import Stack
 
-SPARK_AND_LAKE = ["spark-cluster", "spark-streaming"]
+SPARK_AND_LAKE = ["spark-cluster", "spark-stages", "spark-streaming"]
 
 
 @pytest.fixture(scope="module")

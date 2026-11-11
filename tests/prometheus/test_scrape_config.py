@@ -1,7 +1,7 @@
 import pytest
 
 from tests.prometheus.scrape_setup import (
-    JOB_SCRAPES,
+    JOB_PAGES,
     parse_exposition,
     prometheus_config,
     relabel,
@@ -19,10 +19,10 @@ STREAMING_MEASURES = (
 )
 
 
-def test_every_scrape_job_has_a_captured_page() -> None:
+def test_every_scrape_job_has_a_page() -> None:
     jobs = {job["job_name"] for job in prometheus_config()["scrape_configs"]}
 
-    assert jobs == set(JOB_SCRAPES)
+    assert jobs == set(JOB_PAGES)
 
 
 def test_prometheus_scrapes_every_ten_seconds() -> None:
@@ -48,7 +48,7 @@ def test_no_driver_metric_keeps_the_query_in_its_name() -> None:
     }
 
 
-@pytest.mark.parametrize("job", sorted(set(JOB_SCRAPES) - {"spark-executors"}))
+@pytest.mark.parametrize("job", sorted(set(JOB_PAGES) - {"spark-executors", "spark-stages"}))
 def test_the_servlet_duplicates_histograms_timers_and_type_label_are_dropped(job: str) -> None:
     kept = scraped(job)
 
@@ -124,3 +124,12 @@ def test_relabelling_keeps_only_matching_series_with_keep() -> None:
 
     assert relabel({"__name__": "b"}, [rule]) is None
     assert relabel({"__name__": "ab"}, [rule]) == {"__name__": "ab"}
+
+
+def test_the_stage_exporter_series_carry_only_the_app_and_query_labels() -> None:
+    kept = scraped("spark-stages")
+
+    assert kept
+    assert {frozenset(series) - {"__name__", "le"} for series in kept} == {
+        frozenset({"app", "query"})
+    }

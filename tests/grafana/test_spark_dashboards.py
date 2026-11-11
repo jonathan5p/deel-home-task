@@ -63,6 +63,12 @@ def test_the_streaming_dashboard_filters_by_service_and_query() -> None:
         assert 'service=~"$service"' in target["expr"], item["title"]
 
 
+def test_the_stages_dashboard_filters_by_app_and_query() -> None:
+    assert set(variable_selectors("spark-stages")) == {"app", "query"}
+    for item, target in targets("spark-stages"):
+        assert 'app=~"$app"' in target["expr"], item["title"]
+
+
 def test_executor_memory_is_shown_against_the_one_gib_heap() -> None:
     assert threshold("spark-cluster", "Executor peak heap and RSS vs 1 GiB") == GIB
 
