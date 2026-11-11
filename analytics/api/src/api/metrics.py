@@ -9,7 +9,7 @@ from api.models import (
     TopCustomerByPendingOrders,
     TopDeliveryDateByOpenOrders,
 )
-from api.repository import MetricsRepository
+from api.repository import AnalyticsRepository
 
 # FastAPI's own type for extra responses: the values are free-form OpenAPI fields.
 type Responses = dict[int | str, dict[str, Any]]
@@ -19,7 +19,7 @@ UNAVAILABLE: Responses = {
 }
 
 
-def metrics_router(repository: MetricsRepository) -> APIRouter:
+def metrics_router(repository: AnalyticsRepository) -> APIRouter:
     router = APIRouter(prefix="/metrics", tags=["metrics"], responses=UNAVAILABLE)
 
     @router.get(

@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 from starlette.types import Lifespan
 
 from api.metrics import metrics_router
-from api.repository import MetricsRepository, RepositoryUnavailableError
+from api.repository import AnalyticsRepository, RepositoryUnavailableError
 from api.status import status_router
 
 logger = logging.getLogger(__name__)
@@ -22,10 +22,12 @@ async def internal_error(request: Request, error: Exception) -> JSONResponse:
     )
 
 
-def create_app(repository: MetricsRepository, lifespan: Lifespan[FastAPI] | None = None) -> FastAPI:
+def create_app(
+    repository: AnalyticsRepository, lifespan: Lifespan[FastAPI] | None = None
+) -> FastAPI:
     app = FastAPI(
-        title="Gold metrics API",
-        summary="The four business metrics and the freshness of the gold layer.",
+        title="Analytics API",
+        summary="Read-only access to the analytics data: business metrics, health and freshness.",
         version="0.1.0",
         lifespan=lifespan,
     )

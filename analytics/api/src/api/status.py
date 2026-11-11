@@ -2,14 +2,14 @@ from fastapi import APIRouter, Response, status
 
 from api.metrics import UNAVAILABLE, Responses
 from api.models import Freshness, Health
-from api.repository import MetricsRepository, RepositoryUnavailableError
+from api.repository import AnalyticsRepository, RepositoryUnavailableError
 
 UNREACHABLE: Responses = {
     503: {"model": Health, "description": "The analytics database is unreachable"}
 }
 
 
-def status_router(repository: MetricsRepository) -> APIRouter:
+def status_router(repository: AnalyticsRepository) -> APIRouter:
     router = APIRouter(tags=["status"])
 
     @router.get(

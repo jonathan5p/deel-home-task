@@ -72,7 +72,7 @@ class Pool(Protocol):
     ) -> AbstractAsyncContextManager[Connection]: ...
 
 
-class PostgresMetricsRepository:
+class PostgresAnalyticsRepository:
     def __init__(self, pool: Pool) -> None:
         self._pool = pool
 

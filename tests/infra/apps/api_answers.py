@@ -12,7 +12,7 @@ from psycopg_pool import AsyncConnectionPool
 
 from api.main import create_pool
 from api.models import Row
-from api.postgres import PostgresMetricsRepository
+from api.postgres import PostgresAnalyticsRepository
 from api.settings import ApiSettings
 
 QUERIES = Path(__file__).resolve().parents[3] / "analytics/sql/gold"
@@ -32,7 +32,7 @@ async def answers() -> dict[str, dict[str, list[object]]]:
     pool = create_pool(ApiSettings.from_env(os.environ))
     await pool.open(wait=True)
     try:
-        repository = PostgresMetricsRepository(pool)
+        repository = PostgresAnalyticsRepository(pool)
         metrics: dict[str, Metric] = {
             "01_open_orders_by_delivery_date_and_status.sql": (
                 repository.open_orders_by_delivery_date_and_status

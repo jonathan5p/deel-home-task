@@ -9,7 +9,7 @@ from psycopg.rows import DictRow, dict_row
 from psycopg_pool import AsyncConnectionPool
 
 from api.app import create_app
-from api.postgres import Pool, PostgresMetricsRepository
+from api.postgres import Pool, PostgresAnalyticsRepository
 from api.settings import ApiSettings
 
 
@@ -58,7 +58,7 @@ def create_app_from_settings(
         finally:
             await pool.close()
 
-    return create_app(PostgresMetricsRepository(pool), lifespan)
+    return create_app(PostgresAnalyticsRepository(pool), lifespan)
 
 
 def create_app_from_env() -> FastAPI:

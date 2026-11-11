@@ -13,7 +13,7 @@ class RepositoryUnavailableError(Exception):
     pass
 
 
-class MetricsRepository(Protocol):
+class AnalyticsRepository(Protocol):
     async def ping(self) -> None: ...
 
     async def freshness(self) -> Freshness: ...
