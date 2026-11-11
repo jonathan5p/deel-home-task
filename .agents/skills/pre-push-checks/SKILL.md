@@ -22,7 +22,7 @@ For a stacked branch, diff against its parent branch instead of `origin/main`. A
 | --- | --- |
 | Docs, README, `.agents/`, docs-only conflict fixes | The hooks only |
 | Python under `analytics/` | `make lint`, `make typecheck`, `make test` |
-| Jobs, `docker-compose.yaml`, Dockerfiles, SQL/DDL, `.avsc` schemas, Spark or Iceberg config | The above plus `make test-infra` or the relevant `tests/infra` subset (`uv run --frozen pytest tests/infra/<file> --no-cov`) |
+| Jobs, `docker-compose.yaml`, Dockerfiles, SQL/DDL, `.avsc` schemas, Spark or Iceberg config | The above plus only the affected `tests/infra` modules (`uv run --frozen pytest tests/infra/<file> ... --no-cov`); the full `make test-infra` only when the user asks |
 | Anything that changes what lands in the data | The above plus `make data-quality` on the shared stack, as evidence. Never inside `make test-infra` |
 
 - Commit normally so the hooks run. Never `--no-verify`.
