@@ -19,13 +19,14 @@ Rules: [worktrees](../../rules/worktrees.md).
 
 From the worktree root:
 
+`.agents/` and `AGENTS.md` come with the checkout. Link only what stays local (git-ignored):
+
 ```sh
-ln -s <main checkout>/.agents .agents
-ln -s <main checkout>/AGENTS.md AGENTS.md
+ln -s <main checkout>/.agents/docs .agents/docs
 mkdir -p .claude && ln -s ../.agents/skills .claude/skills
 ```
 
-Check: `ls .agents/README.md .claude/skills/` resolves.
+Check: `ls .agents/docs/ .claude/skills/` resolves.
 
 ## Prepare
 

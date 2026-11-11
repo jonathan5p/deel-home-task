@@ -1,6 +1,6 @@
 # Agent context
 
-Local-only context for agents working on Deel's data engineering take-home assignment. Everything under `.agents/`, plus `AGENTS.md` and `.claude/skills`, is git-excluded: never stage, commit or publish it.
+Context for agents working on Deel's data engineering take-home assignment: rules, skills, workflows and the knowledge base, tracked in the repository. `.agents/docs/` and `.claude/skills` are local only and git-excluded: never stage, commit or publish them.
 
 ## Source documents
 
@@ -69,7 +69,7 @@ Record decisions and learnings as you work; they are the source for the M6 and M
 
 - Keep all agent-only documentation, learnings, plans and task notes inside `.agents/` or `.atl/`. Never stage, force-add, commit, push or attach them to GitHub.
 - Keep source context PDFs only in `.agents/docs/`; do not recreate copies at the repository root. The monitor runbook is [docs/monitoring.md](docs/monitoring.md) (local only).
-- `.agents/`, `.atl/`, `AGENTS.md`, `.claude/skills`, `.claude/worktrees/` and the legacy `odd/` path are excluded through `.git/info/exclude`. Do not change those exclusions without the user's permission.
+- `.agents/docs/`, `.atl/`, `.claude/skills`, `.claude/worktrees/` and the legacy `odd/` path are excluded through `.git/info/exclude`. Do not change those exclusions without the user's permission.
 - `README.md` is the tracked, human-facing project guide. It must not depend on ignored internal files.
 
 These agent instructions are available only in this checkout, not to other clones.
