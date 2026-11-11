@@ -63,3 +63,54 @@ jobs:
           cache-to: type=gha,mode=max,scope=api-dev
       - name: make ${{ matrix.check }}
         run: make ${{ matrix.check }} APP_BUILD= CHECKS_PROJECT=ci PYTEST_WORKERS=auto
+      - name: Combine the coverage of both images
+        if: matrix.check == 'test'
+        env:
+          COMPOSE_PROJECT_NAME: ci
+        run: |
+          docker compose run --rm --no-deps -v "$PWD/analytics:/opt/app/analytics" \
+            -v "$PWD/target/coverage:/opt/app/target/coverage" -e COVERAGE_FILE=/opt/app/target/coverage/.coverage \
+            spark-app sh -c 'export PYTHONPATH=/opt/app/analytics/api/src:$PYTHONPATH \
+              && coverage combine target/coverage/.coverage.app target/coverage/.coverage.api \
+              && coverage json --fail-under=0 -o target/coverage/coverage.json'
+      - name: Write the coverage badge
+        if: matrix.check == 'test'
+        run: |
+          mkdir -p target/coverage/badge
+          jq '{schemaVersion: 1, label: "coverage", message: (.totals.percent_covered_display + "%"),
+               color: (if .totals.percent_covered >= 90 then "brightgreen" else "red" end)}' \
+            target/coverage/coverage.json > target/coverage/badge/coverage.json
+          cat target/coverage/badge/coverage.json
+      - uses: actions/upload-artifact@v7
+        if: matrix.check == 'test' && github.event_name == 'push'
+        with:
+          name: coverage-badge
+          path: target/coverage/badge/coverage.json
+          retention-days: 1
+
+  coverage-badge:
+    name: coverage badge
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [lint, container-checks]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: coverage-badge
+      - name: Commit the badge to the badges branch
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          git init -q -b badges badges && cd badges
+          git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git fetch -q --depth=1 origin badges; then git reset -q --hard FETCH_HEAD; fi
+          cp ../coverage.json coverage.json
+          git add coverage.json
+          if git diff --cached --quiet; then echo "Badge unchanged"; exit 0; fi
+          git commit -q -m "chore(badges): update the coverage badge to $(jq -r .message coverage.json)"
+          git push -q origin badges

@@ -42,6 +42,10 @@ RENDER_GOLD_DDL = uv run --frozen python -m pipelines.gold.ddl docker/analytics-
 SPARK_TESTS = analytics/common/tests analytics/pipelines/tests tests/grafana
 API_TESTS = analytics/api/tests analytics/common/tests
 API_INFRA_APPS = tests/infra/apps/api_answers.py
+# Each image's run keeps its coverage data on the host, so CI can combine them into one total.
+# The folder is world-writable because the images run as their own users (spark, api).
+COVERAGE_DIR = target/coverage
+COVERAGE_MOUNT = -v "$(CURDIR)/$(COVERAGE_DIR):/opt/app/$(COVERAGE_DIR)"
 APP_RUN = trap 'docker network rm $(CHECKS_PROJECT)_default >/dev/null 2>&1 || true' EXIT; trap 'exit 130' INT TERM; \
 		  COMPOSE_PROJECT_NAME=$(CHECKS_PROJECT) $(COMPOSE) run --rm $(APP_BUILD) --no-deps $(CODE_MOUNTS)
 
@@ -149,8 +153,11 @@ lake-views:
 	@$(COMPOSE) --profile pipeline run --rm --no-deps lake-views
 
 test:
-	@$(APP_RUN) spark-app pytest -p no:cacheprovider -n $(PYTEST_WORKERS) --dist loadfile $(SPARK_TESTS)
-	@$(APP_RUN) api-dev pytest -p no:cacheprovider -n $(PYTEST_WORKERS) --dist loadfile $(API_TESTS)
+	@mkdir -p $(COVERAGE_DIR) && chmod a+rwx $(COVERAGE_DIR) && rm -f $(COVERAGE_DIR)/.coverage*
+	@$(APP_RUN) $(COVERAGE_MOUNT) -e COVERAGE_FILE=/opt/app/$(COVERAGE_DIR)/.coverage.app \
+		spark-app pytest -p no:cacheprovider -n $(PYTEST_WORKERS) --dist loadfile $(SPARK_TESTS)
+	@$(APP_RUN) $(COVERAGE_MOUNT) -e COVERAGE_FILE=/opt/app/$(COVERAGE_DIR)/.coverage.api \
+		api-dev pytest -p no:cacheprovider -n $(PYTEST_WORKERS) --dist loadfile $(API_TESTS)
 
 lint:
 	@$(APP_RUN) spark-app sh -c 'ruff check && ruff format --check'
