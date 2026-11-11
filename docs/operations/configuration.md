@@ -39,6 +39,9 @@ The code holds no deployment details: anything that depends on where it runs (br
 | `MAINTENANCE_DOWNSTREAM_CHECKPOINTS` | `pipelines.settings.MaintenanceSettings` | `bronze.<entity>=<CHECKPOINT_ROOT>/silver/<entity>` for each source entity, and `silver.<entity>=<CHECKPOINT_ROOT>/gold/<gold table>` for each gold stream | not set | Checkpoints of the streams reading each table, as `<namespace>.<table>=<checkpoint>[\|<checkpoint>...]` entries separated by commas; replaces the default when set |
 | `MAINTENANCE_INTERVAL_HOURS` | `maintenance-job` service | `24` | not set | Hours between two runs of the scheduled maintenance service |
 | `DATA_QUALITY_INTERVAL_HOURS` | `data-quality-job` service | `24` | not set | Hours between two runs of the scheduled data quality service |
+| `HISTORY_SERVER_URL` | `pipelines.settings.StageExporterSettings` | required | `http://spark-history:18080` | Spark History Server whose REST API the stage exporter reads |
+| `STAGE_EXPORTER_PORT` | `pipelines.settings.StageExporterSettings` | required | `9101` (set in `docker-compose.yaml`) | Port the stage exporter serves its Prometheus metrics on |
+| `STAGE_EXPORTER_POLL_SECONDS` | `pipelines.settings.StageExporterSettings` | `30` | not set | Seconds between two reads of the History Server (a positive integer) |
 | `ANALYTICS_DB_URL` | `common.settings.AnalyticsDbSettings` | required | `jdbc:postgresql://analytics-db:5432/analytics` | JDBC URL of the analytics database (gold layer) |
 | `ANALYTICS_DB_USER` | `common.settings.AnalyticsDbSettings` | required | `analytics` | Analytics database user |
 | `ANALYTICS_DB_PASSWORD` | `common.settings.AnalyticsDbSettings` | required | `analytics` | Analytics database password |

@@ -428,7 +428,7 @@ Both reuse the streaming code and are tested to equal streaming output. A full b
 
 **Context.** The streaming jobs' rates, batch durations and state, and the cluster's use of cores and memory, were only visible in the Spark UI while a driver ran, so neither alerts nor a history to size the cluster from were possible (#69, #126).
 
-**Decision.** Every Spark process serves its own metrics through Spark's `PrometheusServlet` sink, and an optional Prometheus (`metrics` profile) scrapes them every 10 seconds, keeping 30 days in a volume. Prometheus finds the drivers by asking Docker's DNS for their Compose service names; `make spark-submit` drivers answer to `spark-app`.
+**Decision.** Every Spark process serves its own metrics through Spark's `PrometheusServlet` sink, and an optional Prometheus (`metrics` profile) scrapes them every 10 seconds, keeping 30 days in a volume. Prometheus finds the drivers by asking Docker's DNS for their Compose service names; `make spark-submit` drivers answer to `spark-app`. The stage and task details that the servlet lacks come from a small exporter that reads the History Server's REST API.
 
 **Why.** The servlet ships with Spark and needs only configuration; pulling costs a driver nothing when no Prometheus runs; DNS discovery needs no access to the Docker socket.
 
@@ -437,5 +437,6 @@ Both reuse the streaming code and are tested to equal streaming output. A full b
 - The Prometheus JMX exporter as a Java agent in every JVM: one more jar and port per process, and the same metrics under other names.
 - A Pushgateway: drivers would push, and it would keep the last value of a driver that died as if it were alive.
 - Prometheus's Docker service discovery: finds every container, but needs the Docker socket mounted, which gives root on the host.
+- Per-stage metrics from a `SparkListener` in every driver: a JVM plugin to build and ship, and lost with the driver, while the History Server already has every stage in the event logs.
 
-**Outcome.** Spark puts the query and application names in its metric names, so the scrape configuration rewrites them into labels; Grafana's Spark dashboards and two alert rules read the result ([Monitoring Spark](../operations/monitoring.md)).
+**Outcome.** Spark puts the query and application names in its metric names, so the scrape configuration rewrites them into labels; Grafana's Spark dashboards and two alert rules read the result ([Monitoring Spark](../operations/monitoring.md)). The network effects of shuffles show only as fetch wait time and remote bytes ([network-proxy limits](../operations/monitoring.md#network-proxy-limits)).

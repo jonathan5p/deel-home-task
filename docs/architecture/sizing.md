@@ -136,6 +136,7 @@ The "Measured" column is filled in from that run. With the `metrics` profile, Pr
 | Iceberg commit time | Iceberg's commit reports (`totalDuration`, `attempts`) in the driver logs, and the snapshot summaries in `lake.<layer>.<table>.snapshots` (files and bytes added per commit) | none | Commits take a small share of `addBatch`, with one attempt | #58 |
 | PostgreSQL transaction time under the writer lock | Lock wait and transaction time per gold batch, logged by the sink; `pg_stat_activity` advisory-lock waits | none | The four queries' transaction times add up to well below the trigger interval | #58 |
 | JDBC staging time | `addBatch` minus the transaction time per gold batch | none | Small next to the transaction | #58 |
+| Stage shape | Stage and task metrics from the History Server, through the stage exporter | Spark stages → Skew p95, Stages with a median task under 100 ms, Spill, Shuffle fetch wait / run time | Skew under about 3, few sub-100 ms stages, no spill | #58 |
 | Executor health | Spark UI Executors tab: GC time, peak memory, failed tasks | Spark cluster → Executor peak heap and RSS vs 1 GiB, GC share of task time, Failed tasks | Little GC time and no failed tasks | #58 |
 
 ## Scaling to production
