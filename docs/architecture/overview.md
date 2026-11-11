@@ -37,7 +37,8 @@ Every Compose service, grouped by the profile that starts it. Services without a
 | `gold-retention-job` | `maintenance` | Drops gold history months outside the retention window on a schedule (Python, no Spark) | none |
 | `data-quality-job` | `data-quality` | Runs every data quality check on a schedule and writes their reports to the lake | none |
 | `spark-app` | `app` | Image for throwaway drivers started by `make spark-submit`, `make spark-sql`, `make data-quality`, `make bronze-replay` (UI 4043), `make gold-rebuild` and `make lake-maintenance` | `SPARK_UI_PORT` |
-| `spark-history` | `history` | Spark History Server over the shared `spark-events` volume | 18080 |
+| `spark-history` | `history`, `metrics` | Spark History Server over the shared `spark-events` volume | 18080 |
+| `prometheus` | `metrics` | Scrapes the Spark drivers, master and workers every 10 seconds and keeps 30 days of metrics; evaluates the streaming alert rules | 9090 |
 | `conduktor-console`, `conduktor-db` | `monitoring` | Optional Kafka console and its metadata database | 8090 |
 
 Each job's driver runs in its own container in client mode, and its executors run on the shared workers (decision [D27](decisions.md#d27--one-driver-container-per-application-executors-on-shared-workers)). Each application is capped at `spark.cores.max=2`, so the four streaming jobs use 8 of the 10 cores and leave 2 for ad-hoc runs and maintenance. [The sizing strategy](sizing.md) explains how the cores and memory are shared.
@@ -80,7 +81,8 @@ flowchart LR
 
     retention["gold-retention-job<br/>maintenance, Python"]
     rest["iceberg-rest :8181<br/>catalog"]
-    history["spark-history :18080<br/>history"]
+    history["spark-history :18080<br/>history, metrics"]
+    prometheus["prometheus :9090<br/>metrics"]
 
     subgraph serving["Serving"]
         api["api :8000<br/>FastAPI"]
@@ -117,6 +119,9 @@ flowchart LR
     rest -- "S3: Iceberg metadata" --> s3
     api -- "gold views, api_reader" --> adb
     grafana -- "gold views, grafana" --> adb
+    grafana -- "PromQL" --> prometheus
+    prometheus -. "scrapes /metrics, drivers found by service name" .-> drivers
+    prometheus -. "scrapes /metrics" .-> cluster
 
     conduktor -- "Kafka console" --> kafka
     conduktor --> cdb
@@ -137,8 +142,9 @@ The profile of each container is in its label; containers without one start with
 | `gold-retention-job` | `gold_internal` | Monthly history partitions in `gold_internal`: creates the months ahead, drops expired ones |
 | `spark-app` | What its `make` target needs | What its `make` target writes, for example `make bronze-replay` appends to bronze |
 | `iceberg-rest` | `iceberg_catalog` and the Iceberg metadata files | Nothing: its login is read-only |
-| `api`, `grafana` | The `gold` views | Nothing: their logins are read-only |
+| `api`, `grafana` | The `gold` views; Grafana also queries Prometheus | Nothing: their logins are read-only |
 | `spark-history` | The event logs in the `spark-events` volume | Nothing |
+| `prometheus` | The metrics pages of the drivers (`:4040`), the master (`:8080`) and the workers (`:8081`) | Its samples, in the `prometheus-data` volume |
 
 ## Data flow
 

@@ -1,0 +1,98 @@
+global:
+  scrape_interval: 10s
+  evaluation_interval: 10s
+
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+scrape_configs:
+  # Spark drivers are found by their Compose service name, which Docker's DNS resolves to the
+  # running containers; `make spark-submit` drivers answer to `spark-app`.
+  - job_name: spark-drivers
+    metrics_path: /metrics/prometheus
+    dns_sd_configs: &drivers
+      - names:
+          - landing-job
+          - bronze-job
+          - silver-job
+          - gold-job
+          - lake-views
+          - maintenance-job
+          - data-quality-job
+          - spark-app
+        type: A
+        port: 4040
+        refresh_interval: 10s
+    relabel_configs: &driver-service
+      - source_labels: [__meta_dns_name]
+        target_label: service
+    # Spark's servlet repeats every gauge as `_Number` and `_Value`, and adds codegen histograms
+    # and listener timers that nothing reads.
+    metric_relabel_configs:
+      - &drop-number-duplicates
+        source_labels: [__name__]
+        regex: .+_Number
+        action: drop
+      - &drop-histograms-and-timers
+        source_labels: [type]
+        regex: histograms|timers
+        action: drop
+      - &drop-type
+        regex: type
+        action: labeldrop
+      # The query name is part of the metric name; it becomes the `query` label instead.
+      - source_labels: [__name__]
+        regex: metrics_spark_driver_spark_streaming_(.+)_(inputRate_total|processingRate_total|latency|states_rowsTotal|states_usedBytes|eventTime_watermark)_Value
+        target_label: query
+        replacement: $1
+      - source_labels: [__name__]
+        regex: metrics_spark_driver_spark_streaming_(.+)_(inputRate_total|processingRate_total|latency|states_rowsTotal|states_usedBytes|eventTime_watermark)_Value
+        target_label: __name__
+        replacement: spark_streaming_$2
+
+  - job_name: spark-executors
+    metrics_path: /metrics/executors/prometheus
+    dns_sd_configs: *drivers
+    relabel_configs: *driver-service
+    metric_relabel_configs:
+      - source_labels: [application_name]
+        target_label: app
+      - regex: application_name|application_id
+        action: labeldrop
+
+  - job_name: spark-master
+    metrics_path: /metrics/master/prometheus
+    static_configs:
+      - targets: [spark-master:8080]
+    metric_relabel_configs:
+      - *drop-number-duplicates
+      - *drop-histograms-and-timers
+      - *drop-type
+
+  # The application name and start time are part of the metric name; the name becomes the
+  # `app` label instead.
+  - job_name: spark-applications
+    metrics_path: /metrics/applications/prometheus
+    static_configs:
+      - targets: [spark-master:8080]
+    metric_relabel_configs:
+      - *drop-number-duplicates
+      - *drop-histograms-and-timers
+      - *drop-type
+      - source_labels: [__name__]
+        regex: metrics_application_(.+)_[0-9]+_(cores|runtime_ms)_Value
+        target_label: app
+        replacement: $1
+      - source_labels: [__name__]
+        regex: metrics_application_(.+)_[0-9]+_(cores|runtime_ms)_Value
+        target_label: __name__
+        replacement: spark_application_$2
+
+  - job_name: spark-workers
+    metrics_path: /metrics/prometheus
+    static_configs:
+      - targets: [spark-worker-1:8081, spark-worker-2:8081]
+    metric_relabel_configs:
+      - *drop-number-duplicates
+      - *drop-histograms-and-timers
+      - *drop-type

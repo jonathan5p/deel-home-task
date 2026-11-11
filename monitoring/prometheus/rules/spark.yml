@@ -1,0 +1,25 @@
+groups:
+  - name: spark-streaming
+    rules:
+      - alert: StreamingQueryFallingBehind
+        expr: spark_streaming_processingRate_total < spark_streaming_inputRate_total
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.query }} on {{ $labels.service }} processes rows slower than they arrive"
+          description: >-
+            For 5 minutes the query's processing rate ({{ $value | humanize }} rows/s) stayed below
+            its input rate, so its backlog grows.
+
+      # The pipeline jobs trigger every 10 seconds by default (*_TRIGGER_SECONDS).
+      - alert: StreamingBatchOverTrigger
+        expr: spark_streaming_latency > 10000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.query }} on {{ $labels.service }} takes longer than its trigger"
+          description: >-
+            For 5 minutes the micro-batches took longer than the 10 s trigger (the last one
+            {{ $value }} ms), so batches start late and the delay adds up.

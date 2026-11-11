@@ -39,6 +39,7 @@ nav:
       - operations/maintenance-and-recovery.md
       - operations/debugging.md
       - operations/latency.md
+      - operations/monitoring.md
       - operations/configuration.md
   - Development:
       - development/code-layout.md

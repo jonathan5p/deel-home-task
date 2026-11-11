@@ -125,18 +125,18 @@ The scratch columns come from #142: `postgres:18.6` with 1M orders (about 3% ope
 - from the Spark UI's Structured Streaming tab, or a `StreamingQueryListener`;
 - for gold, from timings logged by the sink.
 
-The "Measured" column is filled in from that run.
+The "Measured" column is filled in from that run. With the `metrics` profile, Prometheus keeps the Spark metrics for 30 days and the "Dashboard panel" column names the Grafana panel that charts each one ([Monitoring Spark](../operations/monitoring.md)); "none" means the metric is only in the UI, the logs or the tables named in "Source".
 
-| Metric | Source | Healthy when | Measured |
-| --- | --- | --- | --- |
-| Batch duration vs trigger | `StreamingQueryProgress.durationMs.triggerExecution`, with `addBatch` and `walCommit`, per query | Below the trigger interval; otherwise batches run back to back and lag grows | #58 |
-| Input rate vs processing rate | `inputRowsPerSecond`, `processedRowsPerSecond`, `numInputRows` | Processing rate at or above the input rate over a window | #58 |
-| Kafka lag (landing) | `sources[].metrics.avgOffsetsBehindLatest` and `maxOffsetsBehindLatest` | Back near zero after each minute's burst | #58 |
-| State store size (silver) | `stateOperators[].numRowsTotal`, `memoryUsedBytes`, and RocksDB custom metrics such as `rocksdbSstFileSize` and `rocksdbCommitCheckpointLatency` | Grows linearly with changes, and checkpoint commits stay well below the trigger | #58 |
-| Iceberg commit time | Iceberg's commit reports (`totalDuration`, `attempts`) in the driver logs, and the snapshot summaries in `lake.<layer>.<table>.snapshots` (files and bytes added per commit) | Commits take a small share of `addBatch`, with one attempt | #58 |
-| PostgreSQL transaction time under the writer lock | Lock wait and transaction time per gold batch, logged by the sink; `pg_stat_activity` advisory-lock waits | The four queries' transaction times add up to well below the trigger interval | #58 |
-| JDBC staging time | `addBatch` minus the transaction time per gold batch | Small next to the transaction | #58 |
-| Executor health | Spark UI Executors tab: GC time, peak memory, failed tasks | Little GC time and no failed tasks | #58 |
+| Metric | Source | Dashboard panel | Healthy when | Measured |
+| --- | --- | --- | --- | --- |
+| Batch duration vs trigger | `StreamingQueryProgress.durationMs.triggerExecution`, with `addBatch` and `walCommit`, per query | Spark streaming → Batch duration vs the 10 s trigger, Share of time over the trigger | Below the trigger interval; otherwise batches run back to back and lag grows | #58 |
+| Input rate vs processing rate | `inputRowsPerSecond`, `processedRowsPerSecond`, `numInputRows` | Spark streaming → Input vs processing rate, Processing / input ratio | Processing rate at or above the input rate over a window | #58 |
+| Kafka lag (landing) | `sources[].metrics.avgOffsetsBehindLatest` and `maxOffsetsBehindLatest` | none | Back near zero after each minute's burst | #58 |
+| State store size (silver) | `stateOperators[].numRowsTotal`, `memoryUsedBytes`, and RocksDB custom metrics such as `rocksdbSstFileSize` and `rocksdbCommitCheckpointLatency` | Spark streaming → State rows, State size, State growth (RocksDB metrics: none) | Grows linearly with changes, and checkpoint commits stay well below the trigger | #58 |
+| Iceberg commit time | Iceberg's commit reports (`totalDuration`, `attempts`) in the driver logs, and the snapshot summaries in `lake.<layer>.<table>.snapshots` (files and bytes added per commit) | none | Commits take a small share of `addBatch`, with one attempt | #58 |
+| PostgreSQL transaction time under the writer lock | Lock wait and transaction time per gold batch, logged by the sink; `pg_stat_activity` advisory-lock waits | none | The four queries' transaction times add up to well below the trigger interval | #58 |
+| JDBC staging time | `addBatch` minus the transaction time per gold batch | none | Small next to the transaction | #58 |
+| Executor health | Spark UI Executors tab: GC time, peak memory, failed tasks | Spark cluster → Executor peak heap and RSS vs 1 GiB, GC share of task time, Failed tasks | Little GC time and no failed tasks | #58 |
 
 ## Scaling to production
 
@@ -160,4 +160,4 @@ The local layout mirrors a production deployment but shares one small cluster (d
   - SeaweedFS gives way to S3, a configuration change (decisions [D8](decisions.md#d8--fully-local-no-cloud-services), [D13](decisions.md#d13--object-store-seaweedfs-instead-of-minio)).
   - The JDBC catalog gives way to a REST catalog or AWS Glue.
   - Checkpoints and event logs live on S3, and the history server reads them there.
-- **Monitoring.** The metrics above go to a time-series system instead of being read from the UI (#126), and the per-batch stats into an observability catalog (#127).
+- **Monitoring.** Prometheus already scrapes the Spark metrics locally ([Monitoring Spark](../operations/monitoring.md)); production would use a managed time-series store with an Alertmanager, and the per-batch stats would go into an observability catalog (#127).

@@ -10,6 +10,8 @@ from tests.infra.grafana_setup import (
 )
 from tests.infra.stack import Stack
 
+SPARK_AND_LAKE = ["spark-cluster", "spark-streaming"]
+
 
 @pytest.fixture(scope="module")
 def grafana(stack: Stack) -> Stack:
@@ -42,6 +44,22 @@ def test_the_gold_datasource_connects(grafana: Stack) -> None:
 
 def test_anonymous_visitors_can_browse_the_dashboards(grafana: Stack) -> None:
     assert isinstance(request(grafana, "/api/search", admin=False), list)
+
+
+@pytest.mark.parametrize("uid", SPARK_AND_LAKE)
+def test_a_spark_and_lake_dashboard_is_provisioned_in_its_folder(grafana: Stack, uid: str) -> None:
+    found = request(grafana, f"/api/dashboards/uid/{uid}")
+
+    assert isinstance(found, dict)
+    assert found["meta"]["folderTitle"] == "Spark and lake"
+    assert found["meta"]["provisioned"] is True
+
+
+def test_the_links_bar_tag_finds_every_spark_and_lake_dashboard(grafana: Stack) -> None:
+    found = request(grafana, "/api/search?tag=spark-and-lake", admin=False)
+
+    assert isinstance(found, list)
+    assert sorted(item["uid"] for item in found) == SPARK_AND_LAKE
 
 
 @pytest.mark.parametrize("view", sorted(PUBLIC_VIEWS))

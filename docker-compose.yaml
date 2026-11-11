@@ -451,7 +451,7 @@ services:
   # Optional: Spark history server
   spark-history:
     <<: *spark-image
-    profiles: [history]
+    profiles: [history, metrics]
     command:
       [
         "/opt/spark/bin/spark-class",
@@ -495,6 +495,28 @@ services:
       - ./monitoring/grafana/dashboards:/etc/grafana/dashboards:ro
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+      start_interval: 1s
+
+  prometheus:
+    image: prom/prometheus:v3.16.0@sha256:e04987641b57704f408e31f6373ba4138ecf27cb4a165d24aabb6c38fddd0f06
+    profiles: [metrics]
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=30d
+      - --storage.tsdb.retention.size=2GB
+    ports:
+      - "9090:9090"
+    volumes:
+      - prometheus-data:/prometheus
+      - ./monitoring/prometheus:/etc/prometheus:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:9090/-/ready || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -563,3 +585,4 @@ volumes:
   conduktor-data:
   spark-events:
   grafana-data:
+  prometheus-data:

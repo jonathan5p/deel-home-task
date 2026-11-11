@@ -10,3 +10,4 @@ services:
   spark-worker-2: { ports: !reset [] }
   maintenance-job: { ports: !reset [] }
   grafana: { ports: !reset [] }
+  prometheus: { ports: !reset [] }
