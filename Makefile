@@ -93,6 +93,11 @@ up:
 	@$(RENDER_GOLD_DDL)
 	@$(COMPOSE) $(addprefix --profile ,$(PROFILES)) up -d --build
 	@$(COMPOSE) up -d --wait analytics-db
+ifneq ($(filter catalog,$(PROFILES)),)
+	@$(MAKE) --no-print-directory db-logins
+	@$(COMPOSE) --profile catalog restart iceberg-rest
+	@$(COMPOSE) --profile catalog up -d --wait iceberg-rest
+endif
 	@$(MAKE) --no-print-directory gold-retention
 
 down:
@@ -141,6 +146,11 @@ pipeline:
 	@$(COMPOSE) --profile history up -d --build
 	@$(COMPOSE) --profile app build spark-app
 	@$(COMPOSE) up -d --wait analytics-db
+ifneq ($(filter catalog,$(PROFILES)),)
+	@$(MAKE) --no-print-directory db-logins
+	@$(COMPOSE) --profile catalog restart iceberg-rest
+	@$(COMPOSE) --profile catalog up -d --wait iceberg-rest
+endif
 	@$(MAKE) --no-print-directory gold-retention
 	@$(COMPOSE) --profile pipeline up -d $(PIPELINE_SERVICES)
 

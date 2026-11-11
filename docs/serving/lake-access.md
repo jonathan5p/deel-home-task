@@ -17,7 +17,7 @@ ORDER BY open_orders DESC, delivery_date;
 
 ## Query the lake from DuckDB
 
-Start the read-only [Iceberg REST catalog](../architecture/infrastructure.md#iceberg-rest-catalog) with `make up PROFILES=catalog` (on an existing volume, run `make db-logins` once).
+Start the read-only [Iceberg REST catalog](../architecture/infrastructure.md#iceberg-rest-catalog) with `make up PROFILES=catalog`, which also creates its login (`make db-logins`), so it works on an existing volume too.
 Then, in DuckDB 2.0 or later, attach it:
 
 ```sql
