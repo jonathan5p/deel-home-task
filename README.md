@@ -32,6 +32,8 @@ flowchart LR
 
 This README is the quick start. Every part of the project has its own guide in [`docs/`](docs/README.md), also published as the [docs site](https://jonathan5p.github.io/deel-home-task/) with the table reference; the [index](#documentation) below lists them.
 
+For a one-page visual tour of the pipeline, open the [interactive showcase](https://jonathan5p.github.io/deel-home-task/showcase/).
+
 ### Contents
 
 - [Install](#install)
