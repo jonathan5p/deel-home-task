@@ -76,6 +76,7 @@ def order(
     deleted: bool = False,
     delivery_date: date | None = DELIVERY_DAY,
     customer_id: int = 1,
+    changed_at: datetime | None = None,
 ) -> Row:
     content = {
         "customer_id": customer_id,
@@ -83,7 +84,7 @@ def order(
         "delivery_date": delivery_date,
         "status": status,
     }
-    return change("orders", key, sequence, content, op=op, deleted=deleted)
+    return change("orders", key, sequence, content, op=op, deleted=deleted, changed_at=changed_at)
 
 
 def item(

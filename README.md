@@ -660,12 +660,13 @@ The cluster has two workers with 5 cores and 5 GiB each, and each job takes at m
 
 #### Data quality checks
 
-Data quality checks verify the data itself, on the running stack. They are separate from unit tests (the code, on synthetic data) and from infra tests (the platform, on a throwaway stack), and run on demand. Each check compares one layer with its upstream layer only, never with the source database, so the checks form a chain from Kafka to the lake. The framework lives in `analytics/pipelines/src/pipelines/quality/`, and each layer's checks next to its code (`pipelines/landing/quality.py`, `pipelines/bronze/quality.py`). They run as one Spark job, `pipelines/quality/job.py`:
+Data quality checks verify the data itself, on the running stack. They are separate from unit tests (the code, on synthetic data) and from infra tests (the platform, on a throwaway stack), and run on demand. Each check compares one layer with its upstream layer only, never with the source database, so the checks form a chain from Kafka to the lake. The framework lives in `analytics/pipelines/src/pipelines/quality/`, and each layer's checks next to its code (`pipelines/landing/quality.py`, `pipelines/bronze/quality.py`, `pipelines/gold/quality.py`). They run as one Spark job, `pipelines/quality/job.py`:
 
 ```sh
 make data-quality                 # every check (CHECK=all)
 make data-quality CHECK=landing   # Kafka -> landing
 make data-quality CHECK=bronze    # landing -> bronze and its quarantine
+make data-quality CHECK=gold      # silver -> gold in PostgreSQL, through the gold views in the lake
 ```
 
 - **Output:** each check prints one JSON line per result, prefixed with `<CHECK> QUALITY` (`LANDING QUALITY`, `BRONZE QUALITY`), then a summary line of its own, and the run ends with a `DATA QUALITY` summary of every check that names the run's report. The job exits with code 1 if any check fails.
@@ -701,6 +702,14 @@ The bronze checks reconcile each topic's landing records with bronze and its qua
 | `committed_records_only` | each table holds only records of the landing files its own query committed |
 
 A record whose file only one of the two queries has committed so far is not missing yet: the other query has not read it. The results report the counts (`committed_records`, `missing`, `held_records`, `duplicated`, `unexpected`) and the committed batch of each query; a topic whose queries have not committed a batch yet has nothing to check and passes.
+
+The `gold` check compares every PostgreSQL `gold` view with the [gold view in the lake](#gold-views-in-the-lake) of the same name, computed over silver, one `gold_matches_silver` result per view, `data_freshness` aside. The lake views apply gold's rules to silver at read time, so one comparison checks silver against gold in PostgreSQL and the lake views against PostgreSQL, and silver and PostgreSQL are each read once per run:
+
+- **Same point in silver:** each gold stream's checkpoint gives the silver snapshot of its last committed batch, and of the batch it is writing, if any. The check reads the committed batches, then PostgreSQL, then the planned batches, and computes the lake views' SQL over silver at those snapshots, the committed ones first and then each combination with a planned one, because PostgreSQL commits a batch before the checkpoint does.
+- **Dimension versions, not surrogate keys:** PostgreSQL's `customer_key` and `product_key` are compared as the `_commit_sequence` of the dimension version they name (through `gold_internal.dim_*`), which the lake side computes too, so the version each fact points at is checked.
+- **Retention window:** the history facts are compared from the first month PostgreSQL still holds, with the lake's history computed over silver from that month; current state, dimensions, seeds and the business views in full.
+- **Up to date:** a stored lake view whose query or descriptions differ from its definition fails (`stale`).
+- **Output:** the metrics count the rows of each side and the rows only one side has (`lake_rows`, `postgres_rows`, `lake_only`, `postgres_only`, `stale`); the details hold the snapshots compared at, up to 10 sample rows of each side and the history start. Before every gold stream has committed a batch, each view is reported as not checked and fails.
 
 #### Bronze layer
 

@@ -2,6 +2,6 @@ SELECT
     {% for column in columns %}
     current_order.{{ column }}{{ "," if not loop.last }}
     {% endfor %}
-FROM {{ gold }}.current_orders AS current_order
-JOIN {{ gold }}.dim_order_status AS status ON status.status_key = current_order.status_key
+FROM {{ views.current_orders }} AS current_order
+JOIN {{ views.dim_order_status }} AS status ON status.status_key = current_order.status_key
 WHERE status.is_open
