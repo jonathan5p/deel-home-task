@@ -1,9 +1,10 @@
 [tool.uv.workspace]
-members = ["analytics/common", "analytics/pipelines"]
+members = ["analytics/api", "analytics/common", "analytics/pipelines"]
 
 [dependency-groups]
 dev = [
     "fastavro>=1.12",
+    "httpx2>=2.16",
     "pre-commit>=4.3",
     "pytest>=9.2",
     "pytest-cov>=7.0",
@@ -12,7 +13,7 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["analytics/common/tests", "analytics/pipelines/tests"]
+testpaths = ["analytics/api/tests", "analytics/common/tests", "analytics/pipelines/tests"]
 pythonpath = ["."]
 addopts = [
     "--strict-markers",
@@ -23,8 +24,9 @@ addopts = [
 ]
 
 [tool.coverage.run]
-source = ["common", "pipelines"]
+source = ["api", "common", "pipelines"]
 branch = true
+disable_warnings = ["module-not-imported"]
 
 [tool.coverage.report]
 fail_under = 90
@@ -54,12 +56,10 @@ select = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["common", "pipelines", "tests"]
+known-first-party = ["api", "common", "pipelines", "tests"]
 
 [tool.ty.environment]
 python-version = "3.14"
-# PySpark is not installed from PyPI: it comes from the Spark image.
-extra-paths = ["/opt/spark/python"]
 
 [tool.ty.terminal]
 error-on-warning = true

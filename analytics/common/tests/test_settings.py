@@ -75,3 +75,9 @@ def test_optional_positive_int_parses_the_variable() -> None:
 def test_optional_positive_int_rejects_zero() -> None:
     with pytest.raises(InvalidSettingError, match="WINDOW"):
         optional_positive_int({"WINDOW": "0"}, "WINDOW")
+
+
+def test_the_jdbc_url_becomes_a_libpq_connection_uri() -> None:
+    settings = AnalyticsDbSettings.from_env(DATABASE)
+
+    assert settings.conninfo() == "postgresql://db:5432/gold"

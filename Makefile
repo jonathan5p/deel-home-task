@@ -36,8 +36,11 @@ APP_BUILD ?= --build
 CODE_MOUNTS = -v "$(CURDIR)/analytics:/opt/app/analytics" -v "$(CURDIR)/tests:/opt/app/tests"
 RENDER_GOLD_DDL = uv run --frozen python -m pipelines.gold.ddl docker/analytics-db/initdb/02-gold-model.sql
 
+SPARK_TESTS = analytics/common/tests analytics/pipelines/tests
+API_TESTS = analytics/api/tests analytics/common/tests
+API_INFRA_APPS = tests/infra/apps/api_answers.py
 APP_RUN = trap 'docker network rm $(CHECKS_PROJECT)_default >/dev/null 2>&1 || true' EXIT; trap 'exit 130' INT TERM; \
-	COMPOSE_PROJECT_NAME=$(CHECKS_PROJECT) $(COMPOSE) run --rm $(APP_BUILD) --no-deps $(CODE_MOUNTS)
+		  COMPOSE_PROJECT_NAME=$(CHECKS_PROJECT) $(COMPOSE) run --rm $(APP_BUILD) --no-deps $(CODE_MOUNTS)
 
 PIPELINE_JOBS = $(addsuffix -job,$(if $(filter all,$(PIPELINE)),$(PIPELINES),$(filter $(PIPELINES),$(PIPELINE))))
 PIPELINE_SERVICES = $(PIPELINE_JOBS) $(if $(filter silver all,$(PIPELINE)),lake-views)
@@ -65,10 +68,10 @@ help:
 		'pipeline-logs  Follow the logs of the PIPELINE job (landing, bronze, silver, gold or all).' \
 		'pipeline-stop  Stop and remove the PIPELINE job (landing, bronze, silver, gold or all); the rest of the stack keeps running.' \
 		'lake-views     Create the silver and gold views, or replace those whose query or descriptions changed; fails while a silver table is missing.' \
-		'test           Run the unit tests with coverage (fails below 90%) in the app container.' \
+		'test           Run the unit tests with coverage (fails below 90%): pipelines and common in the app image, the API and common in the API dev image.' \
 		'lint           Check linting and formatting with ruff in the app container.' \
 		'format         Format the code and apply safe lint fixes with ruff.' \
-		'typecheck      Check types with ty in the app container; any diagnostic fails.' \
+		'typecheck      Check types with ty in the app image and the API dev image; any diagnostic fails.' \
 		'schemas        Render the full flat Avro schema of every lake table and view to target/schemas/<layer>/<table>.avsc, for reading.' \
 		'               Build output: git-ignored, regenerated each run; edit analytics/pipelines/src/pipelines/schemas/ instead.' \
 		'test-infra     Run the infra tests against an isolated copy of the stack (local only, a few minutes).' \
@@ -141,7 +144,8 @@ lake-views:
 	@$(COMPOSE) --profile pipeline run --rm --no-deps lake-views
 
 test:
-	@$(APP_RUN) spark-app pytest -p no:cacheprovider
+	@$(APP_RUN) spark-app pytest -p no:cacheprovider $(SPARK_TESTS)
+	@$(APP_RUN) api-dev pytest -p no:cacheprovider $(API_TESTS)
 
 lint:
 	@$(APP_RUN) spark-app sh -c 'ruff check && ruff format --check'
@@ -150,7 +154,9 @@ format:
 	@$(APP_RUN) --user "$$(id -u):$$(id -g)" spark-app sh -c 'ruff format && ruff check --fix'
 
 typecheck:
-	@$(APP_RUN) spark-app ty check
+	@$(APP_RUN) spark-app ty check --extra-search-path /opt/spark/python \
+		-c 'src.exclude=["$(API_INFRA_APPS)"]' analytics/common analytics/pipelines tests
+	@$(APP_RUN) api-dev ty check analytics/api analytics/common $(API_INFRA_APPS)
 
 schemas:
 	@uv run --frozen python -m pipelines.schemas.render target/schemas
