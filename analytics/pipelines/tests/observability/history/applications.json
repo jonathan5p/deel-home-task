@@ -1,0 +1,20 @@
+[
+  {
+    "id": "app-20261111200737-0000",
+    "name": "SparkUICheck",
+    "attempts": [
+      {
+        "startTime": "2026-11-11T20:07:35.558GMT",
+        "endTime": "2026-11-11T20:08:44.008GMT",
+        "lastUpdated": "2026-11-11T20:08:44.007GMT",
+        "duration": 68450,
+        "sparkUser": "spark",
+        "completed": true,
+        "appSparkVersion": "4.1.4",
+        "endTimeEpoch": 1794427724008,
+        "lastUpdatedEpoch": 1794427724007,
+        "startTimeEpoch": 1794427655558
+      }
+    ]
+  }
+]

@@ -66,7 +66,7 @@ Optional services are grouped in Compose profiles and are not started by a plain
 | `maintenance` | Scheduled lake maintenance and gold retention | [Maintenance and recovery](docs/operations/maintenance-and-recovery.md) |
 | `data-quality` | Every data quality check on a schedule | [Data quality checks](docs/lakehouse/data-quality.md#data-quality-checks) |
 | `catalog` | A read-only Iceberg REST catalog of the lake, for engines such as DuckDB | [Query the lake from DuckDB](docs/serving/lake-access.md#query-the-lake-from-duckdb) |
-| `metrics` | Prometheus, scraping every Spark driver, the master and the workers, and the Spark History Server; Grafana's Spark dashboards read it | [Monitoring Spark](docs/operations/monitoring.md) |
+| `metrics` | Prometheus, scraping every Spark driver, the master and the workers, the Spark History Server and an exporter of its completed stages; Grafana's Spark dashboards read it | [Monitoring Spark](docs/operations/monitoring.md) |
 
 `make down` keeps every volume, so the source database, Kafka, the lake and gold survive a restart. To work on the code, also run `uv sync --frozen` and `make hooks` ([testing](docs/development/testing.md)).
 

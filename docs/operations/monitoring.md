@@ -5,11 +5,11 @@ The optional `metrics` profile scrapes every Spark driver, the master and the wo
 ## Start it
 
 ```sh
-make up PROFILES=metrics       # Prometheus on http://localhost:9090 and the Spark History Server
+make up PROFILES=metrics       # Prometheus on http://localhost:9090, the Spark History Server and the stage exporter
 make pipeline PIPELINE=all     # Then the streaming jobs, if they are not running yet
 ```
 
-Then open Grafana at <http://localhost:3000>: the **Spark and lake** folder holds the **Spark cluster** and **Spark streaming** dashboards, and the links bar at the top of each one moves to the other. The **Gold metrics** dashboard stays in the **Gold** folder.
+Then open Grafana at <http://localhost:3000>: the **Spark and lake** folder holds the **Spark cluster**, **Spark streaming** and **Spark stages** dashboards, and the links bar at the top of each one moves between them. The **Gold metrics** dashboard stays in the **Gold** folder.
 
 Prometheus scrapes every 10 seconds and keeps 30 days of samples, or 2 GB, whichever comes first, in the `prometheus-data` volume, so the history survives `make down`, a restart of Prometheus and restarts of the drivers. `make clean CONFIRM=1` deletes it. Without the profile, Grafana's Prometheus datasource reports an error and the Spark dashboards stay empty; the Gold dashboard is not affected.
 
@@ -24,6 +24,7 @@ Spark's own [`PrometheusServlet`](https://spark.apache.org/docs/latest/monitorin
 | `spark-master` | `spark-master:8080` | `/metrics/master/prometheus` | Alive workers, running and waiting applications |
 | `spark-applications` | `spark-master:8080` | `/metrics/applications/prometheus` | Cores granted to each application |
 | `spark-workers` | `spark-worker-1:8081`, `spark-worker-2:8081` | `/metrics/prometheus` | Cores and memory used and free per worker |
+| `spark-stages` | `spark-stage-exporter:9101` | `/metrics` | Completed stages of every application, from the History Server (see [Stage history](#stage-history)) |
 
 Drivers are found by their Compose service name. Docker's DNS resolves `landing-job`, `bronze-job`, `silver-job`, `gold-job`, `lake-views`, `maintenance-job`, `data-quality-job` and `spark-app` to the containers running them, and Prometheus asks again every 10 seconds, so a driver is scraped from its first 10 seconds until it ends; the `service` label names it. The drivers started by `make spark-submit`, `make spark-sql` and the targets built on them join the network with the `spark-app` alias (`docker compose run --use-aliases`), so they are scraped too, under `service="spark-app"`.
 
@@ -34,6 +35,31 @@ The configuration in `monitoring/prometheus/prometheus.yml` also reshapes the me
 - The applications page carries the application name and start time in the metric name; it becomes `spark_application_cores{app="<name>"}`.
 - Executor metrics name the application in an `app` label, without the application id.
 - Spark repeats every gauge as `_Number` and `_Value`; only `_Value` is kept, and the code generation histograms and listener timers are dropped.
+
+## Stage history
+
+Spark's own metrics stop at counters per driver; the stage and task details that size a cluster (how long each stage took, how even its tasks were, how much it shuffled and spilled) live in the event logs. The `spark-stage-exporter` service of the `metrics` profile reads them from the History Server's REST API and serves them to Prometheus on its internal port 9101 (`python -m pipelines.observability.stage_exporter`, in the `spark-app` image):
+
+- every 30 seconds (`STAGE_EXPORTER_POLL_SECONDS`) it lists the applications that run or ended since it started, and their completed stages;
+- for each stage it has not seen yet, it reads the task quantiles once (`taskSummary?quantiles=0,0.5,0.95,1`) and adds the stage to its counters and histograms;
+- only stages that finish after it starts are counted, so a restart never counts a stage twice.
+
+Every series is labelled with the application name (`app`) and the streaming query (`query`, the first line of the stage's description, which Spark sets to the query name for every micro-batch; empty for batch jobs, and so absent in Prometheus). Nothing finer, such as stage ids, becomes a label, so the number of series stays bounded.
+
+| Metric | Type | From the stage |
+| --- | --- | --- |
+| `spark_stage_run_seconds_total`, `spark_stage_cpu_seconds_total`, `spark_stage_gc_seconds_total` | counter | Task run, CPU and GC time |
+| `spark_stage_input_bytes_total`, `spark_stage_input_records_total`, `spark_stage_output_bytes_total`, `spark_stage_output_records_total` | counter | Bytes and records read from sources and written to sinks |
+| `spark_stage_shuffle_read_local_bytes_total`, `spark_stage_shuffle_read_remote_bytes_total`, `spark_stage_shuffle_write_bytes_total` | counter | Shuffle bytes read from the same executor, read from other executors, and written |
+| `spark_stage_shuffle_fetch_wait_seconds_total` | counter | Time tasks waited for shuffle blocks |
+| `spark_stage_memory_spill_bytes_total`, `spark_stage_disk_spill_bytes_total` | counter | Bytes spilled from memory and to disk |
+| `spark_stage_duration_seconds` | histogram | Submission to completion; its `_count` counts the stages |
+| `spark_stage_tasks` | histogram | Tasks per stage |
+| `spark_stage_median_task_seconds` | histogram | Duration of the median task |
+| `spark_stage_task_duration_skew` | histogram | Slowest task duration over the median task duration |
+| `spark_stage_data_skew` | histogram | Largest task read over the median task read, in shuffle bytes for stages that read a shuffle and in input bytes otherwise; left out when the median task reads nothing |
+
+The **Spark stages** dashboard charts them; the questions it answers are in the table below.
 
 ## Alerts
 
@@ -56,9 +82,18 @@ They show in Prometheus at <http://localhost:9090/alerts>. No Alertmanager runs,
 | Does each query keep up? | Spark streaming → Input vs processing rate, Processing / input ratio | Ratio at or above 1 |
 | Is the trigger right? | Spark streaming → Batch duration vs the 10 s trigger, Share of time over the trigger | Batches well under the line; a growing share means a longer trigger or more cores |
 | Does silver's state level off? | Spark streaming → State rows, State size, State growth | Growth falling towards zero once the deduplication window is full |
+| Are the partitions the right size? | Spark stages → Tasks per stage, Stages with a median task under 100 ms, Stage duration p50 and p95 | Many stages with sub-100 ms median tasks mean fewer partitions (`spark.sql.shuffle.partitions`) would do |
+| Is the work even across tasks? | Spark stages → Skew p95 | Skews above about 3 mean a hot key or uneven input files |
+| Is memory or the shuffle the bottleneck? | Spark stages → GC time / run time, Spill, Shuffle fetch wait / run time | Any spill, GC above 10 % or a growing fetch wait share |
+| How much data does each job move? | Spark stages → Bytes read and written, Records read and written, Bytes per record read | The volumes to project the cluster size from |
 
 Use a time range that covers a burst of source changes and the quiet after it: the rates and durations are those of the last micro-batch, sampled every 10 seconds.
 
 ## Network-proxy limits
 
-Spark has no metric for network latency or bandwidth. Its closest signals are the shuffle fetch wait time and the bytes read from remote executors, which the per-executor shuffle totals only hint at. Locally they understate the network: both workers share one Docker bridge on one machine, so a "remote" read never leaves the host. Read them as relative signals, to compare jobs and partitionings, not as a forecast of a real network.
+Spark has no metric for network latency or bandwidth. The stage exporter gives its two closest signals: the time tasks wait for shuffle blocks (`spark_stage_shuffle_fetch_wait_seconds_total`, charted as a share of run time) and the shuffle bytes read from other executors (`spark_stage_shuffle_read_remote_bytes_total`, against the local reads). Locally they understate the network:
+
+- both workers are containers on one Docker bridge on one machine, so a "remote" read is a copy through the host's memory, without the latency, bandwidth limits or losses of a real network;
+- with two workers each running half of the executors, about half of the shuffle bytes are read remotely whatever the job does, so the remote share says more about the number of workers than about the job.
+
+Read them as relative signals, to compare jobs, partitionings and trigger intervals on the same machine, not as a forecast of a real network. On a real cluster, the remote share grows towards (n − 1)/n with n executors, and the fetch wait share is the one to watch.

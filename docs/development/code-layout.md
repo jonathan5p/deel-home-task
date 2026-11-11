@@ -32,6 +32,7 @@ analytics/
                             facts.py (the history fact and current-state SQL), dimensions.py (the dimensions and facts
                             and their lookups), sink.py, postgres.py, job.py (the gold streaming job) and
                             retention.py and rebuild.py (the gold retention and rebuild jobs)
+      observability/        stage_exporter.py (the Prometheus exporter of completed Spark stages, read from the History Server) and schedule.py (its periodic tasks)
     tests/
   sql/gold/                 the four business questions as SQL on the gold views in PostgreSQL
 monitoring/grafana/         Grafana's provisioning (datasources, dashboard providers) and dashboards, as code

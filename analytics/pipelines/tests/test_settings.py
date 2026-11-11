@@ -12,6 +12,7 @@ from pipelines.settings import (
     MaintenanceSettings,
     PipelineSettings,
     SilverSettings,
+    StageExporterSettings,
 )
 
 KAFKA = {"KAFKA_BOOTSTRAP_SERVERS": "broker:9092", "KAFKA_TOPICS": "topic-a, topic-b"}
@@ -351,3 +352,31 @@ def test_gold_retention_needs_only_the_database() -> None:
         GoldRetentionSettings.from_env({})
 
     assert error.value.names == AnalyticsDbSettings.REQUIRED
+
+
+STAGE_EXPORTER = {"HISTORY_SERVER_URL": "http://history:18080", "STAGE_EXPORTER_PORT": "9101"}
+
+
+def test_the_stage_exporter_polls_the_history_server_every_thirty_seconds_by_default() -> None:
+    assert StageExporterSettings.from_env(STAGE_EXPORTER) == StageExporterSettings(
+        history_server_url="http://history:18080", port=9101, poll_seconds=30
+    )
+
+
+def test_the_stage_exporter_poll_interval_can_be_overridden() -> None:
+    settings = StageExporterSettings.from_env(STAGE_EXPORTER | {"STAGE_EXPORTER_POLL_SECONDS": "5"})
+
+    assert settings.poll_seconds == 5
+
+
+def test_the_stage_exporter_needs_the_history_server_and_its_own_port() -> None:
+    with pytest.raises(MissingSettingsError) as error:
+        StageExporterSettings.from_env({})
+
+    assert error.value.names == ("HISTORY_SERVER_URL", "STAGE_EXPORTER_PORT")
+
+
+@pytest.mark.parametrize("name", ["STAGE_EXPORTER_PORT", "STAGE_EXPORTER_POLL_SECONDS"])
+def test_the_stage_exporter_port_and_interval_must_be_positive_integers(name: str) -> None:
+    with pytest.raises(InvalidSettingError, match=name):
+        StageExporterSettings.from_env(STAGE_EXPORTER | {name: "0"})

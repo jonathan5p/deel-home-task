@@ -523,6 +523,28 @@ services:
       start_period: 20s
       start_interval: 1s
 
+  spark-stage-exporter:
+    image: ${COMPOSE_PROJECT_NAME}-spark-app
+    profiles: [metrics]
+    command: [python, -m, pipelines.observability.stage_exporter]
+    environment:
+      HISTORY_SERVER_URL: ${HISTORY_SERVER_URL}
+      STAGE_EXPORTER_PORT: "9101"
+      STAGE_EXPORTER_POLL_SECONDS: ${STAGE_EXPORTER_POLL_SECONDS:-}
+    expose:
+      - "9101"
+    depends_on:
+      spark-history:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9101/metrics', timeout=5)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+      start_interval: 1s
+
   # Kafka monitoring console
   conduktor-console:
     image: conduktor/conduktor-console:1.48.1

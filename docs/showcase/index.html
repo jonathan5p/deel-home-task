@@ -837,11 +837,11 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
       why: [D("D23", "event logs are always written", "d23--event-logs-always-written-optional-history-server")],
       docs: [L("Spark History Server", "../architecture/infrastructure/#spark-history-server-optional")] },
     { id: "prometheus", x: 1058, y: 424, w: 144, h: 60, layer: "serve", t: "Prometheus", s: "Spark dashboards",
-      related: ["spark", "landing", "bronze", "silver", "gold"],
+      related: ["spark", "landing", "bronze", "silver", "gold", "history"],
       kicker: "Operations", title: "Prometheus and the Spark dashboards", tech: ["Prometheus", "Grafana", "optional metrics profile"],
       hint: "Spark's metrics, charted and alerted on",
       what: "Every Spark driver, the master and the workers expose their metrics, and Prometheus scrapes them every 10 seconds and keeps 30 days. Grafana's &ldquo;Spark and lake&rdquo; folder charts them in a cluster and a streaming dashboard.",
-      how: ["It runs with the optional <code>metrics</code> profile. Two alert rules fire when a stream processes rows slower than they arrive or its batches take longer than the trigger."],
+      how: ["It runs with the optional <code>metrics</code> profile. Two alert rules fire when a stream processes rows slower than they arrive or its batches take longer than the trigger.", "A small exporter reads the finished stages from the History Server, with their skew, shuffle, spill and the cost of Docker's network proxies, for the Spark stages dashboard."],
       why: [D("D42", "Spark's own metrics, pulled by Prometheus", "d42--spark-metrics-sparks-prometheus-servlet-scraped-by-dns-service-discovery")],
       docs: [L("Monitoring Spark", "../operations/monitoring/")] }
   ];

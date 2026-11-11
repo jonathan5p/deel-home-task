@@ -1,24 +1,26 @@
 import re
-from collections.abc import Iterable, Mapping
-from functools import cache
+from collections.abc import Callable, Iterable, Mapping
+from functools import cache, partial
 from pathlib import Path
 from typing import Any
 
 import yaml
+from prometheus_client import CollectorRegistry, generate_latest
+
+from analytics.pipelines.tests.observability.stage_exporter_setup import (
+    APP_NAME,
+    SHUFFLE_READ_STAGE,
+    SHUFFLE_WRITE_STAGE,
+    stage,
+    summary,
+    with_quantiles,
+)
+from pipelines.observability.stage_exporter import StageMetrics
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CONFIG = REPO_ROOT / "monitoring/prometheus/prometheus.yml"
 RULES = REPO_ROOT / "monitoring/prometheus/rules"
 SCRAPES = Path(__file__).parent / "scrapes"
-# Pages captured from a Spark 4.1.4 cluster running tests/infra/apps/spark_ui_check.py, one per
-# scrape job.
-JOB_SCRAPES = {
-    "spark-drivers": "driver.prom",
-    "spark-executors": "executors.prom",
-    "spark-master": "master.prom",
-    "spark-applications": "applications.prom",
-    "spark-workers": "worker.prom",
-}
 SAMPLE = re.compile(r"^(?P<name>[a-zA-Z_:][a-zA-Z0-9_:]*)(?:\{(?P<labels>.*)\})?\s+\S+$")
 LABEL = re.compile(r'([a-zA-Z_][a-zA-Z0-9_]*)="((?:[^"\\]|\\.)*)"')
 GROUP_REFERENCE = re.compile(r"\$(?:\{(\w+)\}|(\w+))")
@@ -104,16 +106,44 @@ def relabel(series: Series, rules: Iterable[Mapping[str, Any]]) -> Series | None
     return labels
 
 
+def captured(name: str) -> str:
+    return (SCRAPES / name).read_text(encoding="utf-8")
+
+
+def stage_exporter_page() -> str:
+    """The stage exporter's page once it recorded the captured History Server stages, one of
+    them again with uneven task reads, so that every histogram has observations."""
+    registry = CollectorRegistry()
+    metrics = StageMetrics(registry)
+    for stage_id in (SHUFFLE_WRITE_STAGE, SHUFFLE_READ_STAGE):
+        metrics.record(APP_NAME, stage(stage_id), summary(stage_id))
+    uneven = with_quantiles(
+        summary(SHUFFLE_READ_STAGE), "shuffleReadMetrics", "readBytes", [10, 100, 300, 400]
+    )
+    metrics.record(APP_NAME, stage(SHUFFLE_READ_STAGE), uneven)
+    return generate_latest(registry).decode()
+
+
+# The page each scrape job reads: those of Spark itself were captured from a Spark 4.1.4 cluster
+# running tests/infra/apps/spark_ui_check.py.
+JOB_PAGES: Mapping[str, Callable[[], str]] = {
+    "spark-drivers": partial(captured, "driver.prom"),
+    "spark-executors": partial(captured, "executors.prom"),
+    "spark-master": partial(captured, "master.prom"),
+    "spark-applications": partial(captured, "applications.prom"),
+    "spark-workers": partial(captured, "worker.prom"),
+    "spark-stages": stage_exporter_page,
+}
+
+
 def scraped(job: str) -> list[Series]:
-    """The series Prometheus stores from the job's captured page."""
-    page = (SCRAPES / JOB_SCRAPES[job]).read_text(encoding="utf-8")
+    """The series Prometheus stores from the job's page."""
+    page = JOB_PAGES[job]()
     rules = scrape_job(job).get("metric_relabel_configs", [])
     return [kept for series in parse_exposition(page) if (kept := relabel(series, rules))]
 
 
 @cache
 def stored_metric_names() -> frozenset[str]:
-    """Every metric name Prometheus stores from the Spark pages, plus its own `up`."""
-    return frozenset(
-        {series["__name__"] for job in JOB_SCRAPES for series in scraped(job)} | {"up"}
-    )
+    """Every metric name Prometheus stores from the scraped pages, plus its own `up`."""
+    return frozenset({series["__name__"] for job in JOB_PAGES for series in scraped(job)} | {"up"})
