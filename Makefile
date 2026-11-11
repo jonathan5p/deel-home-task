@@ -15,6 +15,8 @@ MAINTENANCE_UI_PORT ?= 4044
 GOLD_REBUILD_UI_PORT ?= 4045
 DRIVER_BUILD ?= --build
 INFRA_WORKERS ?= 2
+LATENCY_SERVICES = landing-job bronze-job silver-job gold-job iceberg-rest
+LATENCY_ENV = LAKE_CATALOG_URI LAKE_S3_ENDPOINT LAKE_S3_REGION SOURCE_DB_URL SOURCE_DB_USER SOURCE_DB_PASSWORD
 .DEFAULT_GOAL := help
 
 export BUILDX_NO_DEFAULT_ATTESTATIONS ?= 1
@@ -55,7 +57,7 @@ PIPELINE_JOBS = $(addsuffix -job,$(if $(filter all,$(PIPELINE)),$(PIPELINES),$(f
 PIPELINE_SERVICES = $(PIPELINE_JOBS) $(if $(filter silver all,$(PIPELINE)),lake-views)
 CHECK_PIPELINE = $(if $(and $(PIPELINE_JOBS),$(filter 1,$(words $(PIPELINE)))),,$(error Set PIPELINE to one of: $(PIPELINES) all (got "$(PIPELINE)"), e.g. make $@ PIPELINE=landing))
 
-.PHONY: help up down clean cdc-pause cdc-resume cdc-status gold-reset db-logins gold-rebuild gold-retention spark-submit bronze-replay spark-sql spark-history data-quality lake-maintenance pipeline pipeline-logs pipeline-stop lake-views test lint format typecheck schemas docs docs-serve test-infra hooks
+.PHONY: help up down clean cdc-pause cdc-resume cdc-status gold-reset db-logins gold-rebuild gold-retention spark-submit bronze-replay spark-sql spark-history data-quality latency-probe lake-maintenance pipeline pipeline-logs pipeline-stop lake-views test lint format typecheck schemas docs docs-serve test-infra hooks
 
 help:
 	@printf '%s\n' \
@@ -71,6 +73,9 @@ help:
 		'spark-sql      Open the Spark SQL shell in its own driver container; SPARK_SQL_FILE runs a file instead; SPARK_SQL_VARS (key=value ...) and LANDING_ROOT set its variables.' \
 		'spark-history  Toggle the optional Spark History Server (localhost:18080): start it if stopped, stop it if running.' \
 		'data-quality   Run the CHECK data quality checks against the running stack (landing, bronze, silver, gold or all); fails if any check fails; the data-quality profile runs them all every DATA_QUALITY_INTERVAL_HOURS (default 24).' \
+		'latency-probe  Mark one source row per entity and time its change into landing, bronze, silver and PostgreSQL gold: ENTITIES (default all), PROBES (default 5),' \
+		'               POLL_SECONDS (1), TIMEOUT_SECONDS per probe (300), MAX_LATENCY (e.g. gold=60,silver=40), KEYS (e.g. customers=7; default the lowest key);' \
+		'               writes a JSON and an HTML report under <LAKE_ROOT>/latency/reports/; fails on a timeout or a threshold exceeded; needs the pipeline and the catalog profile.' \
 		'lake-maintenance  Compact the bronze and silver Iceberg tables, expire old snapshots and remove orphan files; fails if any table fails.' \
 		'pipeline       Start the stack, the History Server and the PIPELINE job (landing, bronze, silver, gold or all) as a long-running service.' \
 		'               silver and all also run lake-views once the silver tables exist.' \
@@ -139,6 +144,20 @@ spark-history:
 data-quality:
 	@$(MAKE) --no-print-directory spark-submit SPARK_APP=analytics/pipelines/src/pipelines/quality/job.py \
 		SPARK_APP_ARGS="$(CHECK)" SPARK_UI_PORT=0 SPARK_CONF="spark.cores.max=2 $(SPARK_CONF)"
+
+LATENCY_ARGS = $(if $(ENTITIES),--entities $(ENTITIES)) $(if $(PROBES),--probes $(PROBES)) \
+	$(if $(POLL_SECONDS),--poll-seconds $(POLL_SECONDS)) $(if $(TIMEOUT_SECONDS),--timeout-seconds $(TIMEOUT_SECONDS)) \
+	$(if $(MAX_LATENCY),--max-latency $(MAX_LATENCY)) $(if $(KEYS),--keys $(KEYS))
+
+latency-probe:
+	@for service in $(LATENCY_SERVICES); do \
+		if [ -z "$$($(COMPOSE) --profile pipeline --profile catalog ps -q --status running $$service)" ]; then \
+			printf '%s\n' "$$service is not running; start it with: make up PROFILES=catalog && make pipeline PIPELINE=all" >&2; \
+			exit 2; \
+		fi; \
+	done
+	@$(COMPOSE) run --rm --build --no-deps $(addprefix -e ,$(LATENCY_ENV)) spark-app \
+		python -m pipelines.latency.job $(strip $(LATENCY_ARGS))
 
 lake-maintenance:
 	@$(MAKE) --no-print-directory spark-submit SPARK_APP=analytics/pipelines/src/pipelines/maintenance/job.py \

@@ -78,6 +78,19 @@ COPY analytics/pipelines/pyproject.toml analytics/pipelines/
 RUN --mount=from=ghcr.io/astral-sh/uv:0.13.7,source=/uv,target=/usr/local/bin/uv \
     uv sync --frozen --package pipelines --group dev --no-install-workspace
 
+# DuckDB extensions for the DuckDB readers, for the locked DuckDB version: they load them from
+# here and never download one at run time.
+ENV DUCKDB_EXTENSION_DIRECTORY=/opt/duckdb/extensions
+RUN /opt/venv/bin/python <<'PYTHON'
+import os
+import duckdb
+
+connection = duckdb.connect(config={"extension_directory": os.environ["DUCKDB_EXTENSION_DIRECTORY"]})
+for name in ("httpfs", "avro", "iceberg", "postgres"):
+    connection.install_extension(name)
+    connection.load_extension(name)
+PYTHON
+
 COPY analytics/ analytics/
 COPY tests/ tests/
 RUN --mount=from=ghcr.io/astral-sh/uv:0.13.7,source=/uv,target=/usr/local/bin/uv \

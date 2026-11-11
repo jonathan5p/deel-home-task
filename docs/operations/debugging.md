@@ -14,6 +14,7 @@
 | Gold in PostgreSQL | `docker compose exec analytics-db psql -U analytics -d analytics` |
 | Kafka topics and messages | [Conduktor](#optional-kafka-monitoring), or the [message format](../lakehouse/source-and-cdc.md#message-format) |
 | Whether the data is complete and consistent | `make data-quality` ([data quality checks](../lakehouse/data-quality.md)) |
+| How long a source change takes to reach each layer | `make latency-probe` ([end-to-end latency](latency.md)) |
 
 ## Common errors
 

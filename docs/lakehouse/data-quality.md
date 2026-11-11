@@ -1,6 +1,6 @@
 # Data quality checks
 
-Data quality checks verify the data itself, on the running stack. They are separate from unit tests (the code, on synthetic data) and from infra tests (the platform, on a throwaway stack), and run on demand. Each check compares one layer with its upstream layer only, never with the source database, so the checks form a chain from Kafka to the lake. The framework lives in `analytics/pipelines/src/pipelines/quality/`, and each layer's checks next to its code (`pipelines/landing/quality.py`, `pipelines/bronze/quality.py`, `pipelines/silver/quality.py`, `pipelines/gold/quality.py`). They run as one Spark job, `pipelines/quality/job.py`:
+Data quality checks verify the data itself, on the running stack; how fast it gets there is measured by the [latency probe](../operations/latency.md). They are separate from unit tests (the code, on synthetic data) and from infra tests (the platform, on a throwaway stack), and run on demand. Each check compares one layer with its upstream layer only, never with the source database, so the checks form a chain from Kafka to the lake. The framework lives in `analytics/pipelines/src/pipelines/quality/`, and each layer's checks next to its code (`pipelines/landing/quality.py`, `pipelines/bronze/quality.py`, `pipelines/silver/quality.py`, `pipelines/gold/quality.py`). They run as one Spark job, `pipelines/quality/job.py`:
 
 ```sh
 make data-quality                 # every check (CHECK=all)
