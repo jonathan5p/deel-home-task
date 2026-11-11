@@ -12,7 +12,7 @@
 | `landing-job` (optional) | <http://localhost:4040> | Driver of the landing job, a long-running service started by `make pipeline` (see [Running the pipeline](../operations/running-the-pipeline.md)) |
 | `bronze-job` (optional) | <http://localhost:4041> | Driver of the bronze job, started the same way |
 | `silver-job` (optional) | <http://localhost:4042> | Driver of the silver job, started the same way |
-| `gold-job` (optional) | <http://localhost:4045> | Driver of the gold job, a long-running service started by `make pipeline PIPELINE=gold` (see [Gold job](../layers/gold.md#gold-job)) |
+| `gold-job` (optional) | <http://localhost:4045> | Driver of the gold job, a long-running service started by `make pipeline PIPELINE=gold` (see [Gold job](../lakehouse/gold/writer.md#gold-job)) |
 
 Spark runs PySpark on **Python 3.14** (3.14.10), the newest version PySpark 4.1.4 supports. The official `apache/spark` images ship Python 3.10, so the Dockerfile installs CPython 3.14 with [uv](https://docs.astral.sh/uv/) at build time and points `PYSPARK_PYTHON` at it; every driver and executor uses it.
 

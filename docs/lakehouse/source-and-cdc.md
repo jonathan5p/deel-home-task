@@ -1,6 +1,6 @@
 # Source database and CDC
 
-The source is the `finance_db` PostgreSQL database supplied with the assignment, with Debezium streaming its changes to Kafka. Both are used exactly as provided ([decision D29](../architecture/decisions.md#d29--the-source-database-and-the-debezium-connector-stay-as-provided)); the supplied text is kept in [the original README](../original-readme.md).
+The source is the `finance_db` PostgreSQL database supplied with the assignment, with Debezium streaming its changes to Kafka. Both are used exactly as provided ([decision D29](../architecture/decisions.md#d29--the-source-database-and-the-debezium-connector-stay-as-provided)); the supplied text is kept in [the original README](../reference/original-readme.md).
 
 ## Source database
 

@@ -1,6 +1,6 @@
 # Analytics API
 
-The analytics API (`analytics/api`, [FastAPI](https://fastapi.tiangolo.com/)) serves the four business questions and the freshness of gold over HTTP. It starts with `make up` as the `api` service, on http://localhost:8000, with its interactive documentation on http://localhost:8000/docs and the OpenAPI document on http://localhost:8000/openapi.json. It reads only the `gold` views, as the read-only login `api_reader` (see [read-only service logins](../platform/services.md#read-only-service-logins)), through a connection pool (`API_DB_POOL_*` in [configuration](../configuration.md)).
+The analytics API (`analytics/api`, [FastAPI](https://fastapi.tiangolo.com/)) serves the four business questions and the freshness of gold over HTTP. It starts with `make up` as the `api` service, on http://localhost:8000, with its interactive documentation on http://localhost:8000/docs and the OpenAPI document on http://localhost:8000/openapi.json. It reads only the `gold` views, as the read-only login `api_reader` (see [read-only service logins](../architecture/infrastructure.md#read-only-service-logins)), through a connection pool (`API_DB_POOL_*` in [configuration](../operations/configuration.md)).
 
 | Endpoint | Answer |
 | --- | --- |

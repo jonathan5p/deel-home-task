@@ -13,39 +13,38 @@ validation:
 
 nav:
   - Home: README.md
-  - Layers:
-      - layers/source-and-cdc.md
-      - layers/landing.md
-      - layers/bronze.md
-      - layers/silver.md
-      - layers/gold.md
-  - Operations:
-      - operations/running-the-pipeline.md
-      - operations/data-quality.md
-      - operations/maintenance-and-recovery.md
-      - operations/debugging.md
+  - Architecture:
+      - architecture/overview.md
+      - architecture/infrastructure.md
+      - platform/spark.md
+      - architecture/sizing.md
+      - architecture/decisions.md
+  - Lakehouse:
+      - lakehouse/source-and-cdc.md
+      - lakehouse/landing.md
+      - lakehouse/bronze.md
+      - lakehouse/silver.md
+      - lakehouse/gold/model.md
+      - lakehouse/gold/writer.md
+      - lakehouse/data-quality.md
   - Serving:
       - serving/api.md
       - serving/grafana.md
-  - Platform:
-      - platform/services.md
-      - platform/spark.md
-      - configuration.md
+  - Operations:
+      - operations/running-the-pipeline.md
+      - operations/maintenance-and-recovery.md
+      - operations/debugging.md
+      - operations/configuration.md
   - Development:
       - development/code-layout.md
       - development/table-definitions.md
       - development/testing.md
-  - Architecture:
-      - architecture/overview.md
-      - architecture/sizing.md
-      - architecture/decisions.md
-      - architecture/gold-model.md
   - Reference:
       - reference/index.md
       - Bronze: reference/bronze/index.md
       - Silver: reference/silver/index.md
       - Gold: reference/gold/index.md
-  - original-readme.md
+      - reference/original-readme.md
 
 theme:
   name: material

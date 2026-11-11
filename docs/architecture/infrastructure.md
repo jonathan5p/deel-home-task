@@ -1,6 +1,6 @@
 # Services and storage
 
-Every service runs in one Docker Compose project. The [architecture overview](../architecture/overview.md#components) shows how they connect, and the [Spark cluster](spark.md) page covers Spark.
+Every service runs in one Docker Compose project. The [architecture overview](overview.md#components) shows how they connect, and the [Spark cluster](../platform/spark.md) page covers Spark.
 
 ## Starting the stack
 
@@ -14,7 +14,7 @@ make spark-submit   # Submit a job to the Spark cluster (defaults to a one-minut
 make help           # Show lifecycle commands
 ```
 
-Optional services are grouped in Compose profiles and are not started by a plain `make up`: `monitoring` (Conduktor, see [Optional Kafka monitoring](../operations/debugging.md#optional-kafka-monitoring)), `history` (Spark History Server, see [Spark History Server](spark.md#spark-history-server-optional)), `maintenance` (scheduled lake maintenance and gold retention, see [Lake maintenance](../operations/maintenance-and-recovery.md#lake-maintenance) and [Gold retention](../operations/maintenance-and-recovery.md#gold-retention)) `data-quality` (scheduled data quality checks, see [Data quality checks](../operations/data-quality.md)) and `catalog` (the read-only Iceberg REST catalog, see [Query the lake from DuckDB](spark.md#query-the-lake-from-duckdb)). Pass them with `PROFILES`, separated by spaces.
+Optional services are grouped in Compose profiles and are not started by a plain `make up`: `monitoring` (Conduktor, see [Optional Kafka monitoring](../operations/debugging.md#optional-kafka-monitoring)), `history` (Spark History Server, see [Spark History Server](../platform/spark.md#spark-history-server-optional)), `maintenance` (scheduled lake maintenance and gold retention, see [Lake maintenance](../operations/maintenance-and-recovery.md#lake-maintenance) and [Gold retention](../operations/maintenance-and-recovery.md#gold-retention)) `data-quality` (scheduled data quality checks, see [Data quality checks](../lakehouse/data-quality.md)) and `catalog` (the read-only Iceberg REST catalog, see [Query the lake from DuckDB](../platform/spark.md#query-the-lake-from-duckdb)). Pass them with `PROFILES`, separated by spaces.
 
 ## Analytics database
 
@@ -46,7 +46,7 @@ Consumers of gold never use the `analytics` owner. Each one logs in with a servi
 docker compose exec -e PGPASSWORD=api_reader analytics-db psql -h localhost -U api_reader -d analytics -c "select * from gold.data_freshness"
 ```
 
-The lake's [REST catalog](spark.md#query-the-lake-from-duckdb) has a read-only login of its own, `lake_catalog_reader` (`LAKE_CATALOG_READER_USER`, `LAKE_CATALOG_READER_PASSWORD`), which is not a member of `gold_reader`: it can read the tables of the `iceberg_catalog` database and nothing else, and its sessions start read-only.
+The lake's [REST catalog](../platform/spark.md#query-the-lake-from-duckdb) has a read-only login of its own, `lake_catalog_reader` (`LAKE_CATALOG_READER_USER`, `LAKE_CATALOG_READER_PASSWORD`), which is not a member of `gold_reader`: it can read the tables of the `iceberg_catalog` database and nothing else, and its sessions start read-only.
 
 The gold DDL creates `gold_reader` and its grants, so `make gold-reset` restores them. `docker/analytics-db/initdb/03-service-logins.sh` creates the logins on an empty volume; a new gold login is one more `create_login <login> <password> <statement timeout>` line in it. On an existing volume, create the logins, or update them after changing their credentials in `.env`, with:
 
@@ -55,7 +55,7 @@ make up          # Recreates analytics-db when its credentials changed
 make db-logins   # Creates or updates every service login; safe to repeat
 ```
 
-A volume created before `gold_reader` existed needs the gold DDL applied first (`make gold-reset CONFIRM=1`, or the `psql` command in [Gold layer](../layers/gold.md#gold-in-postgresql)).
+A volume created before `gold_reader` existed needs the gold DDL applied first (`make gold-reset CONFIRM=1`, or the `psql` command in [Gold layer](../lakehouse/gold/writer.md#gold-in-postgresql)).
 
 ### Schemas and init script
 

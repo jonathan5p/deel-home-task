@@ -12,7 +12,7 @@ make spark-submit SPARK_APP=analytics/pipelines/src/pipelines/landing/job.py SPA
 - **Restart-safe:** each query keeps its checkpoint in `<CHECKPOINT_ROOT>/landing/<topic>/`, and Spark's file sink records the committed files in `_spark_metadata`. Stopping and restarting the job neither skips nor duplicates records; Spark readers of the folder see only committed files.
 - **Micro-batches** run every `LANDING_TRIGGER_SECONDS`. `spark.cores.max` keeps cores free for the other jobs; the job runs until it is stopped.
 
-The landing zone's place in the data flow is in the [architecture overview](../architecture/overview.md#data-flow), and its checks against Kafka in [data quality](../operations/data-quality.md).
+The landing zone's place in the data flow is in the [architecture overview](../architecture/overview.md#data-flow), and its checks against Kafka in [data quality](data-quality.md).
 
 ## Inspecting the landing zone with Spark SQL
 

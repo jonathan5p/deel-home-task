@@ -7,7 +7,7 @@ Monitoring configuration lives in the root `monitoring/` folder, one subfolder p
 - `datasources/gold.yaml` defines the **Gold** datasource (uid `gold`, the default one): the `analytics` database on `analytics-db:5432`, read only and not editable in the UI.
 - `dashboards/gold.yaml` loads every dashboard in `monitoring/grafana/dashboards/` into the **Gold** folder; they cannot be changed or deleted from the UI.
 
-Grafana connects as its own [service login](../platform/services.md#read-only-service-logins), `grafana` (`GRAFANA_READER_USER`, `GRAFANA_READER_PASSWORD` in `.env`), a member of the read-only role `gold_reader`: it reads the views of the public `gold` schema and nothing else, has no rights on `gold_internal`, where the pipeline keeps its tables, and its sessions are read-only with a 30 s statement timeout, so a heavy panel query cannot hold the database. On an analytics volume created before this login existed, `make db-logins` creates it.
+Grafana connects as its own [service login](../architecture/infrastructure.md#read-only-service-logins), `grafana` (`GRAFANA_READER_USER`, `GRAFANA_READER_PASSWORD` in `.env`), a member of the read-only role `gold_reader`: it reads the views of the public `gold` schema and nothing else, has no rights on `gold_internal`, where the pipeline keeps its tables, and its sessions are read-only with a 30 s statement timeout, so a heavy panel query cannot hold the database. On an analytics volume created before this login existed, `make db-logins` creates it.
 
 ```mermaid
 flowchart LR

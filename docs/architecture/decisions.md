@@ -133,7 +133,7 @@ The design decisions a reviewer should know about, with the alternatives that we
 - **Alternatives:**
   - current state as a view or materialized view: it slows down as history grows, refreshes in full, and loses old open orders once retention trims history;
   - pending meaning the literal status `PENDING`: inconsistent with the other questions.
-- **Details:** [the gold model](gold-model.md).
+- **Details:** [the gold model](../lakehouse/gold/model.md).
 
 ### D35 · Public views over an internal schema
 
