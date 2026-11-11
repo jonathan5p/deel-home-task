@@ -38,6 +38,7 @@ nav:
       - operations/running-the-pipeline.md
       - operations/maintenance-and-recovery.md
       - operations/debugging.md
+      - operations/latency.md
       - operations/configuration.md
   - Development:
       - development/code-layout.md
