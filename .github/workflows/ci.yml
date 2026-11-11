@@ -70,7 +70,7 @@ jobs:
         if: matrix.check == 'test'
         run: |
           mkdir -p target/coverage/badge
-          jq '{schemaVersion: 1, label: "coverage", message: .totals.percent_covered_display + "%",
+          jq '{schemaVersion: 1, label: "coverage", message: (.totals.percent_covered_display + "%"),
                color: (if .totals.percent_covered >= 90 then "brightgreen" else "red" end)}' \
             target/coverage/coverage.json > target/coverage/badge/coverage.json
           cat target/coverage/badge/coverage.json
