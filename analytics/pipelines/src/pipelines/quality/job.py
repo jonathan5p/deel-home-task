@@ -9,7 +9,7 @@ from pyspark.sql import SparkSession
 from pipelines.bronze import quality as bronze
 from pipelines.gold import quality as gold
 from pipelines.landing import quality as landing
-from pipelines.quality.checks import CheckResult, all_passed, report_lines, summary_object
+from pipelines.quality.checks import Check, CheckResult, all_passed, report_lines, summary_object
 from pipelines.quality.report import Results, write_report
 from pipelines.settings import (
     BronzeSettings,
@@ -22,6 +22,9 @@ from pipelines.silver import quality as silver
 
 ALL = "all"
 SUMMARY_PREFIX = "DATA QUALITY"
+ERROR_MESSAGE_LIMIT = 1000
+
+CHECK_COMPLETED = Check("check_completed", "The check ran to the end without raising an error.")
 
 type Env = Mapping[str, str]
 type QualityCheck = Callable[[SparkSession, Env], Sequence[CheckResult]]
@@ -60,6 +63,16 @@ def selected_checks(argv: Sequence[str], checks: Mapping[str, QualityCheck]) -> 
     return [name for name in checks if not names or ALL in names or name in names]
 
 
+def guarded(name: str, check: QualityCheck, spark: SparkSession, env: Env) -> Sequence[CheckResult]:
+    """The check's results, or one failed result naming the error it raised, so a broken check
+    still leaves a report."""
+    try:
+        return check(spark, env)
+    except Exception as error:
+        details = {"error": type(error).__name__, "message": str(error)[:ERROR_MESSAGE_LIMIT]}
+        return [CHECK_COMPLETED.result(name, passed=False, metrics={}, details=details)]
+
+
 def run(
     spark: SparkSession,
     env: Env,
@@ -71,7 +84,7 @@ def run(
 ) -> bool:
     """Run the named checks, print each one's results, write the run's report; True if all
     passed."""
-    results = {name: checks[name](spark, env) for name in names}
+    results = {name: guarded(name, checks[name], spark, env) for name in names}
     for name, check_results in results.items():
         for line in report_lines(f"{name.upper()} QUALITY", check_results):
             out(line)
