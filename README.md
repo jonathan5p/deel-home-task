@@ -152,7 +152,7 @@ make lint       # ruff lint and format check
 make format     # format the code and apply safe lint fixes
 make typecheck  # check types with ty
 make docs       # build the docs site; warnings fail
-make test-infra # infra tests against an isolated copy of the stack (local only)
+make test-infra # infra tests against isolated copies of the stack, 2 workers by default (local only)
 ```
 
 The checks run in containers with the cluster's exact Spark and Python versions; CI runs lint, typecheck and the unit tests on every pull request ([testing and CI](docs/development/testing.md), [code layout](docs/development/code-layout.md)).

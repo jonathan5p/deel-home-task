@@ -22,10 +22,11 @@ make schemas    # render the flat Avro schema of every lake table and view to th
 Infra tests check the platform itself rather than the pipeline code. They need Docker and [uv](https://docs.astral.sh/uv/) on the host, and run locally only (not in CI):
 
 ```sh
-make test-infra   # about five minutes: building images, starting the stack and the Spark runs
+make test-infra                   # in 2 parallel workers
+make test-infra INFRA_WORKERS=3   # more workers, if Docker has the memory; 0 runs serially
 ```
 
-They start an isolated Compose project named after the checkout folder (`deel-infra-tests-<folder>`, sanitised like the code-check project, with no host ports), so they never touch your running stack or its data, and runs from different worktrees can run in parallel. Each project builds one Spark image (`<project>-spark`, shared by the master and the workers), one app image (`<project>-spark-app`), the API dev image (`<project>-api-dev`) and the API image (`<project>-api`); at the end the project is removed with its volumes and those four images. Two full stacks at once need enough memory for Docker, so very heavy runs may still be worth staggering. They submit the apps in `tests/infra/apps/` with `make spark-submit` and check that:
+Each [pytest-xdist](https://pytest-xdist.readthedocs.io/) worker starts its own isolated Compose project named after the checkout folder and the worker (`deel-infra-tests-<folder>-gw0`, `-gw1`, ...; `deel-infra-tests-<folder>` in a serial run, sanitised like the code-check project, with no host ports), so they never touch your running stack or its data, and runs from different worktrees can run in parallel. The tests of one module always run in the same worker, and the modules that share the bronze, silver and landing scenarios run together, so every scenario runs once per run. Every worker needs the Docker memory of a full stack (about 2 GB plus the Spark drivers). Each project builds one Spark image (`<project>-spark`, shared by the master and the workers), one app image (`<project>-spark-app`), the API dev image (`<project>-api-dev`) and the API image (`<project>-api`); at the end the project is removed with its volumes and those four images. The images are built once when a worker's stack starts, so the test runs of `make spark-submit` and `make spark-sql` skip their build check (`DRIVER_BUILD=`). They submit the apps in `tests/infra/apps/` with `make spark-submit` and check that:
 
 - the Iceberg smoke job writes catalog metadata to PostgreSQL and table files to SeaweedFS;
 - executors write and read Avro files on `s3a://lake/` and write and read a Kafka topic with the bundled connectors;

@@ -3,9 +3,9 @@ import os
 import re
 import subprocess
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Self, TypedDict
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -16,14 +16,54 @@ def project_name(prefix: str, folder: str) -> str:
     return prefix + re.sub(r"[^a-z0-9_-]", "-", folder.lower())
 
 
+SHARED_GROUP = "shared-scenarios"
+GOLD_SCHEMA_GROUP = "gold-schema"
+# The modules that must run in one worker, and so on one stack, in file order. The users of the
+# session scenarios share them, so that each scenario runs once. `make gold-reset` rewrites the
+# rendered gold DDL in the checkout, which test_gold_model reads, and recreates the gold schemas
+# without the monthly partitions that the rebuild's retention adds and test_gold_retention must
+# not find.
+XDIST_GROUPS: Mapping[str, str] = {
+    "test_bronze.py": SHARED_GROUP,
+    "test_gold_lake.py": SHARED_GROUP,
+    "test_lake_catalog.py": SHARED_GROUP,
+    "test_landing_inspection.py": SHARED_GROUP,
+    "test_silver.py": SHARED_GROUP,
+    "test_gold_model.py": GOLD_SCHEMA_GROUP,
+    "test_gold_rebuild.py": GOLD_SCHEMA_GROUP,
+    "test_gold_reset.py": GOLD_SCHEMA_GROUP,
+    "test_gold_retention.py": GOLD_SCHEMA_GROUP,
+}
+
+
+def worker_project(project: str, env: Mapping[str, str]) -> str:
+    """The Compose project of this pytest-xdist worker, so parallel workers never share a stack;
+    a run without workers keeps the checkout's project."""
+    worker = env.get("PYTEST_XDIST_WORKER")
+    return f"{project}-{worker}" if worker else project
+
+
+def xdist_scope(nodeid: str) -> str:
+    """The unit of work that one worker runs whole: the test's group, or else its module, so
+    that module fixtures run once."""
+    module = nodeid.split("::")[0]
+    return XDIST_GROUPS.get(PurePosixPath(module).name, module)
+
+
+def misplaced_scenario_users(
+    module_fixtures: Mapping[str, set[str]], shared: Collection[str]
+) -> list[str]:
+    """The modules that use a fixture in `shared` outside the shared group, where it would run
+    a second time."""
+    return sorted(
+        module
+        for module, fixtures in module_fixtures.items()
+        if fixtures & set(shared) and xdist_scope(module) != SHARED_GROUP
+    )
+
+
 PROJECT = project_name("deel-infra-tests-", REPO_ROOT.name)
-IMAGES = (
-    f"{PROJECT}-spark",
-    f"{PROJECT}-spark-app",
-    f"{PROJECT}-api-dev",
-    f"{PROJECT}-api",
-    f"{PROJECT}-iceberg-rest",
-)
+IMAGES = ("spark", "spark-app", "api-dev", "api", "iceberg-rest")
 COMPOSE_FILES = ("docker-compose.yaml", "tests/infra/compose.override.yaml")
 CLUSTER_SERVICES = (
     "analytics-db",
@@ -49,12 +89,21 @@ class Stack:
     running: list[subprocess.Popen[str]] = field(default_factory=list)
 
     @classmethod
-    def isolated(cls) -> Self:
-        env = os.environ | {
-            "COMPOSE_PROJECT_NAME": PROJECT,
-            "COMPOSE_FILE": os.pathsep.join(COMPOSE_FILES),
-        }
-        return cls(env=env)
+    def isolated(cls, env: Mapping[str, str]) -> Self:
+        """A stack in this worker's own Compose project. The session builds the images up front,
+        so the drivers skip `make spark-submit`'s build check (`DRIVER_BUILD`)."""
+        return cls(
+            env={
+                **env,
+                "COMPOSE_PROJECT_NAME": worker_project(PROJECT, env),
+                "COMPOSE_FILE": os.pathsep.join(COMPOSE_FILES),
+                "DRIVER_BUILD": "",
+            }
+        )
+
+    @property
+    def project(self) -> str:
+        return self.env["COMPOSE_PROJECT_NAME"]
 
     def compose(self, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
@@ -103,8 +152,9 @@ class Stack:
             subprocess.run(["docker", "rm", "--force", name], capture_output=True, check=False)
         self.compose("--profile", "*", "down", "--volumes", "--remove-orphans", check=False)
         # Only the images this project builds: --rmi all would also delete the pulled ones.
+        images = [f"{self.project}-{image}" for image in IMAGES]
         subprocess.run(
-            ["docker", "image", "rm", "--force", *IMAGES], capture_output=True, check=False
+            ["docker", "image", "rm", "--force", *images], capture_output=True, check=False
         )
 
     def start_app(
@@ -187,7 +237,7 @@ class Stack:
                 "--format",
                 "{{.Names}}",
                 "--filter",
-                f"label=com.docker.compose.project={PROJECT}",
+                f"label=com.docker.compose.project={self.project}",
                 "--filter",
                 "label=com.docker.compose.service=spark-app",
             ],

@@ -13,13 +13,15 @@ PIPELINES = landing bronze silver gold
 GOLD_CHECKPOINTS ?= /buckets/lake/checkpoints/gold
 MAINTENANCE_UI_PORT ?= 4044
 GOLD_REBUILD_UI_PORT ?= 4045
+DRIVER_BUILD ?= --build
+INFRA_WORKERS ?= 2
 .DEFAULT_GOAL := help
 
 export BUILDX_NO_DEFAULT_ATTESTATIONS ?= 1
 
 DRIVER_RUN = name="spark-app-run-$$(date +%s)-$$$$"; \
 	trap 'docker stop "$$name" >/dev/null 2>&1 || true' EXIT INT TERM; \
-	$(COMPOSE) run --rm --build --name "$$name" -p $(SPARK_UI_PORT):4040
+	$(COMPOSE) run --rm $(DRIVER_BUILD) --name "$$name" -p $(SPARK_UI_PORT):4040
 DRIVER_CONF = --master "$$SPARK_MASTER_URL" \
 	--conf spark.driver.host="$$(hostname -i)" \
 	--conf spark.hadoop.fs.s3a.access.key="$$LAKE_S3_ACCESS_KEY" \
@@ -83,7 +85,7 @@ help:
 		'               Build output: git-ignored, regenerated each run; edit analytics/pipelines/src/pipelines/schemas/ instead.' \
 		'docs           Build the docs site (docs/ plus the table reference rendered from the schemas) into the git-ignored target/site/; warnings fail.' \
 		'docs-serve     Serve the docs site on http://localhost:8001, rebuilding on every change.' \
-		'test-infra     Run the infra tests against an isolated copy of the stack (local only, a few minutes).' \
+		'test-infra     Run the infra tests in INFRA_WORKERS parallel workers (default 2), each against its own isolated copy of the stack (local only, a few minutes; every worker needs the Docker memory of a full stack; 0 runs serially).' \
 		'hooks          Install the pre-commit hooks in this clone (once).' \
 		'Optional profiles: monitoring (Conduktor), history (Spark History Server), maintenance (lake maintenance and gold retention every 24 hours), data-quality (every data quality check every 24 hours), catalog (read-only Iceberg REST catalog on localhost:8181). See README.md.'
 
@@ -181,7 +183,8 @@ docs-serve:
 
 test-infra:
 	@$(RENDER_GOLD_DDL)
-	@uv run --frozen pytest tests/infra --no-cov -p no:cacheprovider -v
+	@uv run --frozen pytest tests/infra --no-cov -p no:cacheprovider -v \
+		-n $(INFRA_WORKERS) --dist loadscope --no-loadscope-reorder
 
 hooks:
 	@uv run --frozen pre-commit install

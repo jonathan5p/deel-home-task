@@ -1,8 +1,11 @@
 import json
+import os
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from xdist.remote import Producer
+from xdist.scheduler import LoadScopeScheduling
 
 from tests.infra.bronze_replay_setup import ReplayRuns, run_replay_scenario
 from tests.infra.bronze_setup import BronzeRuns, run_bronze_scenario
@@ -12,14 +15,40 @@ from tests.infra.gold_lake_setup import LakeComparison, run_lake_scenario
 from tests.infra.lake_catalog_setup import LakeCatalog, run_catalog_scenario
 from tests.infra.landing_avro import landing_avro
 from tests.infra.silver_setup import SilverRuns, run_silver_scenario
-from tests.infra.stack import Stack
+from tests.infra.stack import SHARED_GROUP, Stack, misplaced_scenario_users, xdist_scope
 
 LANDING_FIXTURE_ROOT = "test-fixtures/landing"
+SESSION_SCENARIOS = ("landing_fixture", "bronze_runs", "silver_runs")
+
+
+class InfraScheduling(LoadScopeScheduling):
+    """`--dist loadscope` that sends the modules of a group in `XDIST_GROUPS` to one worker.
+    pytest-xdist's own `loadgroup` cannot rename the test ids under pytest 9, so its groups have
+    no effect."""
+
+    def _split_scope(self, nodeid: str) -> str:
+        return xdist_scope(nodeid)
+
+
+def pytest_xdist_make_scheduler(config: pytest.Config, log: Producer) -> LoadScopeScheduling | None:
+    return InfraScheduling(config, log) if config.getvalue("dist") == "loadscope" else None
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    fixtures: dict[str, set[str]] = {}
+    for item in items:
+        if isinstance(item, pytest.Function):
+            fixtures.setdefault(item.nodeid.split("::")[0], set()).update(item.fixturenames)
+    if misplaced := misplaced_scenario_users(fixtures, SESSION_SCENARIOS):
+        raise pytest.UsageError(
+            f"{', '.join(misplaced)} use a session scenario; add them to XDIST_GROUPS as"
+            f" {SHARED_GROUP!r}, or a parallel run repeats the scenario."
+        )
 
 
 @pytest.fixture(scope="session")
 def stack() -> Iterator[Stack]:
-    platform = Stack.isolated()
+    platform = Stack.isolated(os.environ)
     platform.down()
     platform.up()
     try:
