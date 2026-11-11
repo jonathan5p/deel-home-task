@@ -10,7 +10,7 @@ from pipelines.settings import PipelineSettings
 settings = PipelineSettings.from_env(os.environ)  # only a job's entry point reads os.environ
 ```
 
-The code holds no deployment details: anything that depends on where it runs (brokers, topics, the lake, the catalog, the database) is a required variable with no default. The local values live in `.env`, and Docker Compose passes them to the `spark-app` driver containers and the pipeline job services; another environment sets its own values. Only tuning settings have defaults; set them in the shell for one run, for example `LANDING_TRIGGER_SECONDS=30 make spark-submit ...`.
+The code holds no deployment details: anything that depends on where it runs (brokers, topics, the lake, the catalog, the database) is a required variable with no default. The local values live in `.env`, and Docker Compose passes them to the `spark-app` driver containers and the pipeline job services; another environment sets its own values. The [latency probe](latency.md)'s own variables (`LAKE_CATALOG_URI`, `LAKE_S3_ENDPOINT`, `LAKE_S3_REGION` and the `SOURCE_DB_*` login) live in `.env` too, but only `make latency-probe` passes them, to the probe's own container, so the pipeline jobs and the other drivers never get the source database login. Only tuning settings have defaults; set them in the shell for one run, for example `LANDING_TRIGGER_SECONDS=30 make spark-submit ...`.
 
 | Variable | Settings | Default | Local value in `.env` | Purpose |
 | --- | --- | --- | --- | --- |

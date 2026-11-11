@@ -16,6 +16,7 @@ GOLD_REBUILD_UI_PORT ?= 4045
 DRIVER_BUILD ?= --build
 INFRA_WORKERS ?= 2
 LATENCY_SERVICES = landing-job bronze-job silver-job gold-job iceberg-rest
+LATENCY_ENV = LAKE_CATALOG_URI LAKE_S3_ENDPOINT LAKE_S3_REGION SOURCE_DB_URL SOURCE_DB_USER SOURCE_DB_PASSWORD
 .DEFAULT_GOAL := help
 
 export BUILDX_NO_DEFAULT_ATTESTATIONS ?= 1
@@ -155,7 +156,8 @@ latency-probe:
 			exit 2; \
 		fi; \
 	done
-	@$(COMPOSE) run --rm --build --no-deps spark-app python -m pipelines.latency.job $(strip $(LATENCY_ARGS))
+	@$(COMPOSE) run --rm --build --no-deps $(addprefix -e ,$(LATENCY_ENV)) spark-app \
+		python -m pipelines.latency.job $(strip $(LATENCY_ARGS))
 
 lake-maintenance:
 	@$(MAKE) --no-print-directory spark-submit SPARK_APP=analytics/pipelines/src/pipelines/maintenance/job.py \

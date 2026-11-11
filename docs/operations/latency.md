@@ -18,7 +18,7 @@ make latency-probe MAX_LATENCY=gold=60,silver=40         # fail when a probe is 
 | `MAX_LATENCY` | none | Limits in seconds per layer, as `<layer>=<seconds>` pairs, such as `gold=60,silver=40` |
 | `KEYS` | the lowest key | The row each entity's probes mark, as `<entity>=<key>` pairs, such as `customers=7` |
 
-The target first checks that the four pipeline jobs and `iceberg-rest` are running; if one is not, it names it, prints how to start the stack (`make up PROFILES=catalog && make pipeline PIPELINE=all`) and exits 2 without starting anything. The probe itself is plain Python in the `spark-app` image (`python -m pipelines.latency.job`), not a Spark application: it reads every layer with DuckDB, so it takes no cores from the cluster.
+The target first checks that the four pipeline jobs and `iceberg-rest` are running; if one is not, it names it, prints how to start the stack (`make up PROFILES=catalog && make pipeline PIPELINE=all`) and exits 2 without starting anything. The probe itself is plain Python in the `spark-app` image (`python -m pipelines.latency.job`), not a Spark application: it reads every layer with DuckDB, so it takes no cores from the cluster. The target passes the probe's own variables from `.env` (the REST catalog and S3 settings and the source database login, see [configuration](configuration.md)) to the probe's container only, so the pipeline jobs and the other drivers never get the source database login.
 
 ## What it changes in the source
 
