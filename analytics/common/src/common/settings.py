@@ -2,6 +2,8 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import ClassVar, Self
 
+JDBC_PREFIX = "jdbc:"
+
 
 class MissingSettingsError(ValueError):
     def __init__(self, names: Iterable[str]) -> None:
@@ -63,3 +65,7 @@ class AnalyticsDbSettings:
     def from_env(cls, env: Mapping[str, str]) -> Self:
         url, user, password = require(env, *cls.REQUIRED)
         return cls(url=url, user=user, password=password)
+
+    def conninfo(self) -> str:
+        """The libpq connection URI of the JDBC URL (`jdbc:postgresql://host/db`)."""
+        return self.url.removeprefix(JDBC_PREFIX)

@@ -220,6 +220,16 @@ services:
       target: app
     profiles: [app]
 
+  api-dev:
+    build:
+      context: .
+      dockerfile: docker/api/Dockerfile
+      target: dev
+    image: ${COMPOSE_PROJECT_NAME}-api-dev
+    environment:
+      ANALYTICS_DB_URL: ${ANALYTICS_DB_URL}
+    profiles: [app]
+
   spark-worker-1:
     <<: *spark-worker
     hostname: spark-worker-1

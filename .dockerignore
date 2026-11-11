@@ -1,4 +1,5 @@
 *
+!docker/api/
 !docker/spark/
 !analytics/
 !tests/

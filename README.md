@@ -423,6 +423,15 @@ pyproject.toml              workspace root: members, development tools and their
 uv.lock                     locked versions for the whole workspace (install with uv sync --frozen)
 .python-version             Python 3.14.10, the same version the Spark image runs
 analytics/
+  api/                      project "api": the FastAPI metrics API over the gold views, depends on common
+    src/api/
+      settings.py           API settings (analytics database, connection pool)
+      models.py             response models
+      repository.py         the repository interface the endpoints read through
+      postgres.py           the repository over the gold views (psycopg connection pool)
+      metrics.py, status.py the metric endpoints, and /health and /freshness
+      app.py, main.py       the app built around a repository, and its entry point with the pool
+    tests/
   common/                   project "common": code shared by the components
     src/common/settings.py  shared settings (analytics database) and environment helpers
     tests/
@@ -581,8 +590,11 @@ The code holds no deployment details: anything that depends on where it runs (br
 | `ANALYTICS_DB_URL` | `common.settings.AnalyticsDbSettings` | required | `jdbc:postgresql://analytics-db:5432/analytics` | JDBC URL of the analytics database (gold layer) |
 | `ANALYTICS_DB_USER` | `common.settings.AnalyticsDbSettings` | required | `analytics` | Analytics database user |
 | `ANALYTICS_DB_PASSWORD` | `common.settings.AnalyticsDbSettings` | required | `analytics` | Analytics database password |
+| `API_DB_POOL_MIN_SIZE` | `api.settings.PoolSettings` | `1` | not set | Connections the API keeps open to the analytics database (a positive integer, at most `API_DB_POOL_MAX_SIZE`) |
+| `API_DB_POOL_MAX_SIZE` | `api.settings.PoolSettings` | `5` | not set | Most connections the API opens to the analytics database (a positive integer) |
+| `API_DB_POOL_TIMEOUT_SECONDS` | `api.settings.PoolSettings` | `5` | not set | How long a request waits for a free connection before the API answers 503 (a positive integer) |
 
-`PipelineSettings` combines the Kafka, lake and analytics database settings. `LandingSettings` combines the Kafka and lake settings with the trigger interval and needs no database credentials. `BronzeSettings` needs only `KAFKA_TOPICS`, the lake settings and its trigger interval: it reads the landing zone, not Kafka. `SilverSettings` needs the same, with its own trigger interval: `KAFKA_TOPICS` only names the entities whose bronze tables it reads. `GoldSettings` needs the lake and analytics database settings and its trigger interval: it reads silver and writes PostgreSQL. A missing or empty required variable raises `MissingSettingsError`, which lists every missing name of the settings being built at once; a malformed value, such as an empty topic list or a trigger interval that is not a positive integer, raises `InvalidSettingError`.
+`PipelineSettings` combines the Kafka, lake and analytics database settings. `LandingSettings` combines the Kafka and lake settings with the trigger interval and needs no database credentials. `BronzeSettings` needs only `KAFKA_TOPICS`, the lake settings and its trigger interval: it reads the landing zone, not Kafka. `SilverSettings` needs the same, with its own trigger interval: `KAFKA_TOPICS` only names the entities whose bronze tables it reads. `GoldSettings` needs the lake and analytics database settings and its trigger interval: it reads silver and writes PostgreSQL. `ApiSettings` needs the analytics database settings, with the API's read-only login (`api_reader`, see [read-only service logins](#read-only-service-logins)) as user, and the pool settings. A missing or empty required variable raises `MissingSettingsError`, which lists every missing name of the settings being built at once; a malformed value, such as an empty topic list or a trigger interval that is not a positive integer, raises `InvalidSettingError`.
 
 #### Landing zone
 
@@ -942,7 +954,7 @@ When a stream is reset deliberately, the guard follows its new checkpoint. Icebe
 
 #### Tests, lint and format
 
-The checks run in a throwaway container from the `app` image, with `analytics/` and `tests/` mounted, so they use the cluster's exact Spark and Python versions and pick up edits without a rebuild. They use their own Compose project, named after the checkout folder (`deel-checks-<folder>`, lowercased, with every character other than letters, digits, `_` and `-` replaced by `-`), with one app image (`<project>-spark-app`), so checks in different checkouts or worktrees never share an image and can run in parallel:
+The checks run in throwaway containers with `analytics/` and `tests/` mounted, so they pick up edits without a rebuild: the pipelines and `common` in the Spark `app` image, with the cluster's exact Spark and Python versions, and the API and `common` in the API's own dev image (`docker/api/Dockerfile`, target `dev`), which has the API's dependencies and no Spark. They use their own Compose project, named after the checkout folder (`deel-checks-<folder>`, lowercased, with every character other than letters, digits, `_` and `-` replaced by `-`), with one app image (`<project>-spark-app`) and one API dev image (`<project>-api-dev`), so checks in different checkouts or worktrees never share an image and can run in parallel:
 
 ```sh
 make test       # unit tests with branch coverage; fails below 90%
@@ -953,9 +965,9 @@ make schemas    # render the flat Avro schema of every lake table and view to th
 ```
 
 - **Unit tests** live next to each project and mirror its source tree (`analytics/<project>/tests/test_<module>.py`).
-- **Coverage** is measured on the `common` and `pipelines` packages with branch coverage. The 90% floor is configured in `pyproject.toml` (`[tool.coverage.report] fail_under`), and `make test` fails below it even when every test passes.
+- **Coverage** is measured with branch coverage in each image's run: `pipelines` and `common` in the app image, `api` and `common` in the API dev image. The 90% floor (`[tool.coverage.report] fail_under` in `pyproject.toml`) applies to each run, and `make test` fails if either run is below it, even when every test passes.
 - **Lint and format** use [ruff](https://docs.astral.sh/ruff/), configured in `pyproject.toml` (`[tool.ruff]`).
-- **Typing** is required for all code. ruff's `ANN` rules fail `make lint` when an annotation is missing, and [ty](https://docs.astral.sh/ty/) checks that the annotations are correct, including calls into PySpark, whose types it reads from the image (`[tool.ty]` in `pyproject.toml`). ty is in beta, so its version is pinned in `uv.lock`; it only runs in the container, where PySpark is available.
+- **Typing** is required for all code. ruff's `ANN` rules fail `make lint` when an annotation is missing, and [ty](https://docs.astral.sh/ty/) checks that the annotations are correct, including calls into PySpark, whose types it reads from the Spark image (`make typecheck` passes `--extra-search-path /opt/spark/python`), and into FastAPI, which only the API dev image has, so the API code is checked there. ty is in beta, so its version is pinned in `uv.lock`; it only runs in the containers.
 
 #### Infra tests
 
@@ -965,7 +977,7 @@ Infra tests check the platform itself rather than the pipeline code. They need D
 make test-infra   # about five minutes: building images, starting the stack and the Spark runs
 ```
 
-They start an isolated Compose project named after the checkout folder (`deel-infra-tests-<folder>`, sanitised like the code-check project, with no host ports), so they never touch your running stack or its data, and runs from different worktrees can run in parallel. Each project builds one Spark image (`<project>-spark`, shared by the master and the workers) and one app image (`<project>-spark-app`); at the end the project is removed with its volumes and those two images. Two full stacks at once need enough memory for Docker, so very heavy runs may still be worth staggering. They submit the apps in `tests/infra/apps/` with `make spark-submit` and check that:
+They start an isolated Compose project named after the checkout folder (`deel-infra-tests-<folder>`, sanitised like the code-check project, with no host ports), so they never touch your running stack or its data, and runs from different worktrees can run in parallel. Each project builds one Spark image (`<project>-spark`, shared by the master and the workers), one app image (`<project>-spark-app`) and the API dev image (`<project>-api-dev`); at the end the project is removed with its volumes and those three images. Two full stacks at once need enough memory for Docker, so very heavy runs may still be worth staggering. They submit the apps in `tests/infra/apps/` with `make spark-submit` and check that:
 
 - the Iceberg smoke job writes catalog metadata to PostgreSQL and table files to SeaweedFS;
 - executors write and read Avro files on `s3a://lake/` and write and read a Kafka topic with the bundled connectors;
@@ -978,6 +990,7 @@ They start an isolated Compose project named after the checkout folder (`deel-in
 - the gold DDL applies again to an existing database, describes every schema, table, column and index, creates the staging tables unlogged, keeps only views without the pipeline-only columns (`_commit_sequence`, `_content_hash`, `_is_deleted`, `_is_folded`) in `gold` and hides deleted rows from its current-state views, seeds the date and status dimensions, routes history rows to the default partition, rejects replayed history rows, orders versions by `_commit_sequence` despite late events, creates the business question views with the columns and types of their schemas and the indexes on `current_orders` behind them, and the four business queries return the expected rows from those views on a fixture with a completed order, a deleted order, an unknown status and ties for third place (each test rolls its rows back).
 - gold retention drops only the monthly history partitions that end before the window (orders and order items alike), first gives every month the default partition holds a partition of its own, creates the months ahead, keeps the current-state row of an open order whose history it dropped, and drops nothing more when it runs again (each test rolls its rows back); `make gold-retention` and the first run of the `gold-retention-job` service drop a committed out-of-window month;
 - the rebuild job, run on the gold facts' fixture silver tables, ends with the same dimensions, history and current state as the gold job streaming the same changes, and with a cutoff the same as the gold job streaming only the changes up to it, late ones included (surrogate keys compared by the version they point at); `make gold-rebuild` refuses without `CONFIRM=1`;
+- the API's repository, run as `api_reader` in the API dev image on the business-question fixture, returns exactly the rows of each query in `analytics/sql/gold/`, and its freshness matches `gold.data_freshness` for every entity, with a lag for each one that has data;
 - the API's service login, connecting with its password, reads every `gold` view, is refused `gold_internal`, starts read-only with a 5 s statement timeout, cannot insert into a view or create a table in `gold` or `public` even after turning read-only off, and `make db-logins` restores a broken login and can run again;
 - `make gold-reset` refuses without `CONFIRM=1`, recreates `gold` and `gold_internal` empty, can run again, deletes the gold checkpoints and keeps the silver checkpoints and the Iceberg catalog, and the service logins can still read the gold views after it;
 - the gold job, run with `--available-now` on silver-shaped fixture tables in a catalog of their own (`gold_fixture`, with its own warehouse), keeps the SCD2 dimensions in PostgreSQL, checked through the versions and public views: a price change closes the previous version and opens a new one, each key has exactly one current version, replaying every batch from a fresh checkpoint changes nothing, a late older version goes into history without becoming current, a re-snapshot or audit-only update is folded and a late differing version between two equal ones unfolds the later one, and a delete leaves no current version that replays or late versions could revive (the test removes its rows afterwards).
@@ -999,8 +1012,8 @@ Every `git commit` then runs, in order, stopping at the first failure:
 | --- | --- | --- |
 | `uv.lock` matches `pyproject.toml` | any `pyproject.toml`, `uv.lock` | host |
 | ruff check, ruff format check | Python files, `pyproject.toml` | host, with the ruff version from `uv.lock` |
-| ty | `analytics/`, `tests/`, `pyproject.toml`, `uv.lock` | app container (`make typecheck`) |
-| unit tests with the 90% coverage floor | `analytics/`, `tests/`, `pyproject.toml`, `uv.lock` | app container (`make test`) |
+| ty | `analytics/`, `tests/`, `pyproject.toml`, `uv.lock` | app and API dev containers (`make typecheck`) |
+| unit tests with the 90% coverage floor | `analytics/`, `tests/`, `pyproject.toml`, `uv.lock` | app and API dev containers (`make test`) |
 
 A commit that only changes documentation or configuration skips all of them. Commits that touch code take about 20–30 seconds longer, mostly for the container checks. Run `make format` to fix formatting before committing again. `git commit --no-verify` skips the hooks, which is why CI runs the same checks.
 
@@ -1011,7 +1024,7 @@ A commit that only changes documentation or configuration skips all of them. Com
 | Job | What it runs |
 | --- | --- |
 | `lint` | `uv lock --check`, `ruff check`, `ruff format --check` |
-| `typecheck` | `make typecheck` in the app image |
-| `test` | `make test` in the app image, with the 90% coverage floor |
+| `typecheck` | `make typecheck` in the app image and the API dev image |
+| `test` | `make test` in the app image and the API dev image, each with the 90% coverage floor |
 
-The app image is built once per job with Docker's layer cache stored in GitHub Actions, and `make` reuses it (`APP_BUILD=`), so CI runs exactly the commands used locally. Infra tests are not part of CI; run them locally with `make test-infra`.
+The two images are built once per job with Docker's layer cache stored in GitHub Actions, and `make` reuses it (`APP_BUILD=`), so CI runs exactly the commands used locally. Infra tests are not part of CI; run them locally with `make test-infra`.
