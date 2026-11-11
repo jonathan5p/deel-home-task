@@ -44,7 +44,7 @@ nav:
       - development/table-definitions.md
       - development/testing.md
   - How it was built:
-      - process/how-we-worked.md
+      - process/how-i-worked.md
       - process/ai-agents.md
   - Reference:
       - reference/index.md

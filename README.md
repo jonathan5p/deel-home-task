@@ -161,12 +161,12 @@ The checks run in containers with the cluster's exact Spark and Python versions;
 
 | Part | Guides |
 | --- | --- |
-| Architecture | [Overview](docs/architecture/overview.md) · [Infrastructure](docs/architecture/infrastructure.md) · [Spark sizing](docs/architecture/sizing.md) · [Design decisions](docs/architecture/decisions.md) · [From toy project to production](docs/architecture/production.md) |
+| Architecture | [Overview](docs/architecture/overview.md) · [Infrastructure](docs/architecture/infrastructure.md) · [Spark sizing](docs/architecture/sizing.md) · [Design decisions](docs/architecture/decisions.md) · [The way to production](docs/architecture/production.md) |
 | Lakehouse | [Medallion layers](docs/lakehouse/index.md) · [Source database and CDC](docs/lakehouse/source-and-cdc.md) · [Landing](docs/lakehouse/landing.md) · [Bronze](docs/lakehouse/bronze.md) · [Silver](docs/lakehouse/silver.md) · [Gold](docs/lakehouse/gold/index.md) ([model](docs/lakehouse/gold/model.md), [writer](docs/lakehouse/gold/writer.md)) · [Data quality checks](docs/lakehouse/data-quality.md) |
 | Serving | [Analytics API](docs/serving/api.md) · [Grafana](docs/serving/grafana.md) · [Querying the lake](docs/serving/lake-access.md) |
 | Operations | [Running the pipeline](docs/operations/running-the-pipeline.md) · [Maintenance and recovery](docs/operations/maintenance-and-recovery.md) · [Debugging](docs/operations/debugging.md) · [Configuration](docs/operations/configuration.md) |
 | Development | [Code layout](docs/development/code-layout.md) · [Table and column definitions](docs/development/table-definitions.md) · [Testing and CI](docs/development/testing.md) |
-| How it was built | [How we worked](docs/process/how-we-worked.md) · [Building with AI agents](docs/process/ai-agents.md) |
+| How it was built | [How I worked](docs/process/how-i-worked.md) · [Building with AI agents](docs/process/ai-agents.md) |
 | Reference | [Table reference](https://jonathan5p.github.io/deel-home-task/reference/) (on the docs site, rendered from the schemas) · [Supplied assignment README](docs/reference/original-readme.md) |
 
 ### The supplied assignment stack

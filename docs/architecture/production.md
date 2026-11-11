@@ -1,6 +1,8 @@
-# From toy project to production
+# The way to production
 
-The project runs on one machine because the assignment asks for a stack reviewers can start from the README ([decision D8](decisions.md#d8--fully-local-no-cloud-services)). The pipeline logic, the data model and the checks are built as they would be in production; the platform around them is simplified. This page lists what was left out or simplified, and what a production deployment needs instead.
+This project is an interview task that runs on one machine, because the assignment asks for a stack reviewers can start from the README ([decision D8](decisions.md#d8--fully-local-no-cloud-services)). The pipeline logic, the data model and the checks are built as they would be in production; the platform around them is simplified. This page lists what is left to take it to a real production environment: what was left out or simplified, and what production needs instead.
+
+The planned next steps are tracked as issues in the [M8 · Ideas and experiments](https://github.com/jonathan5p/deel-home-task/milestone/7) milestone; each area below links its issues where one exists.
 
 Two things make the move cheaper than it looks:
 
@@ -9,20 +11,20 @@ Two things make the move cheaper than it looks:
 
 ## Summary
 
-| Area | Here | In production |
-| --- | --- | --- |
-| [Catalog](#catalog) | Iceberg JDBC catalog in the analytics PostgreSQL, plus Apache's reference REST server, read-only | A catalog service: Apache Polaris, AWS Glue Data Catalog, Unity Catalog or Project Nessie |
-| [Object store](#object-store) | One SeaweedFS container | AWS S3 or another managed S3-compatible store |
-| [Kafka](#kafka-and-the-source) | One broker, one partition per topic, JSON without a schema registry | Managed Kafka, replicated, with more partitions and a schema registry |
-| [Security](#authentication-tls-and-secrets) | Local credentials in `.env`, plain-text connections, no API authentication | A secrets manager, TLS everywhere, IAM roles, authenticated API and dashboards |
-| [Spark](#spark-deployment-and-sizing) | Standalone cluster, client-mode driver containers, shared executors | YARN on EMR, EMR Serverless or Kubernetes, executors per application, sized from measured metrics |
-| [Scheduling](#orchestration-and-scheduling) | Compose services that loop with `sleep` | An orchestrator or scheduled cluster jobs, with retries and alerts |
-| [Monitoring](#monitoring-and-alerting) | Spark UI, History Server, a freshness view | Metrics in a time-series system, dashboards and alerts |
-| [Data quality](#data-quality) | Custom layer-to-layer checks | A data quality framework, with result history and alerting |
-| [Schema changes](#schema-evolution-and-migrations) | Explicit schemas, idempotent DDL, manual steps | Reviewed evolution rules and a migration tool |
-| [Testing and delivery](#testing-and-delivery) | Infra tests run locally only | Infra tests and deployments in CI/CD |
-| [Infrastructure](#infrastructure-as-code) | One Compose file | Infrastructure as code |
-| [Availability](#high-availability-and-backups) | One instance of everything, local volumes | Replicated services, backups and a recovery runbook |
+| Area | Here | In production | Tracked in |
+| --- | --- | --- | --- |
+| [Catalog](#catalog) | Iceberg JDBC catalog in the analytics PostgreSQL, plus Apache's reference REST server, read-only | A catalog service: Apache Polaris, AWS Glue Data Catalog, Unity Catalog or Project Nessie | |
+| [Object store](#object-store) | One SeaweedFS container | AWS S3 or another managed S3-compatible store | |
+| [Kafka](#kafka-and-the-source) | One broker, one partition per topic, JSON without a schema registry | Managed Kafka, replicated, with more partitions and a schema registry | #84 |
+| [Security](#authentication-tls-and-secrets) | Local credentials in `.env`, plain-text connections, no API authentication | A secrets manager, TLS everywhere, IAM roles, authenticated API and dashboards | |
+| [Spark](#spark-deployment-and-sizing) | Standalone cluster, client-mode driver containers, shared executors | YARN on EMR, EMR Serverless or Kubernetes, executors per application, sized from measured metrics | #58, #195 |
+| [Scheduling](#orchestration-and-scheduling) | Compose services that loop with `sleep` | An orchestrator or scheduled cluster jobs, with retries and alerts | |
+| [Monitoring](#monitoring-and-alerting) | Spark UI, History Server, a freshness view | Metrics in a time-series system, dashboards and alerts | #69, #126, #127, #194 |
+| [Data quality](#data-quality) | Custom layer-to-layer checks | A data quality framework, with result history and alerting | #112, #116 |
+| [Schema changes](#schema-evolution-and-migrations) | Explicit schemas, idempotent DDL, manual steps | Reviewed evolution rules and a migration tool | #196, #70 |
+| [Testing and delivery](#testing-and-delivery) | Infra tests run locally only | Infra tests and deployments in CI/CD | |
+| [Infrastructure](#infrastructure-as-code) | One Compose file | Infrastructure as code | |
+| [Availability](#high-availability-and-backups) | One instance of everything, local volumes | Replicated services, backups and a recovery runbook | |
 
 ## Catalog
 
@@ -76,7 +78,7 @@ Two things make the move cheaper than it looks:
 
 ## Monitoring and alerting
 
-**Here.** Each job's Spark UI, the History Server for past runs, the `gold.data_freshness` view and the API's `/freshness` endpoint. A Prometheus and Grafana stack for Spark's own metrics is in progress (#69).
+**Here.** Each job's Spark UI, the History Server for past runs, the `gold.data_freshness` view and the API's `/freshness` endpoint. A Prometheus and Grafana stack for Spark's own metrics is in progress (#69), and so is a probe that measures the end-to-end latency per entity (#194).
 
 **In production.**
 
@@ -125,4 +127,4 @@ Two things make the move cheaper than it looks:
 
 ## Further ideas
 
-The ideas milestone collects the experiments that would come next, such as a fast path from bronze to gold if latency matters (#87), and ClickHouse for gold if the facts outgrow PostgreSQL ([D3](decisions.md#d3--gold-in-postgresql-not-clickhouse)).
+The [M8 · Ideas and experiments](https://github.com/jonathan5p/deel-home-task/milestone/7) milestone collects the experiments that would come next, such as a fast path from bronze to gold if latency matters (#87), and ClickHouse for gold if the facts outgrow PostgreSQL ([D3](decisions.md#d3--gold-in-postgresql-not-clickhouse)).

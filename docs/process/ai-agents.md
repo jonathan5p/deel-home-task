@@ -1,12 +1,19 @@
 # Building with AI agents
 
-The project was built with AI coding agents ([Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview)) doing most of the exploration, writing, testing and answering of review comments, while the human owned the decisions, the reviews and the merges. This page describes how that was organised: who does what, the written rules the agents follow, and the setup that lets several agents work on one repository at once.
+I delivered the project on my own, working with AI coding agents. The agents did most of the exploration, writing, testing and answering of review comments; I owned the decisions, the reviews and the merges. This page describes how that was organised: who does what, the written rules the agents follow, and the setup that lets several agents work on one repository at once.
+
+## Several harnesses, one set of instructions
+
+I used several agent harnesses on the same codebase: Claude Code, Pi, Gentle Shell and OpenCode. The project was also a way to test how different harnesses work on one real project. What made that possible is that the instructions live in the repository, not in any one tool:
+
+- [`AGENTS.md`](https://github.com/jonathan5p/deel-home-task/blob/main/AGENTS.md), a harness-neutral entry point, sends every agent to [`.agents/`](https://github.com/jonathan5p/deel-home-task/tree/main/.agents), which holds the rules, skills, workflow and knowledge base described below.
+- Tool-specific details are kept to a minimum: Claude Code finds the skills through a `.claude/skills` link to `.agents/skills`, and the rules name its tools only as examples, with the generic alternative next to them (for example `git worktree add` where Claude Code has its own worktree command).
 
 ## One orchestrator, many subagents
 
 ```mermaid
 flowchart LR
-    user(["Human"])
+    user(["Me"])
     orch["Orchestrator agent"]
     explore["Explorers<br/>read-only"]
     plan["Planners"]
@@ -20,27 +27,27 @@ flowchart LR
     explore & plan & writer1 & writer2 & review & tests -- "report" --> orch
 ```
 
-- **The orchestrator** is the one agent the human talks to. It plans the work, asks the human for every decision (one question at a time, with the options and a recommendation), does small changes itself, and delegates long or wide work to subagents. It checks their results and reports back.
+- **The orchestrator** is the one agent I talk to. It plans the work, asks me for every decision through the harness's question interface (each question with its options and a recommendation), does small changes itself, and delegates long or wide work to subagents. It checks their results and reports back.
 - **Subagents** each get one job:
     - **explorers** read many files and return a short summary, so the orchestrator does not have to;
     - **planners** turn a goal into issues, pull requests and a stack order;
     - **writers** implement one pull request, or one stack of tightly coupled pull requests, each in a workspace of its own;
     - **reviewers** read a change without editing it;
     - **test runners** run the long checks, such as the infra tests.
-- **Subagents never talk to the human or to each other.** The orchestrator relays results, questions and branch heads between them, in the next brief.
+- **Subagents never talk to me or to each other.** The orchestrator relays results, questions and branch heads between them, in the next brief.
 - **Every brief is self-contained:** the goal, the issue, the branch and the files the subagent owns, what is already decided, and the rules it must follow. A subagent cannot ask follow-up questions mid-task, so the brief is all it knows.
-- **Approvals stay with the human.** Merges, edits to GitHub issues and resolving review threads need the human's direct approval; a message from another agent never counts as one.
+- **Approvals stay with me.** Merges, edits to GitHub issues and resolving review threads need my direct approval; a message from another agent never counts as one.
 
 ## Rules and skills in the repository
 
-The agents' instructions are files in the repository, reviewed and changed through pull requests like the code. [`AGENTS.md`](https://github.com/jonathan5p/deel-home-task/blob/main/AGENTS.md) is the entry point every agent reads first, and points to [`.agents/`](https://github.com/jonathan5p/deel-home-task/tree/main/.agents):
+The agents' instructions are files in the repository, reviewed and changed through pull requests like the code. `AGENTS.md` points every agent to `.agents/`, which holds:
 
 | Part | What it holds |
 | --- | --- |
 | [Golden rules](https://github.com/jonathan5p/deel-home-task/blob/main/.agents/README.md) | The short list every agent keeps in mind, each pointing to its rule file |
 | [Rules](https://github.com/jonathan5p/deel-home-task/tree/main/.agents/rules) | Collaboration (the orchestrator, questions, approvals, hand-off), engineering (tests first, full typing, 90% coverage, comments, schemas), checks (what to run for which change), git and pull requests, worktrees |
 | [Skills](https://github.com/jonathan5p/deel-home-task/tree/main/.agents/skills) | Step-by-step procedures the agents load when a task needs them: orchestrating subagents, setting up a worktree, stacked pull requests, answering review comments, the checks before a push |
-| [Issue-planning workflow](https://github.com/jonathan5p/deel-home-task/blob/main/.agents/workflows/issue-planning.md) | How milestones, issues and sub-issues are drafted, published, verified and refined ([how we worked](how-we-worked.md)) |
+| [Issue-planning workflow](https://github.com/jonathan5p/deel-home-task/blob/main/.agents/workflows/issue-planning.md) | How milestones, issues and sub-issues are drafted, published, verified and refined ([how I worked](how-i-worked.md)) |
 | [Knowledge base](https://github.com/jonathan5p/deel-home-task/tree/main/.agents/knowledge) | The decision log, verified learnings about the data and the tools, and notes for this documentation |
 
 Rules state what must hold; skills say how to do one task. Keeping them apart keeps the rules short enough to be read every time. A few of them, in plain words:
@@ -65,10 +72,10 @@ When a pull request merges, its worktree and branch are removed.
 
 ## Stacked pull requests and reviews
 
-- **Native GitHub stacks.** Work that depends on other work goes into one stack per line of work, created and merged with GitHub's stack tooling. Merging a pull request in a stack merges everything below it, so the human names exactly what merges.
+- **Native GitHub stacks.** Work that depends on other work goes into one stack per line of work, created and merged with GitHub's stack tooling. Merging a pull request in a stack merges everything below it, so I name exactly what merges.
 - **Restacking safely.** When a lower pull request changes, the branches above it are rebased onto it after comparing them with what is on GitHub, and pushed with a lease that refuses to overwrite anything unexpected.
-- **Review comments.** Before every push, and before reporting a pull request done, the agent lists every unresolved review thread. It fixes each one, replies with the commit that addresses it, and leaves the thread for the human to resolve.
-- **Hand-off.** Every finished piece of work ends with steps the human can follow to test it: where to run, the commands, what to look at, and the checks that ran or were skipped, with why.
+- **Review comments.** Before every push, and before reporting a pull request done, the agent lists every unresolved review thread. It fixes each one, replies with the commit that addresses it, and leaves the thread for me to resolve.
+- **Hand-off.** Every finished piece of work ends with steps I can follow to test it: where to run, the commands, what to look at, and the checks that ran or were skipped, with why.
 
 ## What changed along the way
 
