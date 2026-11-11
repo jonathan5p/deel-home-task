@@ -9,6 +9,7 @@ from analytics.pipelines.tests.lake.checkpoints_setup import (
     offsets,
     snapshot_offset,
 )
+from analytics.pipelines.tests.lake.tables_setup import stored_description
 from analytics.pipelines.tests.maintenance.job_setup import (
     FakeSql,
     data_files,
@@ -18,10 +19,13 @@ from analytics.pipelines.tests.maintenance.job_setup import (
     maintenance_settings,
     small_appends,
     snapshot_operations,
+    stale_silver_views,
     stream_into,
     table_rows,
 )
+from pipelines.bronze.entities import CUSTOMERS
 from pipelines.lake.checkpoints import HadoopCheckpointFiles
+from pipelines.lake.tables import TABLE_TEMPLATES
 from pipelines.maintenance.job import (
     MaintenanceFailedError,
     TableMaintenance,
@@ -30,6 +34,7 @@ from pipelines.maintenance.job import (
     sql_timestamp,
     tables,
 )
+from pipelines.silver.views import MissingSilverTablesError, refresh_views
 
 ORDERS = "bronze.orders"
 NO_STREAMS = FakeCheckpoints()
@@ -294,3 +299,72 @@ def test_timestamps_are_written_in_utc() -> None:
     moment = datetime(2026, 11, 10, 14, 30, tzinfo=timezone(timedelta(hours=2)))
 
     assert sql_timestamp(moment) == "TIMESTAMP '2026-11-10 12:30:00+00:00'"
+
+
+def test_a_run_replaces_a_stale_view_and_reports_it(
+    spark: SparkSession, iceberg_view_catalog: str, tmp_path: Path
+) -> None:
+    silver = stale_silver_views(spark, iceberg_view_catalog, f"file://{tmp_path}/lake")
+    reported: list[str] = []
+
+    run(
+        FakeSql({}),
+        maintenance_settings(iceberg_view_catalog),
+        NO_STREAMS,
+        report=reported.append,
+        refresh=lambda: refresh_views(spark, silver),
+    )
+
+    assert reported == ["silver views: created or replaced 1"]
+    history = silver.table("customers_history")
+    assert stored_description(spark, history).comment == TABLE_TEMPLATES["silver_history"].describe(
+        CUSTOMERS.definition
+    )
+
+
+def test_views_already_up_to_date_are_reported_as_such() -> None:
+    reported: list[str] = []
+
+    run(FakeSql({}), maintenance_settings("lake"), NO_STREAMS, report=reported.append, refresh=list)
+
+    assert reported == ["silver views: up to date"]
+
+
+def test_a_failing_view_refresh_fails_the_job_after_every_table_is_maintained() -> None:
+    reported: list[str] = []
+
+    def unreachable_catalog() -> list[str]:
+        raise ConnectionError("catalog unreachable")
+
+    with pytest.raises(MaintenanceFailedError) as error:
+        run(
+            FakeSql({"bronze": ["orders"]}),
+            maintenance_settings("lake"),
+            NO_STREAMS,
+            report=reported.append,
+            refresh=unreachable_catalog,
+        )
+
+    assert error.value.tables == ("silver views",)
+    assert reported[0].startswith("bronze.orders: rewrote")
+    assert reported[1] == "silver views: refresh failed: catalog unreachable"
+
+
+def test_views_are_skipped_while_the_silver_tables_do_not_exist_yet() -> None:
+    reported: list[str] = []
+
+    def missing_tables() -> list[str]:
+        raise MissingSilverTablesError(["lake.silver.orders"])
+
+    run(
+        FakeSql({}),
+        maintenance_settings("lake"),
+        NO_STREAMS,
+        report=reported.append,
+        refresh=missing_tables,
+    )
+
+    assert reported == [
+        "silver views: skipped: The silver views read tables that do not exist yet:"
+        " lake.silver.orders. Start the silver job first."
+    ]

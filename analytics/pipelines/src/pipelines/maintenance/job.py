@@ -10,11 +10,15 @@ from pipelines.lake.checkpoints import (
     HadoopCheckpointFiles,
     committed_snapshots,
 )
-from pipelines.settings import MaintenanceSettings
+from pipelines.settings import MaintenanceSettings, SilverSettings
+from pipelines.silver.views import MissingSilverTablesError, refresh_views
 
 type Sql = Callable[[str], list[Row]]
 type Clock = Callable[[], datetime]
 type Report = Callable[[str], None]
+type ViewRefresh = Callable[[], Sequence[str]]
+
+VIEWS = "silver views"
 
 
 class TableMaintenance(NamedTuple):
@@ -141,6 +145,7 @@ def run(
     *,
     now: Clock = utc_now,
     report: Report = print,
+    refresh: ViewRefresh | None = None,
 ) -> list[TableMaintenance]:
     job = Maintenance(sql=sql, settings=settings, checkpoints=checkpoints, report=report)
     moment = now()
@@ -155,6 +160,20 @@ def run(
         else:
             report(result.summary())
             maintained.append(result)
+    if refresh is not None:
+        try:
+            statements = refresh()
+        except MissingSilverTablesError as error:
+            report(f"{VIEWS}: skipped: {error}")
+        except Exception as error:
+            report(f"{VIEWS}: refresh failed: {error}")
+            failed.append(VIEWS)
+        else:
+            report(
+                f"{VIEWS}: created or replaced {len(statements)}"
+                if statements
+                else f"{VIEWS}: up to date"
+            )
     if failed:
         raise MaintenanceFailedError(failed)
     return maintained
@@ -164,7 +183,13 @@ def main() -> None:
     settings = MaintenanceSettings.from_env(os.environ)
     spark = SparkSession.builder.appName("lake-maintenance").getOrCreate()
     try:
-        run(spark_sql(spark), settings, HadoopCheckpointFiles(spark))
+        silver = SilverSettings.from_env(os.environ)
+        run(
+            spark_sql(spark),
+            settings,
+            HadoopCheckpointFiles(spark),
+            refresh=lambda: refresh_views(spark, silver),
+        )
     finally:
         spark.stop()
 

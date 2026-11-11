@@ -6,8 +6,13 @@ from pathlib import Path
 
 from pyspark.sql import Row, SparkSession
 
+from analytics.pipelines.tests.silver.views_setup import append_versions, version
+from pipelines.bronze.entities import CUSTOMERS
+from pipelines.lake.columns import ChangeOp
+from pipelines.lake.views import ensure_view
 from pipelines.maintenance.job import Clock
-from pipelines.settings import MaintenanceSettings
+from pipelines.settings import MaintenanceSettings, SilverSettings
+from pipelines.silver.views import refresh_views, silver_views
 
 ROWS_SCHEMA = "id INT, state STRING"
 
@@ -117,3 +122,19 @@ class FakeSql:
         if ".expire_snapshots(" in statement:
             return [Row(deleted_manifest_lists_count=4)]
         return [Row(orphan_file_location="s3://lake/warehouse/stray.parquet")]
+
+
+def stale_silver_views(spark: SparkSession, catalog: str, lake_root: str) -> SilverSettings:
+    """Customers' silver table with its views, the history view carrying a stale description."""
+    settings = SilverSettings.from_env(
+        {
+            "KAFKA_TOPICS": "test.operations.customers",
+            "LAKE_ROOT": lake_root,
+            "ICEBERG_CATALOG": catalog,
+        }
+    )
+    append_versions(spark, settings, [version(1, ChangeOp.CREATE)])
+    refresh_views(spark, settings)
+    history, definition = next(iter(silver_views(CUSTOMERS, settings).items()))
+    ensure_view(spark, history, definition._replace(comment="A stale description"))
+    return settings
