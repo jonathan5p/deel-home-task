@@ -10,86 +10,9 @@ The pipeline turns the change stream of the supplied `finance_db` PostgreSQL dat
 
 Everything runs locally with Docker Compose.
 
-> **In progress.** Shown dotted and grey in the diagrams:
-> - serving: the Grafana dashboard (#165, #166);
-> - the data quality checks `silver` (#147), `gold` (#46) and `gold-lake` (#154), and their schedule (#148);
-> - lake maintenance refreshing the views.
-
-## Components
+## Services
 
 Every Compose service, grouped by the profile that starts it. Services without a profile start with `make up`. `make pipeline` adds the `pipeline` and `history` profiles, and `make up PROFILES=...` adds the optional ones.
-
-```mermaid
-flowchart LR
-    subgraph source["Source, as supplied"]
-        tdb[("transactions-db<br/>PostgreSQL finance_db")]
-        connect["kafka-connect<br/>Debezium"]
-        dinit["debezium-init"]
-        zk["zookeeper"]
-        kafka[["kafka"]]
-    end
-
-    subgraph drivers["Spark drivers, one container per application"]
-        subgraph pipeline["profile pipeline"]
-            landing["landing-job"]
-            bronze["bronze-job"]
-            silver["silver-job"]
-            views["lake-views, one-shot"]
-            gold["gold-job"]
-        end
-        subgraph scheduled["profile maintenance"]
-            maint["maintenance-job"]
-        end
-        subgraph adhoc["profile app"]
-            app["spark-app: spark-submit, spark-sql,<br/>data-quality, bronze-replay,<br/>gold-rebuild, lake-maintenance"]
-        end
-    end
-
-    subgraph cluster["Spark standalone cluster"]
-        master["spark-master"]
-        w1["spark-worker-1<br/>5 cores, 5 GiB"]
-        w2["spark-worker-2<br/>5 cores, 5 GiB"]
-    end
-
-    subgraph storage["Lake and analytics storage"]
-        s3[("seaweedfs<br/>bucket lake")]
-        adb[("analytics-db<br/>analytics + iceberg_catalog")]
-    end
-
-    retention["gold-retention-job<br/>profile maintenance, Python"]
-    history["spark-history<br/>profile history"]
-
-    subgraph monitoring["profile monitoring"]
-        conduktor["conduktor-console"]
-        cdb[("conduktor-db")]
-    end
-
-    subgraph serving["Serving"]
-        grafana["Grafana"]
-        api["api: analytics API<br/>FastAPI"]
-    end
-
-    tdb -- "logical replication" --> connect
-    dinit -- "registers the connector" --> connect
-    connect --> kafka
-    zk --- kafka
-    kafka -- "CDC topics" --> landing
-
-    drivers -. "executors" .-> master
-    master --- w1
-    master --- w2
-    drivers -- "files, Iceberg data,<br/>checkpoints" --> s3
-    drivers -- "Iceberg catalog,<br/>gold over JDBC" --> adb
-    drivers -. "event logs" .-> history
-    retention --> adb
-
-    conduktor --> kafka
-    conduktor --- cdb
-    serving --> adb
-
-    classDef progress stroke-dasharray: 2 3,color:#888,stroke:#888
-    class grafana progress
-```
 
 | Service | Profile | Role | Host port |
 | --- | --- | --- | --- |

@@ -22,25 +22,20 @@ flowchart LR
     bronze[("Bronze + quarantine")]
     silver[("Silver")]
     gold[("PostgreSQL gold")]
-    lgold["lake.gold views"]
 
     kafka -- "CHECK=landing" --> landing
     landing -- "CHECK=bronze" --> bronze
     bronze -- "CHECK=silver" --> silver
     silver -- "CHECK=gold" --> gold
-    gold -- "CHECK=gold-lake" --> lgold
-
-    linkStyle 2,3,4 stroke-dasharray: 2 3,stroke:#888
 ```
 
 | Check | Compares | Status |
 | --- | --- | --- |
 | `landing` | Kafka to landing: every offset landed once, payloads unchanged | merged (#23) |
 | `bronze` | Landing to bronze and quarantine: every landed record held exactly once | merged (#151) |
-| `silver` | Bronze to silver: every change identity held exactly once | in progress, #147 |
-| `gold` | Silver to PostgreSQL gold | in progress, #46 |
-| `gold-lake` | PostgreSQL gold views to the lake gold views, at the silver snapshots gold committed | in progress, #154 |
-| Schedule | Runs the checks periodically | in progress, #148 |
+| `silver` | Bronze to silver: every change identity held exactly once | merged (#179) |
+| `gold` | Silver to PostgreSQL gold: each gold view against the lake gold views computed over silver, at the silver snapshots gold committed | merged (#154) |
+| Schedule | Runs every check every `DATA_QUALITY_INTERVAL_HOURS` in the `data-quality` profile | merged (#180) |
 
 ## How the checks run
 
