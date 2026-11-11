@@ -60,10 +60,10 @@ Optional services are grouped in Compose profiles and are not started by a plain
 | Profile | Starts | Guide |
 | --- | --- | --- |
 | `monitoring` | Conduktor, a Kafka console | [Debugging](docs/operations/debugging.md#optional-kafka-monitoring) |
-| `history` | The Spark History Server | [Spark cluster](docs/platform/spark.md#spark-history-server-optional) |
+| `history` | The Spark History Server | [Spark cluster](docs/architecture/infrastructure.md#spark-history-server-optional) |
 | `maintenance` | Scheduled lake maintenance and gold retention | [Maintenance and recovery](docs/operations/maintenance-and-recovery.md) |
 | `data-quality` | Every data quality check on a schedule | [Data quality checks](docs/lakehouse/data-quality.md#data-quality-checks) |
-| `catalog` | A read-only Iceberg REST catalog of the lake, for engines such as DuckDB | [Query the lake from DuckDB](docs/platform/spark.md#query-the-lake-from-duckdb) |
+| `catalog` | A read-only Iceberg REST catalog of the lake, for engines such as DuckDB | [Query the lake from DuckDB](docs/serving/lake-access.md#query-the-lake-from-duckdb) |
 
 `make down` keeps every volume, so the source database, Kafka, the lake and gold survive a restart. To work on the code, also run `uv sync --frozen` and `make hooks` ([testing](docs/development/testing.md)).
 
@@ -100,7 +100,7 @@ Optional services are grouped in Compose profiles and are not started by a plain
    curl -s localhost:8000/freshness
    ```
 
-   Or open the **Gold metrics** dashboard at <http://localhost:3000/d/gold-metrics>, one panel per question plus freshness. An open order is one whose current status is not `COMPLETED`; the top 3 questions include ties, so more than three rows can come back ([gold](docs/lakehouse/gold/writer.md), [the gold model](docs/lakehouse/gold/model.md)).
+   Or open the **Gold metrics** dashboard at <http://localhost:3000/d/gold-metrics>, one panel per question plus freshness. An open order is one whose current status is not `COMPLETED`; the top 3 questions include ties, so more than three rows can come back ([gold](docs/lakehouse/gold/index.md), [the gold model](docs/lakehouse/gold/model.md)).
 
 4. **Stop.** `make down` stops everything and keeps the data; `make pipeline-stop PIPELINE=<job>` stops one job.
 
@@ -129,7 +129,7 @@ These are local development credentials from `.env`; variables exported in the s
 | `make pipeline-logs PIPELINE=<job>`, `make pipeline-stop PIPELINE=<job>` | Follows a job's logs, stops a job |
 | `make data-quality CHECK=<check>` | Runs the `landing`, `bronze`, `silver`, `gold` or `all` data quality checks |
 | `make spark-sql` | Opens a Spark SQL shell on the lake ([landing examples](docs/lakehouse/landing.md#inspecting-the-landing-zone-with-spark-sql)) |
-| `make spark-submit SPARK_APP=<path>` | Runs an application in its own driver container ([submitting a job](docs/platform/spark.md#submitting-a-job)) |
+| `make spark-submit SPARK_APP=<path>` | Runs an application in its own driver container ([submitting a job](docs/architecture/infrastructure.md#submitting-a-job)) |
 | `make lake-views` | Creates or updates the silver and gold views in the lake |
 | `make lake-maintenance`, `make gold-retention` | Compacts and cleans the lake tables, trims gold history ([maintenance](docs/operations/maintenance-and-recovery.md)) |
 | `make bronze-replay TOPIC=… FROM_OFFSET=… TO_OFFSET=…` | Re-feeds a landing range into bronze ([replay](docs/operations/maintenance-and-recovery.md#replaying-a-landing-range-into-bronze)) |
@@ -139,7 +139,7 @@ These are local development credentials from `.env`; variables exported in the s
 ### Debug
 
 - **Services:** `docker compose ps` shows what is up and healthy; `docker compose logs -f <service>` follows any service.
-- **Spark:** each job's UI (above) while it runs, the History Server for past or crashed runs, and `make spark-sql` to query the lake (or DuckDB through the [REST catalog](docs/platform/spark.md#query-the-lake-from-duckdb)).
+- **Spark:** each job's UI (above) while it runs, the History Server for past or crashed runs, and `make spark-sql` to query the lake (or DuckDB through the [REST catalog](docs/serving/lake-access.md#query-the-lake-from-duckdb)).
 - **Files and reports:** the SeaweedFS filer at <http://localhost:8888/buckets/lake/> shows the landing files, the checkpoints and the data quality reports.
 - **Common errors:** `port is already allocated` means a pipeline job holds the UI port, so pass `SPARK_UI_PORT=4050`; `Some data may have been lost because they are not available in Kafka any more` means the lake must be reset. The [debugging guide](docs/operations/debugging.md) lists every common error with its fix.
 - **Starting over:** **data loss:** `make clean CONFIRM=1` removes the project's containers and volumes, so every database, topic and lake file is deleted ([destructive reset](docs/operations/debugging.md#destructive-reset)).
@@ -161,12 +161,11 @@ The checks run in containers with the cluster's exact Spark and Python versions;
 
 | Part | Guides |
 | --- | --- |
-| Layers | [Source database and CDC](docs/lakehouse/source-and-cdc.md) · [Landing](docs/lakehouse/landing.md) · [Bronze](docs/lakehouse/bronze.md) · [Silver](docs/lakehouse/silver.md) · [Gold](docs/lakehouse/gold/writer.md) |
-| Operations | [Running the pipeline](docs/operations/running-the-pipeline.md) · [Data quality checks](docs/lakehouse/data-quality.md) · [Maintenance and recovery](docs/operations/maintenance-and-recovery.md) · [Debugging](docs/operations/debugging.md) |
-| Serving | [Analytics API](docs/serving/api.md) · [Grafana](docs/serving/grafana.md) |
-| Platform | [Services and storage](docs/architecture/infrastructure.md) · [Spark cluster](docs/platform/spark.md) · [Configuration](docs/operations/configuration.md) |
+| Architecture | [Overview](docs/architecture/overview.md) · [Infrastructure](docs/architecture/infrastructure.md) · [Spark sizing](docs/architecture/sizing.md) · [Design decisions](docs/architecture/decisions.md) |
+| Lakehouse | [Medallion layers](docs/lakehouse/index.md) · [Source database and CDC](docs/lakehouse/source-and-cdc.md) · [Landing](docs/lakehouse/landing.md) · [Bronze](docs/lakehouse/bronze.md) · [Silver](docs/lakehouse/silver.md) · [Gold](docs/lakehouse/gold/index.md) ([model](docs/lakehouse/gold/model.md), [writer](docs/lakehouse/gold/writer.md)) · [Data quality checks](docs/lakehouse/data-quality.md) |
+| Serving | [Analytics API](docs/serving/api.md) · [Grafana](docs/serving/grafana.md) · [Querying the lake](docs/serving/lake-access.md) |
+| Operations | [Running the pipeline](docs/operations/running-the-pipeline.md) · [Maintenance and recovery](docs/operations/maintenance-and-recovery.md) · [Debugging](docs/operations/debugging.md) · [Configuration](docs/operations/configuration.md) |
 | Development | [Code layout](docs/development/code-layout.md) · [Table and column definitions](docs/development/table-definitions.md) · [Testing and CI](docs/development/testing.md) |
-| Architecture | [Overview](docs/architecture/overview.md) · [Spark sizing](docs/architecture/sizing.md) · [Design decisions](docs/architecture/decisions.md) · [Gold model](docs/lakehouse/gold/model.md) |
 | Reference | [Table reference](https://jonathan5p.github.io/deel-home-task/reference/) (on the docs site, rendered from the schemas) · [Supplied assignment README](docs/reference/original-readme.md) |
 
 ### The supplied assignment stack

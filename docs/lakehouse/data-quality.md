@@ -11,6 +11,39 @@ make data-quality CHECK=gold      # silver -> gold in PostgreSQL, through the go
 make up PROFILES=data-quality     # or run every check on a schedule (optional, off by default)
 ```
 
+## Data quality chain
+
+Each check compares one layer with its upstream layer only, never with the source database. Each check is bounded by what the downstream query has committed, so the result does not depend on pipeline lag (#145). `make data-quality CHECK=<check>|all` runs them as their own Spark application, never inside `make test-infra`. Each run writes a JSON report to `<LAKE_ROOT>/quality/reports/<UTC>.json` and exits 1 when a check fails.
+
+```mermaid
+flowchart LR
+    kafka[["Kafka"]]
+    landing[/"Landing"/]
+    bronze[("Bronze + quarantine")]
+    silver[("Silver")]
+    gold[("PostgreSQL gold")]
+    lgold["lake.gold views"]
+
+    kafka -- "CHECK=landing" --> landing
+    landing -- "CHECK=bronze" --> bronze
+    bronze -- "CHECK=silver" --> silver
+    silver -- "CHECK=gold" --> gold
+    gold -- "CHECK=gold-lake" --> lgold
+
+    linkStyle 2,3,4 stroke-dasharray: 2 3,stroke:#888
+```
+
+| Check | Compares | Status |
+| --- | --- | --- |
+| `landing` | Kafka to landing: every offset landed once, payloads unchanged | merged (#23) |
+| `bronze` | Landing to bronze and quarantine: every landed record held exactly once | merged (#151) |
+| `silver` | Bronze to silver: every change identity held exactly once | in progress, #147 |
+| `gold` | Silver to PostgreSQL gold | in progress, #46 |
+| `gold-lake` | PostgreSQL gold views to the lake gold views, at the silver snapshots gold committed | in progress, #154 |
+| Schedule | Runs the checks periodically | in progress, #148 |
+
+## How the checks run
+
 - **Output:** each check prints one JSON line per result, prefixed with `<CHECK> QUALITY` (`LANDING QUALITY`, `BRONZE QUALITY`, `SILVER QUALITY`, `GOLD QUALITY`), then a summary line of its own, and the run ends with a `DATA QUALITY` summary of every check that names the run's report. The job exits with code 1 if any check fails. A check that raises an error instead of returning results, for example the landing check on a topic Kafka does not host yet, fails as one `check_completed` result with the error's type and message in its `details`, and the run still runs the other checks and writes its report.
 - **Report:** every run also writes one JSON file, `<LAKE_ROOT>/quality/reports/<UTC time>.json` (locally `s3a://lake/quality/reports/20261110T151803Z.json`), with each check's results and summary and the run's summary, so the results persist and can be inspected later (`curl http://localhost:8888/buckets/lake/quality/reports/` lists them).
 - **Schedule:** the `data-quality-job` service is optional and off by default: it is in its own `data-quality` profile, which neither `make up` nor `make pipeline` starts, so it runs only when requested (`make up PROFILES=data-quality`). It runs every check (`CHECK=all`) right away and then every `DATA_QUALITY_INTERVAL_HOURS` hours (default 24), each time with a fresh `spark-submit` (`spark.cores.max=2`). A failed run, a failing check included, is logged (`docker compose logs data-quality-job`) and the next run starts on schedule. Every run writes its report, so `quality/reports/` keeps the history of the scheduled runs. Next to the four streaming jobs, it shares the 2 free cores with lake maintenance, so when both profiles start together one waits for the other.
@@ -55,7 +88,7 @@ The silver checks compare each entity's silver table with bronze by change ident
 
 The results report the counts (`bronze_changes`, `missing`, `extra`, `silver_rows`, `duplicated`), silver's committed batch, the bronze and silver snapshots compared, and up to 10 sample identities of each mismatch. An entity whose silver stream has not committed a batch yet has nothing to check and passes. If the bronze snapshot has been expired, which lake maintenance avoids while a silver checkpoint still needs it, `same_changes_as_bronze` fails and gives the reason in its details.
 
-The `gold` check compares every PostgreSQL `gold` view with the [gold view in the lake](gold/writer.md#gold-views-in-the-lake) of the same name, computed over silver, one `gold_matches_silver` result per view, `data_freshness` aside. The lake views apply gold's rules to silver at read time, so one comparison checks silver against gold in PostgreSQL and the lake views against PostgreSQL, and silver and PostgreSQL are each read once per run:
+The `gold` check compares every PostgreSQL `gold` view with the [gold view in the lake](gold/writer.md#gold-in-the-lake) of the same name, computed over silver, one `gold_matches_silver` result per view, `data_freshness` aside. The lake views apply gold's rules to silver at read time, so one comparison checks silver against gold in PostgreSQL and the lake views against PostgreSQL, and silver and PostgreSQL are each read once per run:
 
 - **Same point in silver:** each gold stream's checkpoint gives the silver snapshot of its last committed batch, and of the batch it is writing, if any. The check reads the committed batches, then PostgreSQL, then the planned batches, and computes the lake views' SQL over silver at those snapshots, the committed ones first and then each combination with a planned one, because PostgreSQL commits a batch before the checkpoint does.
 - **Dimension versions, not surrogate keys:** PostgreSQL's `customer_key` and `product_key` are compared as the `_commit_sequence` of the dimension version they name (through `gold_internal.dim_*`), which the lake side computes too, so the version each fact points at is checked.
