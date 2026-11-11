@@ -37,6 +37,7 @@ Where to look while a job runs:
 - **Application UI** on the job's port (table above), including the Structured Streaming tab with one query per topic.
 - **History Server** at <http://localhost:18080>, for current and past runs, since every driver writes event logs to the `spark-events` volume.
 - **Landing files** in the SeaweedFS filer UI at <http://localhost:8888/buckets/lake/landing/>, one folder per topic.
+- **Spark dashboards** in Grafana, with the `metrics` profile (`make up PROFILES=metrics`): rates, batch durations and state of every query, and the cluster's cores and memory over time ([Monitoring Spark](monitoring.md)).
 
 Each job service submits its application with the same settings as `make spark-submit`, plus `spark.cores.max=2` and the service name as the driver host, so executors on the workers can connect back to it. The services restart unless they were stopped (`restart: unless-stopped`): a job whose driver fails is restarted and resumes from its checkpoints, without skipping or duplicating records. A container stopped with `make pipeline-stop` or `docker stop`/`docker kill` stays stopped until the next `make pipeline`.
 

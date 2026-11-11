@@ -66,6 +66,7 @@ Optional services are grouped in Compose profiles and are not started by a plain
 | `maintenance` | Scheduled lake maintenance and gold retention | [Maintenance and recovery](docs/operations/maintenance-and-recovery.md) |
 | `data-quality` | Every data quality check on a schedule | [Data quality checks](docs/lakehouse/data-quality.md#data-quality-checks) |
 | `catalog` | A read-only Iceberg REST catalog of the lake, for engines such as DuckDB | [Query the lake from DuckDB](docs/serving/lake-access.md#query-the-lake-from-duckdb) |
+| `metrics` | Prometheus, scraping every Spark driver, the master and the workers, and the Spark History Server; Grafana's Spark dashboards read it | [Monitoring Spark](docs/operations/monitoring.md) |
 
 `make down` keeps every volume, so the source database, Kafka, the lake and gold survive a restart. To work on the code, also run `uv sync --frozen` and `make hooks` ([testing](docs/development/testing.md)).
 
@@ -120,6 +121,7 @@ Optional services are grouped in Compose profiles and are not started by a plain
 | Lake REST catalog (`catalog` profile) | <http://localhost:8181> | none; read-only |
 | Analytics API | <http://localhost:8000>, docs at <http://localhost:8000/docs> | none |
 | Grafana | <http://localhost:3000> | anonymous viewer; `admin` / `admin` |
+| Prometheus (`metrics` profile) | <http://localhost:9090> | none |
 | Conduktor (`monitoring` profile) | <http://localhost:8090> | `admin@local.test` / `LocalConsole123!` |
 | Docs site (`make docs-serve`) | <http://localhost:8001> | none |
 
@@ -166,7 +168,7 @@ The checks run in containers with the cluster's exact Spark and Python versions;
 | Architecture | [Overview](docs/architecture/overview.md) · [Infrastructure](docs/architecture/infrastructure.md) · [Spark sizing](docs/architecture/sizing.md) · [Design decisions](docs/architecture/decisions.md) · [The way to production](docs/architecture/production.md) |
 | Lakehouse | [Medallion layers](docs/lakehouse/index.md) · [Source database and CDC](docs/lakehouse/source-and-cdc.md) · [Landing](docs/lakehouse/landing.md) · [Bronze](docs/lakehouse/bronze.md) · [Silver](docs/lakehouse/silver.md) · [Gold](docs/lakehouse/gold/index.md) ([model](docs/lakehouse/gold/model.md), [writer](docs/lakehouse/gold/writer.md)) · [Data quality checks](docs/lakehouse/data-quality.md) |
 | Serving | [Analytics API](docs/serving/api.md) · [Grafana](docs/serving/grafana.md) · [Querying the lake](docs/serving/lake-access.md) |
-| Operations | [Running the pipeline](docs/operations/running-the-pipeline.md) · [Maintenance and recovery](docs/operations/maintenance-and-recovery.md) · [Debugging](docs/operations/debugging.md) · [Configuration](docs/operations/configuration.md) |
+| Operations | [Running the pipeline](docs/operations/running-the-pipeline.md) · [Maintenance and recovery](docs/operations/maintenance-and-recovery.md) · [Debugging](docs/operations/debugging.md) · [Monitoring Spark](docs/operations/monitoring.md) · [Configuration](docs/operations/configuration.md) |
 | Development | [Code layout](docs/development/code-layout.md) · [Table and column definitions](docs/development/table-definitions.md) · [Testing and CI](docs/development/testing.md) |
 | How it was built | [How I worked](docs/process/how-i-worked.md) · [Building with AI agents](docs/process/ai-agents.md) |
 | Reference | [Table reference](https://jonathan5p.github.io/deel-home-task/reference/) (on the docs site, rendered from the schemas) · [Supplied assignment README](docs/reference/original-readme.md) |

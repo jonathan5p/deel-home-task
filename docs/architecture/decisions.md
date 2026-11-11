@@ -35,6 +35,7 @@ The numbers (D3, D13, ...) come from the project's decision log, and other pages
 | [D39 · Gold in the lake as views](#d39--gold-in-the-lake-as-iceberg-views-over-silver) | The lake has the gold model without a second writer |
 | **Observability** | |
 | [D33 · Observability catalog](#d33--pipeline-metrics-in-a-separate-observability-catalog-proposed) | Proposed: per-batch pipeline metrics apart from business data |
+| [D42 · Spark metrics in Prometheus](#d42--spark-metrics-sparks-prometheus-servlet-scraped-by-dns-service-discovery) | Spark's own servlet, pulled by Prometheus, with drivers found by their service names |
 
 ## Requirements and constraints
 
@@ -422,3 +423,19 @@ Both reuse the streaming code and are tested to equal streaming output. A full b
 **Proposal.** Each streaming query records per-batch stats in an Iceberg table, in its own `observability` catalog in the lake (#127): row counts, durations, the last `_commit_sequence` and the last event time. Freshness is then the latest row per query.
 
 **Status.** Deferred to the ideas milestone. Gold's `data_freshness` view covers freshness meanwhile.
+
+### D42 · Spark metrics: Spark's Prometheus servlet, scraped by DNS service discovery
+
+**Context.** The streaming jobs' rates, batch durations and state, and the cluster's use of cores and memory, were only visible in the Spark UI while a driver ran, so neither alerts nor a history to size the cluster from were possible (#69, #126).
+
+**Decision.** Every Spark process serves its own metrics through Spark's `PrometheusServlet` sink, and an optional Prometheus (`metrics` profile) scrapes them every 10 seconds, keeping 30 days in a volume. Prometheus finds the drivers by asking Docker's DNS for their Compose service names; `make spark-submit` drivers answer to `spark-app`.
+
+**Why.** The servlet ships with Spark and needs only configuration; pulling costs a driver nothing when no Prometheus runs; DNS discovery needs no access to the Docker socket.
+
+**Alternatives considered.**
+
+- The Prometheus JMX exporter as a Java agent in every JVM: one more jar and port per process, and the same metrics under other names.
+- A Pushgateway: drivers would push, and it would keep the last value of a driver that died as if it were alive.
+- Prometheus's Docker service discovery: finds every container, but needs the Docker socket mounted, which gives root on the host.
+
+**Outcome.** Spark puts the query and application names in its metric names, so the scrape configuration rewrites them into labels; Grafana's Spark dashboards and two alert rules read the result ([Monitoring Spark](../operations/monitoring.md)).

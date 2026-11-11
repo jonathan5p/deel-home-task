@@ -14,7 +14,7 @@ make spark-submit   # Submit a job to the Spark cluster (defaults to a one-minut
 make help           # Show lifecycle commands
 ```
 
-Optional services are grouped in Compose profiles and are not started by a plain `make up`: `monitoring` (Conduktor, see [Optional Kafka monitoring](../operations/debugging.md#optional-kafka-monitoring)), `history` (Spark History Server, see [Spark History Server](#spark-history-server-optional)), `maintenance` (scheduled lake maintenance and gold retention, see [Lake maintenance](../operations/maintenance-and-recovery.md#lake-maintenance) and [Gold retention](../operations/maintenance-and-recovery.md#gold-retention)) `data-quality` (scheduled data quality checks, see [Data quality checks](../lakehouse/data-quality.md)) and `catalog` (the read-only Iceberg REST catalog, see [Iceberg REST catalog](#iceberg-rest-catalog)). Pass them with `PROFILES`, separated by spaces.
+Optional services are grouped in Compose profiles and are not started by a plain `make up`: `monitoring` (Conduktor, see [Optional Kafka monitoring](../operations/debugging.md#optional-kafka-monitoring)), `history` (Spark History Server, see [Spark History Server](#spark-history-server-optional)), `maintenance` (scheduled lake maintenance and gold retention, see [Lake maintenance](../operations/maintenance-and-recovery.md#lake-maintenance) and [Gold retention](../operations/maintenance-and-recovery.md#gold-retention)), `data-quality` (scheduled data quality checks, see [Data quality checks](../lakehouse/data-quality.md)), `catalog` (the read-only Iceberg REST catalog, see [Iceberg REST catalog](#iceberg-rest-catalog)) and `metrics` (Prometheus and the Spark History Server, see [Metrics](#metrics)). Pass them with `PROFILES`, separated by spaces.
 
 ## Analytics database
 
@@ -99,7 +99,8 @@ The credentials are local development defaults in `.env` (`LAKE_S3_ACCESS_KEY`, 
 | `spark-master` | <http://localhost:8080> | Cluster manager; accepts jobs at `SPARK_MASTER_URL` |
 | `spark-worker-1` | <http://localhost:8081> | 5 cores, 5 GiB executor memory |
 | `spark-worker-2` | <http://localhost:8082> | 5 cores, 5 GiB executor memory |
-| `spark-history` (optional) | <http://localhost:18080> | History server for finished, crashed and running applications; started with `make spark-history` |
+| `spark-history` (optional) | <http://localhost:18080> | History server for finished, crashed and running applications; started with `make spark-history` or the `metrics` profile |
+| `prometheus` (optional) | <http://localhost:9090> | Scrapes the drivers, the master and the workers every 10 seconds; started with `make up PROFILES=metrics` (see [Metrics](#metrics)) |
 | `spark-app` (one container per run) | <http://localhost:4040> | Driver of an application started by `make spark-submit`; its UI is only available while it runs |
 | `landing-job` (optional) | <http://localhost:4040> | Driver of the landing job, a long-running service started by `make pipeline` (see [Running the pipeline](../operations/running-the-pipeline.md)) |
 | `bronze-job` (optional) | <http://localhost:4041> | Driver of the bronze job, started the same way |
@@ -206,7 +207,27 @@ make up PROFILES=history    # Or start it together with the rest of the stack
 
 `make spark-history` is a toggle: run it once to start the history server and again to stop and remove its container. The event logs stay in the volume either way.
 
-When it starts, it lists every application whose event logs are in the volume, including runs that happened while it was stopped. `make down` stops it with the rest of the stack, and `make clean CONFIRM=1` deletes the event logs.
+When it starts, it lists every application whose event logs are in the volume, including runs that happened while it was stopped. While it runs, it deletes the event logs older than 30 days (`spark.history.fs.cleaner.*` in `docker/spark/spark-defaults.conf`). `make down` stops it with the rest of the stack, and `make clean CONFIRM=1` deletes the event logs.
+
+### Metrics
+
+Every Spark process serves its metrics in Prometheus's text format on its web UI port, through Spark's `PrometheusServlet` sink (`docker/spark/metrics.properties`, copied into `/opt/spark/conf`):
+
+| Process | Endpoint |
+| --- | --- |
+| Driver | `:4040/metrics/prometheus` (driver and streaming metrics), `:4040/metrics/executors/prometheus` (per executor) |
+| Master | `:8080/metrics/master/prometheus`, `:8080/metrics/applications/prometheus` |
+| Worker | `:8081/metrics/prometheus` |
+
+`docker/spark/spark-defaults.conf` turns on the streaming query metrics (`spark.sql.streaming.metricsEnabled`) and the executors' process memory (`spark.executor.processTreeMetrics.enabled`), and fixes the metric namespace to `spark` (`spark.metrics.namespace`), so a driver's metric names do not change with its application id. Every process also reports its JVM (`JvmSource`).
+
+The optional `metrics` profile starts [Prometheus](https://prometheus.io/) (`prometheus`, image `prom/prometheus` 3.16.0, pinned by digest) and the Spark History Server:
+
+```sh
+make up PROFILES=metrics   # Prometheus on http://localhost:9090
+```
+
+Prometheus reads `monitoring/prometheus/prometheus.yml` and the alert rules in `monitoring/prometheus/rules/`, scrapes every 10 seconds, and keeps its samples for 30 days or up to 2 GB in the `prometheus-data` volume. It finds the drivers through Docker's DNS by their Compose service names, `spark-app` included: `make spark-submit` and `make spark-sql` start their drivers with `docker compose run --use-aliases`, so they answer to the service name too. Grafana charts the metrics ([Grafana](../serving/grafana.md#spark-dashboards)), and [Monitoring Spark](../operations/monitoring.md) explains what is collected and how to read it.
 
 ### Checking the application UI
 

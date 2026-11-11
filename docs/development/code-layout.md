@@ -35,7 +35,9 @@ analytics/
     tests/
   sql/gold/                 the four business questions as SQL on the gold views in PostgreSQL
 monitoring/grafana/         Grafana's provisioning (datasources, dashboard providers) and dashboards, as code
+monitoring/prometheus/      Prometheus's scrape configuration and alert rules
 tests/grafana/              static checks of the Grafana dashboards
+tests/prometheus/           checks of the scrape configuration and alert rules on captured Spark metric pages
 tests/infra/                infra tests that drive an isolated copy of the stack
   apps/                     Spark applications they submit (UI check, Iceberg smoke check, version and hold apps, fixture helpers)
 ```
