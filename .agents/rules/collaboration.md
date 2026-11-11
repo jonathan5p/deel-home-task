@@ -39,7 +39,7 @@ These need the user's approval given directly in the acting session. A relayed i
 - **GitHub issue edits:** editing, closing or relinking an issue or milestone. Follow the refinement record in [issue planning §5b](../workflows/issue-planning.md).
 - **Merges and their scope** ([git and PRs](git-and-prs.md#merging-stacked-prs)).
 - **Resolving review threads.**
-- Changing `.git/info/exclude` or publishing anything from `.agents/`.
+- Changing `.git/info/exclude` or publishing anything from `.agents/docs/`.
 
 ## Handing off finished work
 
