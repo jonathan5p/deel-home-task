@@ -1,11 +1,8 @@
-import json
 from dataclasses import dataclass
 
 from tests.infra.bronze_setup import (
     FIRST_LSN,
     LAND_APP,
-    ROWS_APP,
-    ROWS_PREFIX,
     TOPICS,
     Json,
     Rows,
@@ -15,6 +12,7 @@ from tests.infra.bronze_setup import (
     record,
     source_row,
 )
+from tests.infra.lake_reader import duckdb_rows
 from tests.infra.landing_avro import landing_avro
 from tests.infra.stack import Stack
 
@@ -38,8 +36,9 @@ ENV = {
     "CHECKPOINT_ROOT": f"s3a://lake/{LAKE_KEY}/checkpoints",
     "ICEBERG_CATALOG": CATALOG,
 }
-BRONZE = f"{CATALOG}.bronze.{ENTITY}"
-QUARANTINE = f"{CATALOG}.bronze.{ENTITY}_quarantine"
+TABLES_PATH = f"s3://lake/{LAKE_KEY}/warehouse/bronze"
+BRONZE = f"{TABLES_PATH}/{ENTITY}"
+QUARANTINE = f"{TABLES_PATH}/{ENTITY}_quarantine"
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,12 +71,10 @@ def land(stack: Stack, batch: str, records: list[Json]) -> None:
 
 
 def tables(stack: Stack) -> tuple[Table, Table]:
-    dumps = {}
-    for line in submit(stack, ROWS_APP, BRONZE, QUARANTINE).splitlines():
-        if line.startswith(ROWS_PREFIX):
-            dump = json.loads(line.removeprefix(ROWS_PREFIX))
-            dumps[dump["table"]] = Table(sorted(dump["rows"], key=offset))
-    return dumps[BRONZE], dumps[QUARANTINE]
+    """The bronze and quarantine tables, read from their files: the replay catalog is not in the
+    REST catalog."""
+    read = duckdb_rows(stack, [BRONZE, QUARANTINE])
+    return Table(sorted(read[BRONZE], key=offset)), Table(sorted(read[QUARANTINE], key=offset))
 
 
 def replay(stack: Stack, first: int, last: int) -> str:

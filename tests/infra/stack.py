@@ -74,6 +74,7 @@ CLUSTER_SERVICES = (
     "spark-worker-1",
     "spark-worker-2",
 )
+CATALOG_SERVICE = "iceberg-rest"
 
 
 class MasterApp(TypedDict):
@@ -87,6 +88,8 @@ class MasterApp(TypedDict):
 class Stack:
     env: Mapping[str, str]
     running: list[subprocess.Popen[str]] = field(default_factory=list)
+    catalog_started: bool = False
+    python_started: bool = False
 
     @classmethod
     def isolated(cls, env: Mapping[str, str]) -> Self:
@@ -105,6 +108,10 @@ class Stack:
     def project(self) -> str:
         return self.env["COMPOSE_PROJECT_NAME"]
 
+    @property
+    def python_container(self) -> str:
+        return f"{self.project}-python"
+
     def compose(self, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             ["docker", "compose", *args],
@@ -119,6 +126,36 @@ class Stack:
         self.compose("--profile", "app", "build", "spark-app", "api-dev")
         self.compose("up", "--detach", "--build", "--wait", *CLUSTER_SERVICES)
         wait_until(self.kafka_ready, timeout=120, message="Kafka never accepted connections")
+
+    def start_catalog(self) -> None:
+        """Start the optional REST catalog once; later calls find it running."""
+        if not self.catalog_started:
+            self.compose(
+                "--profile", "catalog", "up", "--detach", "--build", "--wait", CATALOG_SERVICE
+            )
+            self.catalog_started = True
+
+    def python(self, script: str, *args: str) -> subprocess.CompletedProcess[str]:
+        """Run a script with the app image's Python on the stack's network, in a container that
+        the first call starts and later calls reuse, so a read costs no container or JVM start."""
+        if not self.python_started:
+            self.compose(
+                "run",
+                "--detach",
+                "--no-deps",
+                "--name",
+                self.python_container,
+                "spark-app",
+                "sleep",
+                "infinity",
+            )
+            self.python_started = True
+        return subprocess.run(
+            ["docker", "exec", self.python_container, "python", script, *args],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
 
     def kafka_ready(self) -> bool:
         return self.kafka("kafka-topics", "--list", check=False).returncode == 0
@@ -148,7 +185,7 @@ class Stack:
         for process in self.running:
             if process.poll() is None:
                 process.kill()
-        for name in self.driver_containers():
+        for name in [*self.driver_containers(), self.python_container]:
             subprocess.run(["docker", "rm", "--force", name], capture_output=True, check=False)
         self.compose("--profile", "*", "down", "--volumes", "--remove-orphans", check=False)
         # Only the images this project builds: --rmi all would also delete the pulled ones.
@@ -229,6 +266,7 @@ class Stack:
         return apps
 
     def driver_containers(self) -> list[str]:
+        """The driver containers of the app runs, which the kept Python container is not."""
         names = subprocess.run(
             [
                 "docker",
@@ -245,7 +283,7 @@ class Stack:
             text=True,
             check=True,
         ).stdout
-        return names.split()
+        return [name for name in names.split() if name != self.python_container]
 
     def sql(self, database: str, query: str) -> str:
         return self.compose(

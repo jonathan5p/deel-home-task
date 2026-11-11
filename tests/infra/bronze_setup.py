@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from typing import TypedDict
 
 from pipelines.lake.columns import MetadataColumn
+from tests.infra.lake_reader import ROWS_PREFIX, catalog_descriptions, duckdb_rows, dumps
 from tests.infra.landing_avro import landing_avro
 from tests.infra.stack import Stack
 
@@ -12,10 +13,7 @@ LAKE_KEY = "test-fixtures/bronze"
 STAGING_KEY = f"{LAKE_KEY}/staging"
 LAND_APP = "tests/infra/apps/land_staged.py"
 BRONZE_APP = "analytics/pipelines/src/pipelines/bronze/job.py"
-ROWS_APP = "tests/infra/apps/table_rows.py"
-ROWS_PREFIX = "TABLE ROWS "
-DESCRIPTIONS_APP = "tests/infra/apps/table_descriptions.py"
-DESCRIPTIONS_PREFIX = "TABLE DESCRIPTION "
+SPARK_ROWS_APP = "tests/infra/apps/table_rows.py"
 
 ENTITIES = ("customers", "products", "orders", "order_items")
 TOPICS = {entity: f"test.operations.{entity}" for entity in ENTITIES}
@@ -198,13 +196,16 @@ def read_tables(
     stack: Stack, tables: Sequence[str], order_by: Callable[[dict[str, str | None]], int]
 ) -> Tables:
     """Every row of each table, with every value as text, sorted by `order_by`."""
-    output = submit(stack, ROWS_APP, *tables)
-    read: Tables = {}
-    for line in output.splitlines():
-        if line.startswith(ROWS_PREFIX):
-            dump = json.loads(line.removeprefix(ROWS_PREFIX))
-            read[dump["table"]] = sorted(dump["rows"], key=order_by)
-    return read
+    return {table: sorted(rows, key=order_by) for table, rows in duckdb_rows(stack, tables).items()}
+
+
+def read_with_spark(
+    stack: Stack, tables: Sequence[str], order_by: Callable[[dict[str, str | None]], int]
+) -> Tables:
+    """`read_tables` through a Spark driver, which also reads the Spark SQL views."""
+    output = submit(stack, SPARK_ROWS_APP, *tables)
+    read = dumps(output, ROWS_PREFIX)
+    return {dump["table"]: sorted(dump["rows"], key=order_by) for dump in read}
 
 
 def run_bronze_and_read_tables(stack: Stack) -> Tables:
@@ -225,11 +226,9 @@ class StoredDescription(TypedDict):
 def table_descriptions(stack: Stack, tables: Sequence[str] = TABLES) -> list[StoredDescription]:
     """The comment and column docs of each table (every bronze table by default), as the catalog
     stores them."""
-    output = submit(stack, DESCRIPTIONS_APP, *tables)
     return [
-        json.loads(line.removeprefix(DESCRIPTIONS_PREFIX))
-        for line in output.splitlines()
-        if line.startswith(DESCRIPTIONS_PREFIX)
+        StoredDescription(table=dump["table"], comment=dump["comment"], columns=dump["columns"])
+        for dump in catalog_descriptions(stack, tables)
     ]
 
 
