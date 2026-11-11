@@ -4,7 +4,7 @@ FROM (
         o.delivery_date,
         count(*) AS open_orders,
         rank() OVER (ORDER BY count(*) DESC) AS place
-    FROM {{ gold }}.open_orders AS o
+    FROM {{ views.open_orders }} AS o
     GROUP BY o.delivery_date
 ) AS ranked_dates
 WHERE place <= 3

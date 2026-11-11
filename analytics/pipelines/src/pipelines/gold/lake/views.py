@@ -1,4 +1,4 @@
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from importlib.resources import files
 from typing import NamedTuple
 
@@ -30,6 +30,7 @@ BUSINESS_VIEWS = (
 INTERNAL_COLUMNS: Mapping[str, frozenset[str]] = {"current_orders": frozenset({"is_open"})}
 HISTORY_COLUMNS = (MetadataColumn.VALID_TO, MetadataColumn.IS_CURRENT)
 DIMENSION_RANGE_COLUMNS = (Scd2Column.VALID_FROM, *HISTORY_COLUMNS)
+COMMIT_SEQUENCE = str(Scd2Column.COMMIT_SEQUENCE)
 
 
 def _render(template: str, **values: object) -> str:
@@ -63,22 +64,27 @@ class GoldLakeViews:
         tables: Mapping[str, GoldTable] | None = None,
         dimensions: Iterable[Scd2Dimension] = DIMENSIONS,
         facts: Iterable[ChangeFact] = FACTS,
+        *,
+        relation: Callable[[str, str], str] | None = None,
+        version_keys: bool = False,
     ) -> None:
         self.lake = lake
         self.tables = tables if tables is not None else load_gold_tables()
         self.dimensions = tuple(dimensions)
         self.facts = tuple(facts)
-        self.hidden = PIPELINE_ONLY_COLUMNS | {d.surrogate_key for d in self.dimensions}
+        self.relation = relation or lake.table
+        self.surrogate_keys = frozenset(d.surrogate_key for d in self.dimensions)
+        self.hidden = PIPELINE_ONLY_COLUMNS | (frozenset() if version_keys else self.surrogate_keys)
 
     @property
     def namespace(self) -> str:
         return f"{self.lake.catalog}.{GoldSettings.LAYER}"
 
     def view(self, name: str) -> str:
-        return self.lake.table(GoldSettings.LAYER, name)
+        return self.relation(GoldSettings.LAYER, name)
 
     def _silver(self, name: str) -> str:
-        return self.lake.table(SilverSettings.LAYER, name)
+        return self.relation(SilverSettings.LAYER, name)
 
     def _silver_history(self, load: Scd2Dimension | ChangeFact) -> str:
         return self._silver(TABLE_TEMPLATES[HISTORY].table_name(load.entity))
@@ -106,7 +112,7 @@ class GoldLakeViews:
 
     def dimension(self, dimension: Scd2Dimension) -> ViewDefinition:
         columns = self.public_columns(dimension.table, self._validity_columns(dimension))
-        sources = dimension.silver_columns
+        sources = dict(dimension.silver_columns) | {dimension.surrogate_key: COMMIT_SEQUENCE}
         selected = [
             column.name
             if column.name in DIMENSION_RANGE_COLUMNS
@@ -160,7 +166,7 @@ class GoldLakeViews:
 
     def _as_of_join(self, fact: ChangeFact, lookup: AsOfLookup) -> AsOfJoin:
         dimension = lookup.dimension
-        sources = dimension.silver_columns
+        sources = dict(dimension.silver_columns) | {dimension.surrogate_key: COMMIT_SEQUENCE}
         columns = tuple(
             (fact_column, sources[column])
             for fact_column, column in lookup.columns
@@ -222,9 +228,8 @@ class GoldLakeViews:
     def derived(self, name: str) -> ViewDefinition:
         table = self.tables[name]
         columns = [column.name for column in table.columns]
-        return self._definition(
-            table, table.columns, _render(name, gold=self.namespace, columns=columns)
-        )
+        views = {relation: self.view(relation) for relation in self.tables}
+        return self._definition(table, table.columns, _render(name, views=views, columns=columns))
 
     def freshness(self) -> ViewDefinition:
         table = self.tables[FRESHNESS]

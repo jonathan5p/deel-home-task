@@ -2,6 +2,6 @@ SELECT
     i.product_id,
     count(*) AS pending_items,
     sum(i.quantity) AS pending_quantity
-FROM {{ gold }}.current_order_items AS i
-JOIN {{ gold }}.open_orders AS o ON o.order_id = i.order_id
+FROM {{ views.current_order_items }} AS i
+JOIN {{ views.open_orders }} AS o ON o.order_id = i.order_id
 GROUP BY i.product_id

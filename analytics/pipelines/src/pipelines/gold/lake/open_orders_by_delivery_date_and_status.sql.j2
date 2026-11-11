@@ -2,6 +2,6 @@ SELECT
     o.delivery_date,
     s.status_code,
     count(*) AS open_orders
-FROM {{ gold }}.open_orders AS o
-JOIN {{ gold }}.dim_order_status AS s ON s.status_key = o.status_key
+FROM {{ views.open_orders }} AS o
+JOIN {{ views.dim_order_status }} AS s ON s.status_key = o.status_key
 GROUP BY o.delivery_date, s.status_code
