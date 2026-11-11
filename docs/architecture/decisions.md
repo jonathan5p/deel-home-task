@@ -184,7 +184,7 @@ The design decisions a reviewer should know about, with the alternatives that we
 
 - **Decision:** `lake.gold` holds one Iceberg view per public gold relation. Each view is computed at read time from silver, with the same rules as PostgreSQL gold. The gold job writes PostgreSQL only (#86, #152).
   - The lake uses natural keys, because PostgreSQL's surrogate keys cannot be reproduced there.
-  - A data quality check that compares both sides at the silver snapshots gold committed is in progress (#154).
+  - The `gold` data quality check compares both sides at the silver snapshots gold committed (#154).
 - **Alternatives:**
   - a second sink with MERGE-maintained Iceberg tables: duplicates the incremental SQL and adds cross-stream conflicts;
   - mirroring PostgreSQL into the lake: a CDC-like flow out of the analytics database;
