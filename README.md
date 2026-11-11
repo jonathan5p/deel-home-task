@@ -994,6 +994,7 @@ make schemas    # render the flat Avro schema of every lake table and view to th
 ```
 
 - **Unit tests** live next to each project and mirror its source tree (`analytics/<project>/tests/test_<module>.py`).
+- **Parallel runs:** `make test` spreads the test files over 4 [pytest-xdist](https://pytest-xdist.readthedocs.io/) workers in each image (in the app image each worker has its own local Spark session); set `PYTEST_WORKERS` to change that (`PYTEST_WORKERS=auto` for one per CPU, as CI does, or `0` to run serially).
 - **Coverage** is measured with branch coverage in each image's run: `pipelines` and `common` in the app image, `api` and `common` in the API dev image. The 90% floor (`[tool.coverage.report] fail_under` in `pyproject.toml`) applies to each run, and `make test` fails if either run is below it, even when every test passes.
 - **Lint and format** use [ruff](https://docs.astral.sh/ruff/), configured in `pyproject.toml` (`[tool.ruff]`).
 - **Typing** is required for all code. ruff's `ANN` rules fail `make lint` when an annotation is missing, and [ty](https://docs.astral.sh/ty/) checks that the annotations are correct, including calls into PySpark, whose types it reads from the Spark image (`make typecheck` passes `--extra-search-path /opt/spark/python`), and into FastAPI, which only the API dev image has, so the API code is checked there. ty is in beta, so its version is pinned in `uv.lock`; it only runs in the containers.
