@@ -78,7 +78,7 @@ help:
 		'schemas        Render the full flat Avro schema of every lake table and view to target/schemas/<layer>/<table>.avsc, for reading.' \
 		'               Build output: git-ignored, regenerated each run; edit analytics/pipelines/src/pipelines/schemas/ instead.' \
 		'docs           Build the docs site (docs/ plus the table reference rendered from the schemas) into the git-ignored target/site/; warnings fail.' \
-		'docs-serve     Serve the docs site on http://localhost:8000, rebuilding on every change.' \
+		'docs-serve     Serve the docs site on http://localhost:8001, rebuilding on every change.' \
 		'test-infra     Run the infra tests against an isolated copy of the stack (local only, a few minutes).' \
 		'hooks          Install the pre-commit hooks in this clone (once).' \
 		'Optional profiles: monitoring (Conduktor), history (Spark History Server), maintenance (lake maintenance and gold retention every 24 hours). See README.md.'

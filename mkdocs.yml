@@ -6,6 +6,7 @@ edit_uri: edit/main/docs/
 docs_dir: docs
 site_dir: target/site
 strict: true
+dev_addr: 127.0.0.1:8001
 
 theme:
   name: material
