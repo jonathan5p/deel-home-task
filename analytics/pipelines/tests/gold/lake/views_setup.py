@@ -120,14 +120,17 @@ class GoldLake:
     def views(self) -> GoldLakeViews:
         return GoldLakeViews(self.lake)
 
-    def refresh(self) -> list[str]:
-        """Refresh the silver views, then the gold views; returns the gold statements."""
-        silver = SilverSettings(
+    @property
+    def silver(self) -> SilverSettings:
+        return SilverSettings(
             topics=tuple(f"test.operations.{name}" for name in ENTITIES),
             lake=self.lake,
             trigger_seconds=1,
         )
-        refresh_views(self.spark, silver)
+
+    def refresh(self) -> list[str]:
+        """Refresh the silver views, then the gold views; returns the gold statements."""
+        refresh_views(self.spark, self.silver)
         return refresh_gold_views(self.spark, self.views)
 
     def append(self, entity: str, *rows: Row) -> None:

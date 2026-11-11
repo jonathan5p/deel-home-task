@@ -6,6 +6,8 @@ from pathlib import Path
 
 from pyspark.sql import Row, SparkSession
 
+from analytics.pipelines.tests.gold.lake.views_setup import GoldLake
+from analytics.pipelines.tests.lake.views_setup import register_view_catalog
 from analytics.pipelines.tests.silver.views_setup import append_versions, version
 from pipelines.bronze.entities import CUSTOMERS
 from pipelines.lake.columns import ChangeOp
@@ -138,3 +140,12 @@ def stale_silver_views(spark: SparkSession, catalog: str, lake_root: str) -> Sil
     history, definition = next(iter(silver_views(CUSTOMERS, settings).items()))
     ensure_view(spark, history, definition._replace(comment="A stale description"))
     return settings
+
+
+def stale_gold_view(spark: SparkSession, folder: Path) -> tuple[GoldLake, str]:
+    """A lake with its silver and gold views, one gold view carrying a stale description."""
+    gold = GoldLake.create(spark, folder, register_view_catalog(spark, folder))
+    gold.refresh()
+    view = gold.view("open_orders")
+    ensure_view(spark, view, gold.views.definitions()[view]._replace(comment="A stale description"))
+    return gold, view

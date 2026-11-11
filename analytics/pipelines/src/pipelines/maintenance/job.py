@@ -1,10 +1,11 @@
 import os
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from typing import NamedTuple
 
 from pyspark.sql import Row, SparkSession
 
+from pipelines.gold.lake.views import GoldLakeViews, refresh_gold_views
 from pipelines.lake.checkpoints import (
     CheckpointFiles,
     HadoopCheckpointFiles,
@@ -18,7 +19,8 @@ type Clock = Callable[[], datetime]
 type Report = Callable[[str], None]
 type ViewRefresh = Callable[[], Sequence[str]]
 
-VIEWS = "silver views"
+SILVER_VIEWS = "silver views"
+GOLD_VIEWS = "gold views"
 
 
 class TableMaintenance(NamedTuple):
@@ -138,6 +140,34 @@ def maintain(job: Maintenance, table: str, now: datetime) -> TableMaintenance:
     )
 
 
+def refresh_lake_views(views: Mapping[str, ViewRefresh] | None, report: Report) -> list[str]:
+    """Refresh each named group of views in order; returns the groups that failed.
+
+    Every group reads the silver tables, so once one reports them missing the rest are skipped.
+    """
+    failed: list[str] = []
+    missing: MissingSilverTablesError | None = None
+    for name, refresh in (views or {}).items():
+        if missing is not None:
+            report(f"{name}: skipped: {missing}")
+            continue
+        try:
+            statements = refresh()
+        except MissingSilverTablesError as error:
+            missing = error
+            report(f"{name}: skipped: {error}")
+        except Exception as error:
+            report(f"{name}: refresh failed: {error}")
+            failed.append(name)
+        else:
+            report(
+                f"{name}: created or replaced {len(statements)}"
+                if statements
+                else f"{name}: up to date"
+            )
+    return failed
+
+
 def run(
     sql: Sql,
     settings: MaintenanceSettings,
@@ -145,7 +175,7 @@ def run(
     *,
     now: Clock = utc_now,
     report: Report = print,
-    refresh: ViewRefresh | None = None,
+    views: Mapping[str, ViewRefresh] | None = None,
 ) -> list[TableMaintenance]:
     job = Maintenance(sql=sql, settings=settings, checkpoints=checkpoints, report=report)
     moment = now()
@@ -160,20 +190,7 @@ def run(
         else:
             report(result.summary())
             maintained.append(result)
-    if refresh is not None:
-        try:
-            statements = refresh()
-        except MissingSilverTablesError as error:
-            report(f"{VIEWS}: skipped: {error}")
-        except Exception as error:
-            report(f"{VIEWS}: refresh failed: {error}")
-            failed.append(VIEWS)
-        else:
-            report(
-                f"{VIEWS}: created or replaced {len(statements)}"
-                if statements
-                else f"{VIEWS}: up to date"
-            )
+    failed += refresh_lake_views(views, report)
     if failed:
         raise MaintenanceFailedError(failed)
     return maintained
@@ -188,7 +205,10 @@ def main() -> None:
             spark_sql(spark),
             settings,
             HadoopCheckpointFiles(spark),
-            refresh=lambda: refresh_views(spark, silver),
+            views={
+                SILVER_VIEWS: lambda: refresh_views(spark, silver),
+                GOLD_VIEWS: lambda: refresh_gold_views(spark, GoldLakeViews(silver.lake)),
+            },
         )
     finally:
         spark.stop()
