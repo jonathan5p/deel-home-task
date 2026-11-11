@@ -3,92 +3,87 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Deel CDC Pipeline Showcase</title>
-<meta name="description" content="An interactive tour of a change data capture pipeline: PostgreSQL and Debezium into Kafka, an Iceberg lakehouse with Spark Structured Streaming, and a dimensional model in PostgreSQL that answers four business questions.">
+<link rel="icon" href="data:,">
+<title>CDC Pipeline Tour</title>
+<meta name="description" content="An interactive tour of a change data capture pipeline built for Deel's data engineering take-home: PostgreSQL and Debezium into Kafka, an Iceberg lake kept by Spark Structured Streaming, and a star schema in PostgreSQL that answers four business questions.">
 <style>
 :root {
   color-scheme: light;
-  --bg: #f6f7f9;
+  --bg: #faf9f6;
   --surface: #ffffff;
-  --surface-2: #eef1f5;
-  --surface-3: #e3e8ef;
-  --ink: #141920;
-  --ink-2: #3f4856;
-  --muted: #667080;
-  --line: #d4dae3;
-  --accent: #2f63d0;
-  --accent-soft: rgba(47, 99, 208, .12);
-  --c-source: #2f63d0;
-  --c-kafka: #7b4fd0;
-  --c-landing: #66707c;
-  --c-bronze: #ad6526;
-  --c-silver: #627385;
-  --c-gold: #a87d00;
-  --c-serve: #10857b;
-  --c-bad: #c23b47;
-  --c-ok: #1f8a4c;
+  --surface-2: #f1efea;
+  --ink: #1e1e1c;
+  --ink-2: #474641;
+  --muted: #6f6d66;
+  --line: #dedbd3;
+  --accent: #1f5c99;
+  --accent-ink: #ffffff;
+  --accent-soft: #e4ecf5;
+  --c-source: #3f6aa1;
+  --c-kafka: #75589f;
+  --c-landing: #6c727a;
+  --c-bronze: #a45f27;
+  --c-silver: #5e7487;
+  --c-gold: #9a7614;
+  --c-serve: #2c7a6f;
+  --c-bad: #b2433b;
+  --c-ok: #3a7d4c;
   --token-ink: #ffffff;
-  --code-bg: #f0f3f7;
-  --shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 4px 16px rgba(16, 24, 40, .06);
-  --radius: 14px;
-  --nav-h: 56px;
+  --code-bg: #f3f1ec;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --bg: #0d1117;
-    --surface: #151b23;
-    --surface-2: #1b232d;
-    --surface-3: #25303c;
-    --ink: #e8edf3;
-    --ink-2: #b9c3cf;
-    --muted: #8a95a3;
-    --line: #2b3542;
-    --accent: #78a2ff;
-    --accent-soft: rgba(120, 162, 255, .14);
-    --c-source: #79a3ff;
-    --c-kafka: #b893ff;
-    --c-landing: #a6afba;
-    --c-bronze: #e39a5b;
-    --c-silver: #c2cedb;
-    --c-gold: #f0c04f;
-    --c-serve: #4fd2c3;
-    --c-bad: #f2808a;
-    --c-ok: #5fd08f;
-    --token-ink: #0f141a;
-    --code-bg: #10161d;
-    --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 6px 20px rgba(0, 0, 0, .25);
+    --bg: #171716;
+    --surface: #1f1f1d;
+    --surface-2: #282826;
+    --ink: #ecebe6;
+    --ink-2: #c6c4bd;
+    --muted: #97958e;
+    --line: #383732;
+    --accent: #86b4e8;
+    --accent-ink: #12161b;
+    --accent-soft: #23303e;
+    --c-source: #86a9dc;
+    --c-kafka: #b59ae0;
+    --c-landing: #a9afb6;
+    --c-bronze: #dc9a62;
+    --c-silver: #a9bccc;
+    --c-gold: #dcb64e;
+    --c-serve: #6cc2b5;
+    --c-bad: #ec8a82;
+    --c-ok: #79c28b;
+    --token-ink: #141413;
+    --code-bg: #242422;
   }
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #0d1117;
-  --surface: #151b23;
-  --surface-2: #1b232d;
-  --surface-3: #25303c;
-  --ink: #e8edf3;
-  --ink-2: #b9c3cf;
-  --muted: #8a95a3;
-  --line: #2b3542;
-  --accent: #78a2ff;
-  --accent-soft: rgba(120, 162, 255, .14);
-  --c-source: #79a3ff;
-  --c-kafka: #b893ff;
-  --c-landing: #a6afba;
-  --c-bronze: #e39a5b;
-  --c-silver: #c2cedb;
-  --c-gold: #f0c04f;
-  --c-serve: #4fd2c3;
-  --c-bad: #f2808a;
-  --c-ok: #5fd08f;
-  --token-ink: #0f141a;
-  --code-bg: #10161d;
-  --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 6px 20px rgba(0, 0, 0, .25);
+  --bg: #171716;
+  --surface: #1f1f1d;
+  --surface-2: #282826;
+  --ink: #ecebe6;
+  --ink-2: #c6c4bd;
+  --muted: #97958e;
+  --line: #383732;
+  --accent: #86b4e8;
+  --accent-ink: #12161b;
+  --accent-soft: #23303e;
+  --c-source: #86a9dc;
+  --c-kafka: #b59ae0;
+  --c-landing: #a9afb6;
+  --c-bronze: #dc9a62;
+  --c-silver: #a9bccc;
+  --c-gold: #dcb64e;
+  --c-serve: #6cc2b5;
+  --c-bad: #ec8a82;
+  --c-ok: #79c28b;
+  --token-ink: #141413;
+  --code-bg: #242422;
 }
 
 * { box-sizing: border-box; }
-html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
-@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+html { -webkit-text-size-adjust: 100%; }
 body {
   margin: 0;
   background: var(--bg);
@@ -96,759 +91,353 @@ body {
   font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 a { color: var(--accent); text-underline-offset: 2px; }
-code, pre, kbd { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; }
-code { font-size: .88em; background: var(--surface-2); padding: .1em .35em; border-radius: 5px; overflow-wrap: anywhere; }
+code, pre { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; }
+code { font-size: .88em; background: var(--surface-2); padding: .05em .3em; border-radius: 3px; overflow-wrap: anywhere; }
 pre { margin: 0; }
-kbd { font-size: .8em; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; padding: 0 .4em; background: var(--surface); }
-h1, h2, h3, h4 { line-height: 1.2; margin: 0; }
-:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
-.skip { position: absolute; left: -9999px; top: 8px; z-index: 100; background: var(--surface); padding: 8px 12px; border-radius: 8px; }
-.skip:focus { left: 16px; }
-
-/* Navigation */
-.topnav {
-  position: sticky; top: 0; z-index: 40;
-  height: var(--nav-h);
-  display: flex; align-items: center; gap: 16px;
-  padding: 0 16px;
-  background: color-mix(in srgb, var(--bg) 88%, transparent);
-  backdrop-filter: saturate(1.4) blur(10px);
-  -webkit-backdrop-filter: saturate(1.4) blur(10px);
-  border-bottom: 1px solid var(--line);
-}
-.brand { font-weight: 700; white-space: nowrap; color: var(--ink); text-decoration: none; display: flex; align-items: center; gap: 8px; }
-.brand-mark { width: 22px; height: 22px; }
-.navlinks { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; flex: 1; min-width: 0; }
-.navlinks::-webkit-scrollbar { display: none; }
-.navlinks a {
-  white-space: nowrap; text-decoration: none; color: var(--ink-2);
-  font-size: 14px; padding: 6px 10px; border-radius: 999px;
-}
-.navlinks a:hover { background: var(--surface-2); }
-.navlinks a[aria-current="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
-.nav-tools { display: flex; gap: 8px; align-items: center; }
-.keyhint { font-size: 12px; color: var(--muted); white-space: nowrap; }
-@media (max-width: 1000px) { .keyhint { display: none; } }
-@media (max-width: 600px) { .brand-text, #theme-label { display: none; } .topnav { gap: 8px; } }
-
-button, .btn {
-  font: inherit; font-size: 14px; cursor: pointer;
-  border: 1px solid var(--line); background: var(--surface); color: var(--ink);
-  padding: 7px 14px; border-radius: 10px; text-decoration: none;
-  display: inline-flex; align-items: center; gap: 6px; line-height: 1.3;
-}
-button:hover, .btn:hover { background: var(--surface-2); }
-.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-.btn-primary:hover { background: var(--accent); filter: brightness(1.08); }
-:root[data-theme="dark"] .btn-primary { color: #0d1117; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .btn-primary { color: #0d1117; } }
-button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
-.icon-btn { padding: 7px 10px; }
-
-/* Layout */
-main { display: block; }
-.section { padding: 72px 16px; scroll-margin-top: var(--nav-h); border-bottom: 1px solid var(--line); }
-.wrap { max-width: 1180px; margin: 0 auto; }
-.wide { max-width: 1320px; margin: 0 auto; }
-.eyebrow { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); font-weight: 700; margin-bottom: 8px; }
-.section h2 { font-size: clamp(28px, 3.4vw, 40px); letter-spacing: -.01em; margin-bottom: 14px; }
-.lede { font-size: 18px; color: var(--ink-2); max-width: 820px; margin: 0 0 28px; }
-.grid { display: grid; gap: 16px; }
-.g2 { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
-.g3 { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
-.g4 { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
-.card {
-  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
-  padding: 20px; box-shadow: var(--shadow);
-}
-.card h3 { font-size: 18px; margin-bottom: 8px; }
-.card p { margin: 0 0 10px; color: var(--ink-2); }
-.card p:last-child { margin-bottom: 0; }
-.card ul { margin: 0; padding-left: 18px; color: var(--ink-2); }
-.card li + li { margin-top: 4px; }
+h1, h2, h3 { line-height: 1.25; margin: 0; font-weight: 650; }
+p { margin: 0 0 12px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .muted { color: var(--muted); }
 .small { font-size: 14px; }
-.chip {
-  display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 999px;
-  background: var(--surface-2); color: var(--ink-2); border: 1px solid var(--line);
+
+button {
+  font: inherit; font-size: 14px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  padding: 6px 12px; border-radius: 6px; line-height: 1.3;
+  display: inline-flex; align-items: center; gap: 6px;
 }
-.dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 6px; vertical-align: middle; }
+button:hover { border-color: var(--muted); }
+button:disabled { opacity: .45; cursor: default; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--ink); }
+.linkish { border: 0; background: none; padding: 0; color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
 
-/* Hero */
-.hero { padding: 88px 16px 72px; background:
-  radial-gradient(1200px 400px at 85% -10%, var(--accent-soft), transparent 60%),
-  radial-gradient(900px 380px at 0% 110%, color-mix(in srgb, var(--c-gold) 14%, transparent), transparent 60%);
+/* Top line and intro */
+.top { max-width: 1400px; margin: 0 auto; padding: 14px 32px 0; display: flex; align-items: center; gap: 20px; font-size: 14px; }
+.top .site { color: var(--muted); }
+.top nav { margin-left: auto; display: flex; gap: 18px; align-items: center; }
+.top nav a { color: var(--ink-2); }
+.intro { max-width: 1400px; margin: 0 auto; padding: 18px 32px 20px; }
+.intro h1 { font-size: clamp(24px, 2.4vw, 30px); letter-spacing: -.01em; margin-bottom: 6px; }
+.intro p { color: var(--ink-2); max-width: 1000px; margin: 0; }
+
+/* Stage: the diagram with its explanation beside it */
+.stage {
+  max-width: 1400px; margin: 0 auto; padding: 0 32px 40px;
+  display: grid; grid-template-columns: minmax(0, 1fr) clamp(320px, 28vw, 400px); gap: 28px; align-items: start;
 }
-.hero h1 { font-size: clamp(34px, 5.2vw, 60px); letter-spacing: -.02em; max-width: 960px; margin-bottom: 18px; }
-.hero h1 span { background: linear-gradient(90deg, var(--c-source), var(--c-kafka) 35%, var(--c-bronze) 60%, var(--c-gold)); -webkit-background-clip: text; background-clip: text; color: transparent; }
-.hero .lede { font-size: clamp(17px, 1.6vw, 20px); }
-.hero-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 40px; }
-.hero-actions .btn { padding: 10px 18px; font-size: 15px; }
-.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
-.stat { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
-.stat b { display: block; font-size: 26px; line-height: 1.1; }
-.stat span { font-size: 13px; color: var(--muted); }
-.stack { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
-
-/* Problem */
-.questions { counter-reset: q; list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
-.questions li { counter-increment: q; display: flex; gap: 12px; align-items: baseline; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
-.questions li::before { content: counter(q); flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); font-weight: 700; font-size: 14px; }
-.req { display: flex; gap: 10px; align-items: flex-start; }
-.req + .req { margin-top: 10px; }
-.req svg { flex: none; margin-top: 3px; }
-
-/* At a glance */
-.layer-card { border-top: 4px solid var(--lc, var(--accent)); }
-.layer-card .kicker { font-size: 12px; font-weight: 700; color: var(--lc); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 4px; }
-
-/* Flow */
-.flow-shell { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--shadow); overflow: hidden; }
-.flow-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--line); background: var(--surface-2); }
-.flow-toolbar .spacer { flex: 1; }
+.diagram-card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; min-width: 0; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.toolbar .hint { margin-left: auto; font-size: 13.5px; color: var(--muted); min-height: 1.3em; }
+.toolbar .hint b { color: var(--ink); font-weight: 600; }
 .diagram-scroll { overflow-x: auto; }
-#flow { display: block; width: 100%; height: auto; min-width: 900px; }
-@media (min-width: 901px) { #flow { min-width: 0; } }
-.scroll-hint { display: none; font-size: 12px; color: var(--muted); padding: 6px 14px 0; }
-@media (max-width: 900px) { .scroll-hint { display: block; } }
+#flow { display: block; width: 100%; height: auto; }
+.caption { border-top: 1px solid var(--line); padding: 10px 14px; margin: 0; font-size: 15px; color: var(--ink-2); min-height: 3.6em; }
+.caption b { color: var(--ink); font-weight: 600; }
 
-.lane { fill: var(--surface-2); stroke: var(--line); }
-.lane-label { fill: var(--muted); font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
-.edge { fill: none; stroke: var(--muted); stroke-width: 1.6; opacity: .75; transition: stroke .2s, opacity .2s; }
+.explain {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+  padding: 18px 20px 20px; font-size: 15px; color: var(--ink-2);
+  position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow-y: auto;
+}
+.explain .eyebrow { font-size: 13px; color: var(--muted); margin-bottom: 2px; display: flex; align-items: center; gap: 8px; }
+.explain .eyebrow .sw { width: 10px; height: 10px; border-radius: 2px; background: var(--lc, var(--muted)); flex: none; }
+.explain h2 { font-size: 20px; color: var(--ink); margin-bottom: 4px; }
+.explain h2:focus { outline: none; }
+.explain h3 { font-size: 15px; color: var(--ink); margin: 18px 0 6px; }
+.explain .built { font-size: 13.5px; color: var(--muted); margin-bottom: 12px; }
+.explain ol, .explain ul { margin: 0 0 12px; padding-left: 20px; }
+.explain li + li { margin-top: 3px; }
+.explain .why { font-size: 14px; border-top: 1px solid var(--line); padding-top: 10px; margin-top: 14px; }
+.explain .why p { margin: 0 0 4px; }
+.explain .more { margin: 12px 0 0; font-size: 14.5px; }
+.explain .more a { display: inline-block; margin-right: 14px; }
+.explain .head { display: flex; align-items: flex-start; gap: 10px; }
+.explain .head > div { flex: 1; min-width: 0; }
+.explain .close { flex: none; font-size: 13px; padding: 4px 9px; }
+.legend { list-style: none; padding: 0 !important; margin: 8px 0 0 !important; display: grid; gap: 4px; font-size: 14px; }
+.legend li { display: flex; gap: 8px; align-items: center; margin: 0 !important; }
+.legend svg { flex: none; }
+details.shapes { margin-top: 14px; font-size: 14px; }
+details.shapes summary { cursor: pointer; color: var(--ink); }
+.progress { height: 3px; background: var(--surface-2); border-radius: 2px; margin: 10px 0 12px; overflow: hidden; }
+.progress i { display: block; height: 100%; background: var(--accent); }
+.payload { background: var(--code-bg); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; font-size: 12px; line-height: 1.5; overflow: auto; max-height: 260px; white-space: pre; color: var(--ink); margin: 4px 0 12px; }
+.payload code { background: none; padding: 0; font-size: inherit; }
+.step-nav { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.step-nav .keys { font-size: 13px; color: var(--muted); margin-left: auto; }
+
+/* Diagram */
+.lane { fill: var(--surface-2); }
+.lane-label { fill: var(--muted); font-size: 14px; }
+.edge { fill: none; stroke: var(--muted); stroke-width: 1.5; opacity: .7; }
 .edge.dashed { stroke-dasharray: 5 4; }
 .edge.hot { stroke: var(--accent); opacity: 1; stroke-width: 2.4; }
 .arrowhead { fill: var(--muted); }
 .node { cursor: pointer; }
-.node .box { fill: var(--surface); stroke: var(--line); stroke-width: 1.4; transition: stroke .2s, fill .2s; }
+.node .box { fill: var(--surface); stroke: var(--line); stroke-width: 1.3; }
 .node .bar { fill: var(--lc); }
-.node .t1 { fill: var(--ink); font-size: 14px; font-weight: 700; }
-.node .t2 { fill: var(--muted); font-size: 11px; }
-.node:hover .box, .node:focus-visible .box { stroke: var(--lc); stroke-width: 2.2; }
+.node .t1 { fill: var(--ink); font-size: 16px; font-weight: 650; }
+.node .t2 { fill: var(--muted); font-size: 13px; }
+.node:hover .box { stroke: var(--lc); stroke-width: 2; }
 .node:focus { outline: none; }
-.node:focus-visible .box { stroke: var(--accent); stroke-width: 3; }
-.node.related .box { stroke: var(--lc); stroke-width: 2.2; fill: color-mix(in srgb, var(--lc) 8%, var(--surface)); }
-.node.active .box { stroke: var(--lc); stroke-width: 3; fill: color-mix(in srgb, var(--lc) 12%, var(--surface)); }
+.node:focus-visible .box { stroke: var(--accent); stroke-width: 2.6; }
+.node.related .box { stroke: var(--lc); stroke-width: 2; }
+.node.active .box { stroke: var(--lc); stroke-width: 2.6; fill: color-mix(in srgb, var(--lc) 10%, var(--surface)); }
 @media (prefers-reduced-motion: no-preference) { .node.pulse .box { animation: pulse .6s ease-out; } }
-@keyframes pulse { 0% { fill: color-mix(in srgb, var(--lc) 30%, var(--surface)); } 100% { fill: var(--surface); } }
-.sub-row rect { fill: var(--surface-2); stroke: none; transition: fill .2s; }
-.sub-row text { fill: var(--ink-2); font-size: 10.5px; }
-.sub-row.lit rect { fill: color-mix(in srgb, var(--c-gold) 35%, var(--surface)); }
-.sub-row.lit text { fill: var(--ink); font-weight: 700; }
-#flow.stepping .node:not(.active):not(.related) { opacity: .42; }
-#flow.stepping .dq { opacity: .42; }
+@keyframes pulse { 0% { fill: color-mix(in srgb, var(--lc) 26%, var(--surface)); } 100% { fill: var(--surface); } }
+.sub-row rect { fill: var(--surface-2); }
+.sub-row text { fill: var(--ink-2); font-size: 12.5px; }
+.sub-row.lit rect { fill: color-mix(in srgb, var(--c-gold) 30%, var(--surface)); }
+.sub-row.lit text { fill: var(--ink); font-weight: 650; }
+#flow.stepping .node:not(.active):not(.related), #flow.stepping .dq { opacity: .4; }
 .dq { cursor: pointer; }
-.dq .dq-shape { fill: var(--surface); stroke: var(--c-ok); stroke-width: 1.8; }
-.dq .dq-tick { fill: none; stroke: var(--c-ok); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.dq:hover .dq-shape, .dq:focus-visible .dq-shape { fill: color-mix(in srgb, var(--c-ok) 18%, var(--surface)); stroke-width: 2.6; }
+.dq circle { fill: var(--surface); stroke: var(--c-ok); stroke-width: 1.6; }
+.dq path { fill: none; stroke: var(--c-ok); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.dq:hover circle, .dq.related circle, .dq.active circle { fill: color-mix(in srgb, var(--c-ok) 20%, var(--surface)); stroke-width: 2.2; }
 .dq:focus { outline: none; }
-.dq.related .dq-shape { fill: color-mix(in srgb, var(--c-ok) 22%, var(--surface)); }
-.token .shape { stroke: var(--surface); stroke-width: 1.5; }
-.token text { fill: var(--token-ink); font-size: 10px; font-weight: 800; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+.dq:focus-visible circle { stroke: var(--accent); stroke-width: 2.6; }
 .token { pointer-events: none; }
-.float-note { font-size: 11px; font-weight: 700; fill: var(--c-bad); paint-order: stroke; stroke: var(--surface); stroke-width: 4px; pointer-events: none; }
+.token .shape { stroke: var(--surface); stroke-width: 1.5; }
+.token text { fill: var(--token-ink); font-size: 10px; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+.float-note { font-size: 12px; font-weight: 600; fill: var(--c-bad); paint-order: stroke; stroke: var(--surface); stroke-width: 4px; pointer-events: none; }
 
-.flow-console { display: grid; grid-template-columns: 1fr minmax(260px, 340px); gap: 0; border-top: 1px solid var(--line); }
-@media (max-width: 900px) { .flow-console { grid-template-columns: 1fr; } }
-.console-main { padding: 16px 18px; min-height: 150px; }
-.console-side { padding: 16px 18px; border-left: 1px solid var(--line); background: var(--surface-2); }
-@media (max-width: 900px) { .console-side { border-left: 0; border-top: 1px solid var(--line); } }
-.caption { font-size: 15px; color: var(--ink-2); }
-.caption b { color: var(--ink); }
-.legend { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; font-size: 13px; color: var(--ink-2); }
-.legend li { display: flex; align-items: center; gap: 8px; }
-.legend svg { flex: none; }
-.legend-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 8px; }
-.step-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
-.step-count { font-size: 12px; font-weight: 700; color: var(--accent); background: var(--accent-soft); padding: 2px 8px; border-radius: 999px; }
-.step-title { font-size: 19px; }
-.step-body { color: var(--ink-2); margin: 0 0 10px; }
-.payload code, .cmd code { background: none; padding: 0; font-size: inherit; border-radius: 0; }
-.payload { background: var(--code-bg); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; font-size: 12.5px; line-height: 1.55; overflow: auto; max-height: 270px; white-space: pre; color: var(--ink); }
-.step-nav { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; align-items: center; }
-.flow-shell.stepping .console-side { display: none; }
-.flow-shell.stepping .flow-console { grid-template-columns: 1fr; }
-.step-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 18px; align-items: start; }
-@media (max-width: 900px) { .step-grid { grid-template-columns: 1fr; } }
-.progress { display: flex; gap: 4px; margin: 0 0 10px; }
-.progress span { height: 4px; flex: 1; border-radius: 2px; background: var(--surface-3); }
-.progress span.done { background: var(--accent); }
+/* Sections below the stage */
+.section { max-width: 1400px; margin: 0 auto; padding: 40px 32px; border-top: 1px solid var(--line); display: grid; grid-template-columns: 240px minmax(0, 760px); gap: 40px; }
+.section > h2 { font-size: 20px; }
+.group { font-size: 13px; color: var(--muted); margin: 18px 0 4px; }
+.decisions details { border-bottom: 1px solid var(--line); }
+.decisions summary { cursor: pointer; padding: 8px 0; list-style: none; display: flex; gap: 12px; align-items: baseline; }
+.decisions summary::-webkit-details-marker { display: none; }
+.decisions summary::after { content: "+"; margin-left: auto; color: var(--muted); font-size: 18px; line-height: 1; }
+.decisions details[open] summary::after { content: "\2212"; }
+.decisions .dn { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 14px; min-width: 2.6em; }
+.decisions summary span:not(.dn) { color: var(--ink); }
+.decisions details > div { padding: 0 0 12px calc(2.6em + 12px); color: var(--ink-2); font-size: 15px; }
+.decisions details > div p { margin: 0 0 6px; }
+.numbers { margin: 0; display: grid; gap: 16px; }
+.numbers dt { font-weight: 600; color: var(--ink); }
+.numbers dd { margin: 2px 0 0; color: var(--ink-2); }
+.numbers .src { font-size: 13.5px; color: var(--muted); }
+.cmd { position: relative; background: var(--code-bg); border: 1px solid var(--line); border-radius: 6px; margin: 4px 0 12px; }
+.cmd pre { padding: 12px 14px; font-size: 13.5px; overflow-x: auto; color: var(--ink); }
+.cmd code { background: none; padding: 0; font-size: inherit; }
+.cmd button { position: absolute; top: 6px; right: 6px; font-size: 12.5px; padding: 3px 8px; }
+.body ul { margin: 0 0 12px; padding-left: 20px; color: var(--ink-2); }
+.body li + li { margin-top: 4px; }
 
-/* Side panel */
-.panel {
-  position: fixed; top: var(--nav-h); right: 0; bottom: 0; z-index: 50;
-  width: min(460px, 100vw);
-  background: var(--surface); border-left: 1px solid var(--line); box-shadow: -12px 0 32px rgba(0, 0, 0, .18);
-  transform: translateX(105%); transition: transform .25s ease;
-  display: flex; flex-direction: column;
-  visibility: hidden;
+footer { max-width: 1400px; margin: 0 auto; padding: 24px 32px 48px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: space-between; }
+
+@media (max-width: 1080px) {
+  .stage { grid-template-columns: minmax(0, 1fr); }
+  .explain { position: static; max-height: none; }
+  .section { grid-template-columns: minmax(0, 1fr); gap: 12px; }
 }
-.panel.open { transform: none; visibility: visible; }
-@media (prefers-reduced-motion: reduce) { .panel { transition: none; } }
-@media (max-width: 700px) {
-  .panel { top: auto; left: 0; width: 100vw; max-height: 82vh; border-left: 0; border-top: 1px solid var(--line); border-radius: 16px 16px 0 0; transform: translateY(105%); }
+@media (max-width: 760px) {
+  .top, .intro, .stage, .section, footer { padding-left: 16px; padding-right: 16px; }
+  .top nav { gap: 12px; }
+  .top .site { display: none; }
+  #flow { min-width: 860px; }
+  .toolbar .hint { margin-left: 0; width: 100%; }
+  .cmd pre { padding-top: 38px; }
 }
-.panel-head { padding: 18px 20px 12px; border-bottom: 1px solid var(--line); display: flex; gap: 12px; align-items: flex-start; }
-.panel-head .kicker { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--lc, var(--accent)); }
-.panel-head h3 { font-size: 22px; margin-top: 2px; }
-.panel-head .close { margin-left: auto; flex: none; }
-.panel-body { padding: 16px 20px 28px; overflow-y: auto; }
-.panel-body h4 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 18px 0 6px; }
-.panel-body h4:first-child { margin-top: 0; }
-.panel-body p { margin: 0 0 8px; color: var(--ink-2); }
-.panel-body ul { margin: 0; padding-left: 18px; color: var(--ink-2); }
-.panel-body li + li { margin-top: 5px; }
-.tech { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.links { list-style: none; padding: 0 !important; display: grid; gap: 6px; }
-.links a { display: inline-flex; gap: 6px; align-items: center; }
-
-/* Decisions */
-.filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
-.decision { display: flex; flex-direction: column; border-top: 4px solid var(--lc, var(--accent)); }
-.decision .dnum { font-size: 12px; font-weight: 800; color: var(--lc); letter-spacing: .04em; }
-.decision h3 { font-size: 17px; margin: 2px 0 10px; }
-.decision dl { margin: 0; display: grid; gap: 6px; font-size: 14.5px; }
-.decision dt { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
-.decision dd { margin: 0 0 4px; color: var(--ink-2); }
-.decision .more { margin-top: auto; padding-top: 10px; font-size: 14px; }
-.decision[hidden] { display: none; }
-
-/* Quality */
-.chain { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 0 0 22px; }
-.chain .stop { padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-weight: 600; font-size: 14px; }
-.chain .arrow { color: var(--muted); font-size: 13px; display: inline-flex; align-items: center; gap: 4px; }
-.chain .arrow code { color: var(--c-ok); background: color-mix(in srgb, var(--c-ok) 12%, transparent); }
-table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
-th, td { text-align: left; vertical-align: top; padding: 9px 10px; border-bottom: 1px solid var(--line); }
-th code { text-transform: none; }
-th { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; }
-td { color: var(--ink-2); }
-.table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
-.table-wrap table th:first-child, .table-wrap table td:first-child { padding-left: 16px; }
-.sim { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; margin-top: 12px; }
-@media (max-width: 760px) { .sim { grid-template-columns: 1fr; } }
-.sim h4 { font-size: 13px; margin: 0 0 6px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
-.sim table { font-size: 13.5px; }
-.sim td, .sim th { padding: 6px 8px; }
-.sim tr.new td { background: color-mix(in srgb, var(--c-gold) 16%, transparent); }
-.sim-msg { min-height: 48px; margin: 12px 0 0; color: var(--ink-2); }
-.sim-controls { display: flex; gap: 8px; flex-wrap: wrap; }
-.pill-ok { color: var(--c-ok); font-weight: 700; }
-.pill-bad { color: var(--c-bad); font-weight: 700; }
-.steps { counter-reset: s; list-style: none; padding: 0; margin: 0; }
-.steps li { counter-increment: s; position: relative; padding-left: 34px; margin-bottom: 10px; color: var(--ink-2); }
-.steps li::before { content: counter(s); position: absolute; left: 0; top: 1px; width: 24px; height: 24px; border-radius: 50%; background: var(--surface-2); border: 1px solid var(--line); display: grid; place-items: center; font-size: 12px; font-weight: 700; color: var(--ink); }
-
-/* Evidence */
-.bars { display: grid; gap: 14px; margin-top: 8px; }
-.bar-row .label { display: flex; justify-content: space-between; gap: 8px; font-size: 13.5px; margin-bottom: 4px; }
-.bar-row .label code { font-size: 12.5px; }
-.bar-line { display: grid; grid-template-columns: minmax(0, 1fr) 88px; gap: 8px; align-items: center; margin: 3px 0; }
-.bar-area { position: relative; height: 12px; }
-.bar-area .range { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 0 4px 4px 0; min-width: 4px; }
-.bar-area .range.before { background: var(--muted); opacity: .55; }
-.bar-area .range.after { background: var(--accent); }
-.bar-line .val { font-size: 12px; color: var(--ink-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
-.key { display: flex; gap: 16px; font-size: 13px; color: var(--ink-2); margin-bottom: 4px; }
-.key i { display: inline-block; width: 14px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
-.metric { font-size: 30px; font-weight: 800; line-height: 1.1; }
-.metric small { font-size: 15px; font-weight: 600; color: var(--muted); }
-.src { font-size: 12.5px; color: var(--muted); margin-top: 8px; }
-
-/* Run */
-.cmd { display: flex; align-items: stretch; gap: 0; background: var(--code-bg); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
-.cmd pre { flex: 1; padding: 12px 14px; font-size: 14px; overflow-x: auto; color: var(--ink); }
-.cmd button { border: 0; border-left: 1px solid var(--line); border-radius: 0; background: transparent; font-size: 13px; }
-.run-step { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 14px; align-items: start; margin-bottom: 18px; }
-.run-step .n { width: 36px; height: 36px; border-radius: 50%; background: var(--accent); color: #fff; display: grid; place-items: center; font-weight: 800; }
-:root[data-theme="dark"] .run-step .n { color: #0d1117; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .run-step .n { color: #0d1117; } }
-.run-step h3 { font-size: 17px; margin: 6px 0 8px; }
-.run-step p { margin: 8px 0 0; color: var(--ink-2); font-size: 14.5px; }
-
-footer { padding: 40px 16px 60px; color: var(--muted); font-size: 14px; }
-footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: space-between; }
-.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
-@media print { .topnav, .panel, .flow-toolbar { display: none; } .section { break-inside: avoid; } }
+@media print { .toolbar, .explain .close { display: none; } .explain { position: static; max-height: none; } }
 </style>
 </head>
 <body>
-<a class="skip" href="#flow-section">Skip to the interactive data flow</a>
-
-<header class="topnav">
-  <a class="brand" href="#top" aria-label="Back to the top">
-    <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="3" fill="var(--c-source)"/><circle cx="12" cy="12" r="3" fill="var(--c-bronze)"/><circle cx="19" cy="12" r="3" fill="var(--c-gold)"/><path d="M8 12h1M15 12h1" stroke="var(--muted)" stroke-width="2"/></svg>
-    <span class="brand-text">CDC pipeline</span>
-  </a>
-  <nav class="navlinks" aria-label="Sections">
-    <a href="#problem">Problem</a>
-    <a href="#glance">At a glance</a>
-    <a href="#flow-section">Data flow</a>
-    <a href="#decisions">Decisions</a>
-    <a href="#quality">Quality</a>
-    <a href="#evidence">Evidence</a>
-    <a href="#run">Run it</a>
-    <a href="#production">Production</a>
+<header class="top">
+  <span class="site">Deel data engineering take-home</span>
+  <nav aria-label="Site">
+    <a href="../">Documentation</a>
+    <a href="https://github.com/jonathan5p/deel-home-task">GitHub</a>
+    <button type="button" id="theme-toggle" class="linkish" aria-label="Colour theme: automatic">Theme: auto</button>
   </nav>
-  <div class="nav-tools">
-    <span class="keyhint"><kbd>&larr;</kbd> <kbd>&rarr;</kbd> sections</span>
-    <button type="button" class="icon-btn" id="theme-toggle" aria-label="Colour theme: automatic">
-      <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18V3z" fill="currentColor"/><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/></svg>
-      <span id="theme-label">Auto</span>
-    </button>
-  </div>
 </header>
 
-<main id="top">
-<!-- Hero -->
-<section class="hero section" data-section aria-labelledby="hero-title">
-  <div class="wrap">
-    <div class="eyebrow">Deel data engineering take-home</div>
-    <h1 id="hero-title">Every change in a live orders database, <span>streamed through a lakehouse into a star schema.</span></h1>
-    <p class="lede">A change data capture pipeline built with open-source tools only. Debezium streams the supplied <code>finance_db</code> PostgreSQL through Kafka; Spark Structured Streaming lands, types and versions every change in an Iceberg lake on SeaweedFS, and keeps a star schema up to date in a separate PostgreSQL. Four business questions are answered by gold views, over an HTTP API and a Grafana dashboard. Everything runs locally with Docker Compose.</p>
-    <div class="hero-actions">
-      <a class="btn btn-primary" href="#flow-section" id="hero-follow">Follow one change end to end</a>
-      <a class="btn" href="../">Read the documentation</a>
-      <a class="btn" href="https://github.com/jonathan5p/deel-home-task">Source on GitHub</a>
+<main>
+<div class="intro">
+  <h1>A CDC pipeline, from the orders database to the answers</h1>
+  <p>ACME Delivery Services wants to follow its orders with low latency. I built a pipeline that streams every change in its PostgreSQL database through Kafka and Spark into an Iceberg lake and a star schema that answers four questions.</p>
+</div>
+
+<section class="stage" id="flow-section" aria-label="Interactive data flow">
+  <div class="diagram-card">
+    <div class="toolbar" role="toolbar" aria-label="Data flow controls">
+      <button type="button" id="play-btn" aria-pressed="false">
+        <svg width="12" height="12" viewBox="0 0 14 14" aria-hidden="true"><path id="play-icon" d="M3 2l9 5-9 5z" fill="currentColor"/></svg>
+        <span id="play-label">Play</span>
+      </button>
+      <button type="button" id="step-btn" class="primary" aria-pressed="false">Follow one change</button>
+      <button type="button" id="reset-btn">Reset</button>
+      <span class="hint" id="hint">Click any box, or a green check, for details.</span>
     </div>
-    <div class="stats" role="list">
-      <div class="stat" role="listitem"><b>4</b><span>source tables captured by Debezium</span></div>
-      <div class="stat" role="listitem"><b>4</b><span>streaming hops, each with its own checkpoint</span></div>
-      <div class="stat" role="listitem"><b>10 s</b><span>default micro-batch trigger per job</span></div>
-      <div class="stat" role="listitem"><b>4</b><span>layer-to-layer data quality checks, Kafka to gold</span></div>
-      <div class="stat" role="listitem"><b>&ge; 90%</b><span>unit-test branch coverage, enforced in hooks and CI</span></div>
+    <div class="diagram-scroll" id="diagram-scroll">
+      <svg id="flow" viewBox="0 0 1280 480" role="group" aria-labelledby="flow-desc">
+        <desc id="flow-desc">Data flow from the source PostgreSQL through Debezium and Kafka to the landing, bronze and silver layers of the lake, then to gold in PostgreSQL and the gold views in the lake, and on to the API, Grafana, Spark SQL and DuckDB. Platform and operations components are along the bottom. Each component is a button that shows its explanation next to the diagram.</desc>
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrowhead" d="M0,0 L10,5 L0,10 z"/></marker>
+        </defs>
+        <g id="lanes"></g>
+        <g id="edges"></g>
+        <g id="nodes"></g>
+        <g id="dqs"></g>
+        <g id="tokens"></g>
+        <g id="notes"></g>
+      </svg>
     </div>
-    <div class="stack" aria-label="Technology versions">
-      <span class="chip">Apache Spark 4.1.4</span>
-      <span class="chip">Apache Iceberg 1.12.0</span>
-      <span class="chip">Kafka (Confluent 7.5.0)</span>
-      <span class="chip">Debezium 2.4</span>
-      <span class="chip">PostgreSQL 15 source, 18.6 analytics</span>
-      <span class="chip">SeaweedFS 4.52</span>
-      <span class="chip">FastAPI 0.162.4</span>
-      <span class="chip">Grafana 13.0.2</span>
-      <span class="chip">Python 3.14</span>
-      <span class="chip">uv, ruff, ty</span>
+    <p class="caption" id="caption" aria-live="polite">Press <b>Play</b> to watch a few changes to order 1 move through the pipeline, or <b>Follow one change</b> to walk through one update step by step.</p>
+  </div>
+
+  <aside class="explain" id="explain" aria-label="Explanation">
+    <div id="start">
+      <h2>How to read this</h2>
+      <p>Each box is one part of the pipeline. Click one, or a green check between two layers, and I explain it here: what it does, how I built it and why.</p>
+      <p><b>Follow one change</b> takes one update to order 1 through 13 steps, from the commit in the source to the answer. The arrow keys move between steps.</p>
+      <h3>The four questions it answers</h3>
+      <ol>
+        <li>Open orders by delivery date and status</li>
+        <li>The top 3 delivery dates by open orders</li>
+        <li>Pending items by product</li>
+        <li>The top 3 customers by pending orders</li>
+      </ol>
+      <details class="shapes">
+        <summary>What the moving shapes mean</summary>
+        <ul class="legend" id="legend"></ul>
+      </details>
+      <p class="more"><a href="../">The full documentation &rarr;</a></p>
     </div>
+  </aside>
+</section>
+
+<section class="section" id="decisions" aria-labelledby="decisions-title">
+  <h2 id="decisions-title">Decisions</h2>
+  <div class="body decisions">
+    <p class="muted small">The main choices I made. Open one for the reason and the alternative; each links to the full write-up.</p>
+
+    <p class="group">Constraints</p>
+    <details><summary><span class="dn">D8</span><span>Fully local, no cloud services</span></summary><div>
+      <p>The assignment asks for a stack reviewers can start from the README, so everything runs in Docker Compose on one machine. Managed AWS services would be closer to production, but need accounts and cost money.</p>
+      <a href="../architecture/decisions/#d8--fully-local-no-cloud-services">Read D8 &rarr;</a></div></details>
+    <details><summary><span class="dn">D29</span><span>The source database and connector stay as provided</span></summary><div>
+      <p>I treated the database and the Debezium connector as given input. Bronze decodes their formats instead of changing the connector settings.</p>
+      <a href="../architecture/decisions/#d29--the-source-database-and-the-debezium-connector-stay-as-provided">Read D29 &rarr;</a></div></details>
+
+    <p class="group">Platform</p>
+    <details><summary><span class="dn">D13</span><span>SeaweedFS instead of MinIO</span></summary><div>
+      <p>MinIO is no longer maintained and its images can no longer be pulled. SeaweedFS is maintained, Apache-2.0 licensed and runs as one container with an S3 API. I also looked at a MinIO fork, RustFS and Garage.</p>
+      <a href="../architecture/decisions/#d13--object-store-seaweedfs-instead-of-minio">Read D13 &rarr;</a></div></details>
+    <details><summary><span class="dn">D9</span><span>Iceberg with a JDBC catalog</span></summary><div>
+      <p>Iceberg is the table format; keeping its catalog in the analytics PostgreSQL avoids running another service. A REST catalog would be closer to production, at the cost of one more service.</p>
+      <a href="../architecture/decisions/#d9--iceberg-with-a-jdbc-catalog-on-the-analytics-postgresql">Read D9 &rarr;</a></div></details>
+    <details><summary><span class="dn">D27</span><span>One driver container per application</span></summary><div>
+      <p>Each Spark job gets its own driver container, so a failure, its memory and its logs belong to one job only. In production this becomes YARN cluster mode on EMR, or Kubernetes.</p>
+      <a href="../architecture/decisions/#d27--one-driver-container-per-application-executors-on-shared-workers">Read D27 &rarr;</a></div></details>
+
+    <p class="group">Lake</p>
+    <details><summary><span class="dn">D17</span><span>Landing, bronze, silver; gold built from silver</span></summary><div>
+      <p>Each layer has one job. Spark cannot stream from an Iceberg table that is updated in place, so an append-only silver keeps gold streamable. The cost is four hops, each adding some latency.</p>
+      <a href="../architecture/decisions/#d17--layered-lake-landing-bronze-silver-gold-built-from-silver">Read D17 &rarr;</a></div></details>
+    <details><summary><span class="dn">D18</span><span>Landing as raw Avro files</span></summary><div>
+      <p>An exact, replayable copy of Kafka, in a compact format that describes itself. The cost is one more hop before the data is typed.</p>
+      <a href="../architecture/decisions/#d18--landing-as-raw-avro-files-one-folder-per-topic">Read D18 &rarr;</a></div></details>
+    <details><summary><span class="dn">D30</span><span>A readable change identity</span></summary><div>
+      <p>A change is identified by its key, its position in the source log and its operation, not by its Kafka offset, because the same change can arrive again at a new offset. Data Vault hash keys would work too, but are opaque.</p>
+      <a href="../architecture/decisions/#d30--change-identity-in-readable-columns-data-vault-hashing-only-in-part">Read D30 &rarr;</a></div></details>
+    <details><summary><span class="dn">D31</span><span>Late arrivals are history</span></summary><div>
+      <p>A late change takes its place in the history and never overwrites newer state. Bronze stays a faithful log; duplicates are removed in silver.</p>
+      <a href="../architecture/decisions/#d31--late-arrivals-are-history-deduplication-happens-in-silver">Read D31 &rarr;</a></div></details>
+    <details><summary><span class="dn">D36</span><span>How silver removes duplicates</span></summary><div>
+      <p>Exact duplicates are dropped when silver is written; versions that change nothing are folded when it is read. There is no time cut-off, so a late change is never dropped.</p>
+      <a href="../architecture/decisions/#d36--silver-deduplication-exact-duplicates-on-write-unchanged-versions-on-read">Read D36 &rarr;</a></div></details>
+
+    <p class="group">Gold</p>
+    <details><summary><span class="dn">D3</span><span>Gold in PostgreSQL, not ClickHouse</span></summary><div>
+      <p>Gold is small and must be consistent after every micro-batch, and PostgreSQL applies each batch in one transaction. ClickHouse would handle much larger facts better, so it stays an option for scale.</p>
+      <a href="../architecture/decisions/#d3--gold-in-postgresql-not-clickhouse">Read D3 &rarr;</a></div></details>
+    <details><summary><span class="dn">D32</span><span>The gold dimensional model</span></summary><div>
+      <p>Customer and product dimensions with history, history facts and current-state tables answer every question. Current state as a plain view would get slower as the history grows.</p>
+      <a href="../architecture/decisions/#d32--the-gold-dimensional-model">Read D32 &rarr;</a></div></details>
+    <details><summary><span class="dn">D35</span><span>Public views over an internal schema</span></summary><div>
+      <p>The pipeline writes its own internal tables; consumers read views without the pipeline's columns. I can change how gold is stored without breaking the API or the dashboard.</p>
+      <a href="../architecture/decisions/#d35--public-views-over-an-internal-schema">Read D35 &rarr;</a></div></details>
+    <details><summary><span class="dn">D40</span><span>Indexes chosen from the query plans</span></summary><div>
+      <p>Gold has only the indexes the four questions use, each one picked by reading that question's query plan.</p>
+      <a href="../architecture/decisions/#d40--gold-indexes-chosen-from-the-query-plans-of-the-current-use-cases">Read D40 &rarr;</a></div></details>
+    <details><summary><span class="dn">D37</span><span>Retention by monthly partitions</span></summary><div>
+      <p>PostgreSQL keeps 36 months of history by dropping whole months, which is cheaper than deleting rows. Current state is never trimmed, so an old open order keeps its row.</p>
+      <a href="../architecture/decisions/#d37--gold-retention-by-monthly-partitions">Read D37 &rarr;</a></div></details>
+    <details><summary><span class="dn">D38</span><span>Rebuild gold from silver</span></summary><div>
+      <p>Gold can be reset and rebuilt from silver with the same merge the stream uses, optionally up to a point in time.</p>
+      <a href="../architecture/decisions/#d38--rebuild-gold-from-silver-with-an-optional-cutoff">Read D38 &rarr;</a></div></details>
+    <details><summary><span class="dn">D39</span><span>Gold in the lake as views over silver</span></summary><div>
+      <p>Silver already holds every version, so the lake gets the gold model as views instead of a second writer. The cost is that every read recomputes over the full history.</p>
+      <a href="../architecture/decisions/#d39--gold-in-the-lake-as-iceberg-views-over-silver">Read D39 &rarr;</a></div></details>
+    <p class="small" style="margin-top:14px"><a href="../architecture/decisions/">All design decisions &rarr;</a></p>
   </div>
 </section>
 
-<!-- 1. Problem -->
-<section class="section" id="problem" data-section aria-labelledby="problem-title">
-  <div class="wrap">
-    <div class="eyebrow">1 &middot; The problem</div>
-    <h2 id="problem-title">Turn an operational database into near-real-time analytics</h2>
-    <p class="lede">The assignment supplies a live PostgreSQL database, <code>finance_db</code>, whose <code>operations</code> schema holds customers, products, orders and order items. A data generator keeps changing it, and a Debezium connector already streams every change to four Kafka topics. The task is the analytical side: a Spark Structured Streaming application whose output answers the logistics team's questions with near-real-time updates.</p>
-    <div class="grid g2">
-      <div>
-        <h3 style="font-size:18px;margin-bottom:12px">The four business questions</h3>
-        <ol class="questions">
-          <li>Number of open orders by delivery date and status</li>
-          <li>Top 3 delivery dates with more open orders</li>
-          <li>Number of open pending items by product</li>
-          <li>Top 3 customers with more pending orders</li>
-        </ol>
-      </div>
-      <div class="card">
-        <h3>What the solution had to deliver</h3>
-        <div class="req"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5l3 3 7-7" fill="none" stroke="var(--c-ok)" stroke-width="2.2" stroke-linecap="round"/></svg><div>Process the Debezium change events as a stream with Spark Structured Streaming.</div></div>
-        <div class="req"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5l3 3 7-7" fill="none" stroke="var(--c-ok)" stroke-width="2.2" stroke-linecap="round"/></svg><div>Keep both the history and the current state of every order.</div></div>
-        <div class="req"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5l3 3 7-7" fill="none" stroke="var(--c-ok)" stroke-width="2.2" stroke-linecap="round"/></svg><div>A consistent dimensional model that answers the questions.</div></div>
-        <div class="req"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5l3 3 7-7" fill="none" stroke="var(--c-ok)" stroke-width="2.2" stroke-linecap="round"/></svg><div>Data ready to consume as soon as possible, served to stakeholders (API, dashboard or CLI).</div></div>
-        <div class="req"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5l3 3 7-7" fill="none" stroke="var(--c-ok)" stroke-width="2.2" stroke-linecap="round"/></svg><div>An architecture diagram, a Spark sizing strategy with its variables, and evidence of the application running.</div></div>
-      </div>
-    </div>
-    <div class="grid g3" style="margin-top:16px">
-      <div class="card"><h3>Constraints chosen</h3><p>Fully local and open source: the whole stack runs in Docker Compose on one machine, so a reviewer can start it from the README (<a href="../architecture/decisions/#d8--fully-local-no-cloud-services">D8</a>).</p></div>
-      <div class="card"><h3>Source left as provided</h3><p>The source DDL and the Debezium connector are used exactly as supplied; the pipeline handles their format, such as Debezium's variable-scale decimals and epoch timestamps (<a href="../architecture/decisions/#d29--the-source-database-and-the-debezium-connector-stay-as-provided">D29</a>).</p></div>
-      <div class="card"><h3>What "open" means</h3><p>An open order is any order whose current status is not <code>COMPLETED</code>. Pending orders are the open orders, and pending items are the items of open orders. Both top-3 questions keep ties (<a href="../architecture/decisions/#d32--the-gold-dimensional-model">D32</a>).</p></div>
-    </div>
+<section class="section" id="measured" aria-labelledby="measured-title">
+  <h2 id="measured-title">Measured</h2>
+  <div class="body">
+    <dl class="numbers">
+      <div><dt>Pending items by product: 344&ndash;380 ms down to 37&ndash;46 ms</dt>
+        <dd>After adding the indexes chosen from the query plans, on a test PostgreSQL with 1M orders and 3M items. <span class="src">Pull request <a href="https://github.com/jonathan5p/deel-home-task/pull/142">#142</a>, 2026-11-10; <a href="../architecture/decisions/#d40--gold-indexes-chosen-from-the-query-plans-of-the-current-use-cases">D40</a>.</span></dd></div>
+      <div><dt>734 unit tests, 96.64% branch coverage</dt>
+        <dd>Run in the same image as the Spark cluster; CI and the commit hooks fail below 90%. <span class="src">Pull request <a href="https://github.com/jonathan5p/deel-home-task/pull/171">#171</a>, 2026-11-11.</span></dd></div>
+      <div><dt>247 infra tests pass</dt>
+        <dd>They run the real jobs on isolated copies of the stack: exactly-once appends, quarantine, deduplication, history, retention, rebuild, the API and Grafana. <span class="src">Pull request <a href="https://github.com/jonathan5p/deel-home-task/pull/192">#192</a>, 2026-11-11; <a href="../development/testing/#infra-tests">testing</a>.</span></dd></div>
+    </dl>
   </div>
 </section>
 
-<!-- 2. At a glance -->
-<section class="section" id="glance" data-section aria-labelledby="glance-title">
-  <div class="wrap">
-    <div class="eyebrow">2 &middot; The solution at a glance</div>
-    <h2 id="glance-title">A medallion lakehouse with a dimensional model for serving</h2>
-    <p class="lede">Each layer is its own streaming query with its own checkpoint, so every hop restarts where it stopped and never skips or repeats data. The lake keeps every change; PostgreSQL keeps what is served.</p>
-    <div class="grid g4">
-      <div class="card layer-card" style="--lc:var(--c-kafka)"><div class="kicker">Capture</div><h3>Debezium &rarr; Kafka</h3><p>Every insert, update and delete of the four tables, read from PostgreSQL's write-ahead log into one topic per table.</p></div>
-      <div class="card layer-card" style="--lc:var(--c-landing)"><div class="kicker">Landing</div><h3>Raw Avro files</h3><p>Each Kafka record stored unchanged, with its topic, partition and offset: the replay source for bronze.</p></div>
-      <div class="card layer-card" style="--lc:var(--c-bronze)"><div class="kicker">Bronze</div><h3>Typed change log</h3><p>One Iceberg row per change event with its change metadata; invalid records go to a quarantine table instead of failing the job.</p></div>
-      <div class="card layer-card" style="--lc:var(--c-silver)"><div class="kicker">Silver</div><h3>Version history</h3><p>Duplicate deliveries dropped, late changes kept as history; <code>_history</code> and <code>_current</code> views on top.</p></div>
-      <div class="card layer-card" style="--lc:var(--c-gold)"><div class="kicker">Gold &middot; PostgreSQL</div><h3>Star schema</h3><p>SCD2 dimensions, append-only history facts and current-state tables, merged in one transaction per micro-batch.</p></div>
-      <div class="card layer-card" style="--lc:var(--c-gold)"><div class="kicker">Gold &middot; lake</div><h3>Iceberg views over silver</h3><p>The same public model computed at read time from silver, over the full history, with natural keys.</p></div>
-      <div class="card layer-card" style="--lc:var(--c-serve)"><div class="kicker">Serve</div><h3>API, Grafana, SQL</h3><p>FastAPI and a provisioned Grafana dashboard read the gold views with read-only logins; Spark SQL and DuckDB read the lake.</p></div>
-      <div class="card layer-card" style="--lc:var(--c-ok)"><div class="kicker">Operate</div><h3>Quality, upkeep, recovery</h3><p>Layer-to-layer data quality checks, lake maintenance with an expiry guard, gold retention, bronze replay and gold rebuild.</p></div>
-    </div>
+<section class="section" id="run" aria-labelledby="run-title">
+  <h2 id="run-title">Run it</h2>
+  <div class="body">
+    <p>You need Docker with Compose v2, GNU Make and uv. From the repository root:</p>
+    <div class="cmd"><pre><code>make pipeline PIPELINE=all   # start the stack and every streaming job
+make data-quality            # check each layer against the one before it
+curl -s localhost:8000/metrics/top-customers-by-pending-orders
+make down                    # stop everything, keeping the data</code></pre><button type="button" class="copy">Copy</button></div>
+    <p>The dashboard is then at <code>localhost:3000/d/gold-metrics</code>. The <a href="https://github.com/jonathan5p/deel-home-task#install">README quick start</a> has every step.</p>
   </div>
 </section>
 
-<!-- 3. Interactive data flow -->
-<section class="section" id="flow-section" data-section aria-labelledby="flow-title">
-  <div class="wide">
-    <div class="eyebrow">3 &middot; Interactive data flow</div>
-    <h2 id="flow-title">Watch changes move through the pipeline</h2>
-    <p class="lede">Each marker is one change to order 1. It changes shape and colour as each layer transforms it. Click any component, or a green check between layers, for what it does, how and why. Use <b>Follow one change</b> to walk through every hop.</p>
-    <div class="flow-shell">
-      <div class="flow-toolbar" role="toolbar" aria-label="Data flow controls">
-        <button type="button" id="play-btn" aria-pressed="false">
-          <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path id="play-icon" d="M3 2l9 5-9 5z" fill="currentColor"/></svg>
-          <span id="play-label">Play</span>
-        </button>
-        <button type="button" id="step-btn" class="btn-primary">Follow one change</button>
-        <button type="button" id="reset-btn">Reset</button>
-        <span class="spacer"></span>
-        <span class="small muted" id="motion-note"></span>
-      </div>
-      <p class="scroll-hint">Scroll the diagram sideways to see every component.</p>
-      <div class="diagram-scroll">
-        <svg id="flow" viewBox="0 0 1280 484" role="group" aria-labelledby="flow-title flow-desc">
-          <desc id="flow-desc">Data flow from the source PostgreSQL through Debezium and Kafka to the landing, bronze and silver layers of the lake, then to gold in PostgreSQL and the lake gold views, and on to the API, Grafana, Spark SQL and DuckDB. Platform components are listed along the bottom. Each component is a button that opens its details.</desc>
-          <defs>
-            <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrowhead" d="M0,0 L10,5 L0,10 z"/></marker>
-          </defs>
-          <g id="lanes"></g>
-          <g id="edges"></g>
-          <g id="nodes"></g>
-          <g id="dqs"></g>
-          <g id="tokens"></g>
-          <g id="notes"></g>
-        </svg>
-      </div>
-      <div class="flow-console">
-        <div class="console-main" id="console" aria-live="polite">
-          <p class="caption" id="caption">Press <b>Play</b> to stream a few changes of order 1 through the pipeline, or <b>Follow one change</b> to go hop by hop.</p>
-        </div>
-        <div class="console-side">
-          <p class="legend-title">How to read the markers</p>
-          <ul class="legend" id="legend"></ul>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- 4. Decisions -->
-<section class="section" id="decisions" data-section aria-labelledby="decisions-title">
-  <div class="wrap">
-    <div class="eyebrow">4 &middot; Key decisions</div>
-    <h2 id="decisions-title">Why it is built this way</h2>
-    <p class="lede">The main design decisions, each with the reason and the alternative weighed. The numbers are the project's decision log numbers; each card links to the full entry.</p>
-    <div class="filters" role="group" aria-label="Filter decisions">
-      <button type="button" data-filter="all" aria-pressed="true">All</button>
-      <button type="button" data-filter="platform" aria-pressed="false">Platform</button>
-      <button type="button" data-filter="lake" aria-pressed="false">Lake layers</button>
-      <button type="button" data-filter="gold" aria-pressed="false">Gold and serving</button>
-    </div>
-    <div class="grid g3" id="decision-grid">
-      <article class="card decision" data-cat="lake" style="--lc:var(--c-bronze)">
-        <div class="dnum">D17</div><h3>Layered lake: landing, bronze, silver; gold built from silver</h3>
-        <dl><dt>Why</dt><dd>Spark cannot stream from an Iceberg table that receives MERGE or deletes, so an append-only silver keeps gold streamable.</dd>
-        <dt>Trade-off</dt><dd>Four streaming hops, each with its own checkpoint and commit latency. A fast path from bronze to gold is the fallback if latency matters.</dd></dl>
-        <a class="more" href="../architecture/decisions/#d17--layered-lake-landing-bronze-silver-gold-built-from-silver">Read D17</a>
-      </article>
-      <article class="card decision" data-cat="lake" style="--lc:var(--c-landing)">
-        <div class="dnum">D18</div><h3>Landing as raw Avro files, one folder per topic</h3>
-        <dl><dt>Why</dt><dd>Avro is row-oriented, compact and self-describing; raw key and value bytes stay valid if the topics move to a schema registry; Kafka coordinates make replays and gap checks possible.</dd>
-        <dt>Trade-off</dt><dd>One more hop before typed data, in exchange for a faithful, replayable copy.</dd></dl>
-        <a class="more" href="../architecture/decisions/#d18--landing-as-raw-avro-files-one-folder-per-topic">Read D18</a>
-      </article>
-      <article class="card decision" data-cat="lake" style="--lc:var(--c-bronze)">
-        <div class="dnum">D30</div><h3>Change identity in readable columns</h3>
-        <dl><dt>Why</dt><dd>A change is the entity key + <code>_commit_sequence</code> (the source LSN) + <code>_change_op</code>. Debezium re-sends a change at a new offset after a restart, so Kafka coordinates are lineage, not identity. <code>_content_hash</code> works like Data Vault's hash diff.</dd>
-        <dt>Alternative</dt><dd>Full Data Vault hash keys: they deduplicate as well, but give opaque ids for little gain with single integer keys.</dd></dl>
-        <a class="more" href="../architecture/decisions/#d30--change-identity-in-readable-columns-data-vault-hashing-only-in-part">Read D30</a>
-      </article>
-      <article class="card decision" data-cat="lake" style="--lc:var(--c-silver)">
-        <div class="dnum">D31</div><h3>Late arrivals are history; deduplication happens in silver</h3>
-        <dl><dt>Why</dt><dd>Bronze stays a faithful log. Silver drops repeated deliveries and appends a late change as history, where its validity range lands in place. Gold's current state only applies newer versions.</dd>
-        <dt>Guard</dt><dd>Lake maintenance never expires a snapshot a downstream stream still needs.</dd></dl>
-        <a class="more" href="../architecture/decisions/#d31--late-arrivals-are-history-deduplication-happens-in-silver">Read D31</a>
-      </article>
-      <article class="card decision" data-cat="lake" style="--lc:var(--c-silver)">
-        <div class="dnum">D36</div><h3>Silver dedup: exact duplicates on write, unchanged versions on read</h3>
-        <dl><dt>Why</dt><dd><code>dropDuplicates</code> on the change identity with RocksDB state and no watermark: a redelivered change is appended once, a late change is never dropped. Views fold versions that change nothing.</dd>
-        <dt>Alternative</dt><dd>Python <code>transformWithState</code> (extra executor dependencies, every state call crosses to the JVM) or a per-batch lookup of silver.</dd></dl>
-        <a class="more" href="../architecture/decisions/#d36--silver-deduplication-exact-duplicates-on-write-unchanged-versions-on-read">Read D36</a>
-      </article>
-      <article class="card decision" data-cat="gold" style="--lc:var(--c-gold)">
-        <div class="dnum">D3</div><h3>Gold in PostgreSQL, not ClickHouse</h3>
-        <dl><dt>Why</dt><dd>Gold is small (current state, bounded history, dimensions) and must be consistent: PostgreSQL applies each micro-batch in one transaction, while ClickHouse's CDC tables deduplicate only eventually.</dd>
-        <dt>Alternative</dt><dd>ClickHouse fits billions of fact rows and scans over the full history better; it stays a candidate for scale.</dd></dl>
-        <a class="more" href="../architecture/decisions/#d3--gold-in-postgresql-not-clickhouse">Read D3</a>
-      </article>
-      <article class="card decision" data-cat="gold" style="--lc:var(--c-gold)">
-        <div class="dnum">D32</div><h3>The gold dimensional model</h3>
-        <dl><dt>Why</dt><dd>SCD2 customer and product dimensions, append-only history facts partitioned by month, and current-state tables that only take newer versions, with soft deletes so a late event cannot revive a row.</dd>
-        <dt>Alternative</dt><dd>Current state as a view or materialized view: slower as history grows, refreshed in full, and it loses old open orders once retention trims history.</dd></dl>
-        <a class="more" href="../architecture/decisions/#d32--the-gold-dimensional-model">Read D32</a>
-      </article>
-      <article class="card decision" data-cat="gold" style="--lc:var(--c-gold)">
-        <div class="dnum">D35</div><h3>Public views over an internal schema</h3>
-        <dl><dt>Why</dt><dd>The pipeline writes <code>gold_internal</code>; consumers read views of the same names in <code>gold</code>, without pipeline metadata or soft-deleted rows. The storage contract stays apart from the consumer contract.</dd>
-        <dt>Trade-off</dt><dd>One more layer of views to keep described and tested.</dd></dl>
-        <a class="more" href="../architecture/decisions/#d35--public-views-over-an-internal-schema">Read D35</a>
-      </article>
-      <article class="card decision" data-cat="gold" style="--lc:var(--c-gold)">
-        <div class="dnum">D39</div><h3>Gold in the lake as Iceberg views over silver</h3>
-        <dl><dt>Why</dt><dd>Silver already stores every version, so the lake keeps no copy: views apply gold's rules at read time, with natural keys. The gold job writes PostgreSQL only.</dd>
-        <dt>Alternative</dt><dd>A second MERGE-maintained Iceberg sink, or mirroring PostgreSQL into the lake. Cost: lake reads recompute over the full history.</dd></dl>
-        <a class="more" href="../architecture/decisions/#d39--gold-in-the-lake-as-iceberg-views-over-silver">Read D39</a>
-      </article>
-      <article class="card decision" data-cat="gold" style="--lc:var(--c-gold)">
-        <div class="dnum">D40</div><h3>Gold indexes chosen from query plans</h3>
-        <dl><dt>Why</dt><dd>Indexes exist only for the current use cases, each picked by reading that query's EXPLAIN plan: <code>is_open</code> stored on <code>current_orders</code> and partial indexes on the open orders.</dd>
-        <dt>Result</dt><dd>Pending items by product went from 344&ndash;380 ms to 37&ndash;46 ms on a 1M-order scratch database.</dd></dl>
-        <a class="more" href="../architecture/decisions/#d40--gold-indexes-chosen-from-the-query-plans-of-the-current-use-cases">Read D40</a>
-      </article>
-      <article class="card decision" data-cat="gold" style="--lc:var(--c-gold)">
-        <div class="dnum">D37 &middot; D38</div><h3>Retention by monthly partitions; rebuild from silver</h3>
-        <dl><dt>Why</dt><dd>History facts keep 36 months by dropping whole monthly partitions. Gold can be reset and rebuilt from silver, optionally up to a cutoff, through the stream's own merge.</dd>
-        <dt>Alternative</dt><dd>Row <code>DELETE</code>s for retention. A rebuild regenerates the surrogate keys.</dd></dl>
-        <a class="more" href="../architecture/decisions/#d37--gold-retention-by-monthly-partitions">Read D37</a>
-      </article>
-      <article class="card decision" data-cat="platform" style="--lc:var(--c-landing)">
-        <div class="dnum">D13</div><h3>SeaweedFS instead of MinIO</h3>
-        <dl><dt>Why</dt><dd>MinIO's repository is archived and its official images can no longer be pulled. SeaweedFS is actively maintained, Apache-2.0 licensed and runs as one container with an S3 API.</dd>
-        <dt>Alternatives</dt><dd>The <code>pgsty/minio</code> fork, RustFS, Garage.</dd></dl>
-        <a class="more" href="../architecture/decisions/#d13--object-store-seaweedfs-instead-of-minio">Read D13</a>
-      </article>
-      <article class="card decision" data-cat="platform" style="--lc:var(--c-source)">
-        <div class="dnum">D9</div><h3>Iceberg with a JDBC catalog on the analytics PostgreSQL</h3>
-        <dl><dt>Why</dt><dd>Iceberg is the table format of the target stack, and the JDBC catalog avoids running another service. A read-only REST catalog over it is optional, for engines such as DuckDB.</dd>
-        <dt>Alternatives</dt><dd>A REST catalog as the primary catalog (closer to production, one more service), or Delta Lake.</dd></dl>
-        <a class="more" href="../architecture/decisions/#d9--iceberg-with-a-jdbc-catalog-on-the-analytics-postgresql">Read D9</a>
-      </article>
-      <article class="card decision" data-cat="platform" style="--lc:var(--c-source)">
-        <div class="dnum">D27</div><h3>One driver container per application</h3>
-        <dl><dt>Why</dt><dd>A driver failure, its memory, logs and UI port belong to one application only. Standalone cluster mode does not support Python, so client mode in a per-run container is the closest local equivalent of a driver pod.</dd>
-        <dt>In production</dt><dd>EMR in YARN cluster mode, or the Spark Operator on Kubernetes.</dd></dl>
-        <a class="more" href="../architecture/decisions/#d27--one-driver-container-per-application-executors-on-shared-workers">Read D27</a>
-      </article>
-      <article class="card decision" data-cat="platform" style="--lc:var(--c-source)">
-        <div class="dnum">D29</div><h3>Source and connector stay as provided</h3>
-        <dl><dt>Why</dt><dd>The assignment treats the source side as given. Bronze decodes Debezium's variable-scale decimal and epoch timestamps instead of changing the connector.</dd>
-        <dt>Recommendation</dt><dd>To the source owners: <code>decimal.handling.mode=string</code> and a publication limited to the four tables.</dd></dl>
-        <a class="more" href="../architecture/decisions/#d29--the-source-database-and-the-debezium-connector-stay-as-provided">Read D29</a>
-      </article>
-    </div>
-  </div>
-</section>
-
-<!-- 5. Quality and reliability -->
-<section class="section" id="quality" data-section aria-labelledby="quality-title">
-  <div class="wrap">
-    <div class="eyebrow">5 &middot; Quality and reliability</div>
-    <h2 id="quality-title">Exactly once, checked at every boundary</h2>
-    <p class="lede">Every hop is restart-safe and idempotent, a chain of data quality checks compares each layer with the one before it, and the operations that touch data outside the stream are built so the stream never notices.</p>
-
-    <h3 style="font-size:20px;margin-bottom:12px">Data quality chain</h3>
-    <div class="chain" aria-label="Data quality checks between layers">
-      <span class="stop">Kafka</span><span class="arrow">&rarr; <code>landing</code> &rarr;</span>
-      <span class="stop">Landing</span><span class="arrow">&rarr; <code>bronze</code> &rarr;</span>
-      <span class="stop">Bronze + quarantine</span><span class="arrow">&rarr; <code>silver</code> &rarr;</span>
-      <span class="stop">Silver</span><span class="arrow">&rarr; <code>gold</code> &rarr;</span>
-      <span class="stop">PostgreSQL gold</span>
-    </div>
-    <div class="grid g4">
-      <div class="card"><h3><code>landing</code></h3><p>Every Kafka offset landed exactly once, contiguous against the offsets Kafka actually holds, with the same bytes as Kafka.</p></div>
-      <div class="card"><h3><code>bronze</code></h3><p>Every landed record is in bronze or in quarantine, never both and never twice, and each table holds only records of files its own query committed.</p></div>
-      <div class="card"><h3><code>silver</code></h3><p>Silver holds every change identity bronze held at the snapshot silver read up to, once, and no other.</p></div>
-      <div class="card"><h3><code>gold</code></h3><p>Each PostgreSQL <code>gold</code> view equals its lake view computed over silver at the snapshots gold committed, so silver, gold and the lake views are checked in one pass.</p></div>
-    </div>
-    <p class="small muted" style="margin-top:12px">Each check is bounded by what the downstream query has committed, so results do not depend on pipeline lag. <code>make data-quality</code> runs them as their own Spark application, writes a JSON report to the lake and exits 1 on any failure; the <code>data-quality</code> profile runs them on a schedule. <a href="../lakehouse/data-quality/">Data quality checks</a></p>
-
-    <h3 style="font-size:20px;margin:40px 0 12px">Exactly once, hop by hop</h3>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th scope="col">Hop</th><th scope="col">What makes a restart or replay safe</th></tr></thead>
-        <tbody>
-          <tr><td><b>Kafka &rarr; landing</b></td><td>Spark's file sink records committed files in <code>_spark_metadata</code>, and the checkpoint records the offsets. Readers see committed files only.</td></tr>
-          <tr><td><b>Landing &rarr; bronze</b></td><td>The checkpoint records the landing files processed; Iceberg's streaming sink stores the query and batch id in each snapshot and skips a batch it already committed.</td></tr>
-          <tr><td><b>Bronze &rarr; silver</b></td><td><code>dropDuplicates</code> on (key, <code>_commit_sequence</code>, <code>_change_op</code>) with RocksDB state saved in the checkpoint, so a change seen before a restart is still dropped after it.</td></tr>
-          <tr><td><b>Silver &rarr; gold</b></td><td>Staging is replaced, history inserts use <code>ON CONFLICT DO NOTHING</code>, current state only takes a higher <code>_commit_sequence</code>. PostgreSQL commits before the checkpoint, so a batch replayed after a crash merges to the same rows.</td></tr>
-          <tr><td><b>Concurrency in gold</b></td><td>Every merge takes one advisory lock, so a fact merge and a dimension merge never miss each other's uncommitted rows. Staging runs outside the lock, in parallel.</td></tr>
-        </tbody>
-      </table>
-    </div>
-
-    <h3 style="font-size:20px;margin:40px 0 6px">Late arrivals: try it</h3>
-    <p class="muted" style="margin:0 0 12px">Order 7's changes arrive out of order. History keeps every change in <code>_commit_sequence</code> order; current state only moves forward. The example is the one in <a href="../lakehouse/gold/model/#versioning">the gold model's versioning rules</a>.</p>
-    <div class="card">
-      <div class="sim-controls" role="group" aria-label="Late arrival simulator">
-        <button type="button" data-sim="0">1. <code>PROCESSING</code> at 500</button>
-        <button type="button" data-sim="1">2. Late <code>PENDING</code> at 420</button>
-        <button type="button" data-sim="2">3. <code>COMPLETED</code> at 610</button>
-        <button type="button" data-sim="reset">Reset</button>
-      </div>
-      <div class="sim">
-        <div><h4>gold.fact_order_history (order 7)</h4><div class="table-wrap" style="box-shadow:none"><table><thead><tr><th scope="col">_commit_sequence</th><th scope="col">status</th><th scope="col">valid until</th></tr></thead><tbody id="sim-history"></tbody></table></div></div>
-        <div><h4>gold.current_orders (order 7)</h4><div class="table-wrap" style="box-shadow:none"><table><thead><tr><th scope="col">status</th><th scope="col">_commit_sequence</th><th scope="col">open</th></tr></thead><tbody id="sim-current"></tbody></table></div></div>
-      </div>
-      <p class="sim-msg" id="sim-msg" aria-live="polite">Apply the changes in the order they arrive.</p>
-    </div>
-
-    <div class="grid g2" style="margin-top:40px">
-      <div class="card">
-        <h3>Lake maintenance and the expiry guard</h3>
-        <ol class="steps small">
-          <li><code>rewrite_data_files</code> compacts the small streaming files into a <code>replace</code> snapshot, which Iceberg's streaming reader skips.</li>
-          <li>Before <code>expire_snapshots</code> (7 days, last 10 kept), the guard reads every downstream stream's checkpoint and skips expiry for a table whose stream still needs a snapshot.</li>
-          <li><code>remove_orphan_files</code> deletes unreferenced files older than 3 days.</li>
-          <li>The silver and lake gold views are refreshed, so a changed definition reaches the lake without a restart.</li>
-        </ol>
-        <p class="small"><a href="../operations/maintenance-and-recovery/#lake-maintenance">Lake maintenance</a></p>
-      </div>
-      <div class="card">
-        <h3>Recovery: bronze replay vs gold rebuild</h3>
-        <div class="table-wrap" style="box-shadow:none;margin-bottom:10px"><table class="small">
-          <thead><tr><th scope="col"></th><th scope="col"><code>make bronze-replay</code></th><th scope="col"><code>make gold-rebuild</code></th></tr></thead>
-          <tbody>
-            <tr><th scope="row">For</th><td>A missed or failed range</td><td>A gold logic change, or corrupted gold</td></tr>
-            <tr><th scope="row">Reads</th><td>A landing range, by offsets or time</td><td>All of silver, optionally up to <code>TO_TIME</code></td></tr>
-            <tr><th scope="row">Writes</th><td>Appends only the changes bronze lacks</td><td>Resets gold, then one batch through the stream's merge</td></tr>
-            <tr><th scope="row">Streams</th><td>Keep running; silver sees late changes</td><td>Gold job restarts on fresh checkpoints</td></tr>
-          </tbody>
-        </table></div>
-        <p class="small"><a href="../operations/maintenance-and-recovery/#replaying-a-landing-range-into-bronze">Replay</a> &middot; <a href="../operations/maintenance-and-recovery/#rebuilding-gold-from-silver">Rebuild</a> &middot; <a href="../operations/maintenance-and-recovery/#gold-retention">Gold retention</a></p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- 6. Results and evidence -->
-<section class="section" id="evidence" data-section aria-labelledby="evidence-title">
-  <div class="wrap">
-    <div class="eyebrow">6 &middot; Results and evidence</div>
-    <h2 id="evidence-title">The four answers, and how the project is tested</h2>
-    <p class="lede">Each business question is a view in the <code>gold</code> schema, with a ready-made query, an API endpoint and a Grafana panel that all run the same SQL. The same views exist in the lake.</p>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th scope="col">Question</th><th scope="col">Gold view</th><th scope="col">API endpoint</th></tr></thead>
-        <tbody>
-          <tr><td>Open orders by delivery date and status</td><td><code>gold.open_orders_by_delivery_date_and_status</code></td><td><code>/metrics/open-orders-by-delivery-date-and-status</code></td></tr>
-          <tr><td>Top 3 delivery dates by open orders</td><td><code>gold.top_delivery_dates_by_open_orders</code></td><td><code>/metrics/top-delivery-dates-by-open-orders</code></td></tr>
-          <tr><td>Open pending items by product</td><td><code>gold.pending_items_by_product</code></td><td><code>/metrics/pending-items-by-product</code></td></tr>
-          <tr><td>Top 3 customers by pending orders</td><td><code>gold.top_customers_by_pending_orders</code></td><td><code>/metrics/top-customers-by-pending-orders</code></td></tr>
-        </tbody>
-      </table>
-    </div>
-    <div class="grid g3" style="margin-top:16px">
-      <div class="card"><h3>HTTP API</h3><p>FastAPI on port 8000, with <code>/freshness</code> and <code>/health</code>, reading the views as the read-only login <code>api_reader</code> with a 5 s statement timeout. <a href="../serving/api/">Analytics API</a></p></div>
-      <div class="card"><h3>Grafana</h3><p>The <b>Gold metrics</b> dashboard, provisioned as code: one panel per question plus freshness, refreshed every 30 seconds. <a href="../serving/grafana/">Grafana</a></p></div>
-      <div class="card"><h3>SQL</h3><p><code>psql</code> with the queries in <code>analytics/sql/gold/</code>, Spark SQL over <code>lake.gold</code>, or DuckDB over the lake tables through the REST catalog. <a href="../serving/lake-access/">Querying the lake</a></p></div>
-    </div>
-
-    <h3 style="font-size:20px;margin:40px 0 12px">Test layers</h3>
-    <div class="grid g4">
-      <div class="card"><h3>Unit tests</h3><p>Mirror the source tree, run in containers with the cluster's exact Spark and Python, in parallel; branch coverage must stay at or above 90%.</p></div>
-      <div class="card"><h3>Infra tests</h3><p>Each worker starts its own isolated Compose stack and runs the real jobs: exactly-once appends, quarantine, dedup, SCD2, retention, rebuild, API and Grafana. Local only.</p></div>
-      <div class="card"><h3>Data quality</h3><p>Production code, not tests: the layer-to-layer checks above, run against the live stack with <code>make data-quality</code>.</p></div>
-      <div class="card"><h3>Hooks and CI</h3><p>Pre-commit runs ruff, <code>ty</code> and the unit tests. CI runs lint, typecheck and tests on every pull request, and builds the docs strictly.</p></div>
-    </div>
-
-    <h3 style="font-size:20px;margin:40px 0 4px">Measured so far</h3>
-    <p class="muted" style="margin:0 0 14px">Only numbers recorded in the repository or its pull requests, with where and when they were measured.</p>
-    <div class="grid g2">
-      <div class="card">
-        <h3>Gold business views, before and after the indexes</h3>
-        <div class="key" aria-hidden="true"><span><i style="background:var(--muted);opacity:.55"></i>Before</span><span><i style="background:var(--accent)"></i>After</span></div>
-        <div class="bars" id="explain-bars"></div>
-        <p class="src">EXPLAIN timings, ranges over three runs, on a scratch <code>postgres:18.6</code> with 1M orders (about 3% open), 3M items and 50k customers. Pull request <a href="https://github.com/jonathan5p/deel-home-task/pull/142">#142</a>, merged 2026-11-10; decision <a href="../architecture/decisions/#d40--gold-indexes-chosen-from-the-query-plans-of-the-current-use-cases">D40</a>.</p>
-      </div>
-      <div class="grid" style="gap:16px">
-        <div class="card">
-          <h3>Unit tests</h3>
-          <div class="metric">87.5 s <small>from 144.9 s serial</small></div>
-          <p class="small" style="margin-top:6px">734 tests, 96.64% branch coverage in the Spark app image, with 4 pytest-xdist workers.</p>
-          <p class="src">Pull request <a href="https://github.com/jonathan5p/deel-home-task/pull/171">#171</a>, merged 2026-11-11, on the development machine.</p>
-        </div>
-        <div class="card">
-          <h3>Infra tests</h3>
-          <div class="metric">11 min 34 s <small>247 passed, 2 workers</small></div>
-          <p class="small" style="margin-top:6px">Down from 17 min 49 s once the scenarios launched fewer Spark drivers; each worker runs a full stack of its own.</p>
-          <p class="src">Pull requests <a href="https://github.com/jonathan5p/deel-home-task/pull/189">#189</a> and <a href="https://github.com/jonathan5p/deel-home-task/pull/192">#192</a>, merged 2026-11-11.</p>
-        </div>
-        <div class="card">
-          <h3>Streaming metrics</h3>
-          <p class="small">Every hop triggers every 10 seconds, so a change reaches gold after at most four trigger intervals plus each hop's batch time. Batch durations, Kafka lag, state size and gold transaction times from a real run are still being collected (<a href="https://github.com/jonathan5p/deel-home-task/issues/58">#58</a>); the <a href="../architecture/sizing/#key-metrics">sizing strategy</a> lists them.</p>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- 7. Run it -->
-<section class="section" id="run" data-section aria-labelledby="run-title">
-  <div class="wrap">
-    <div class="eyebrow">7 &middot; How to run it</div>
-    <h2 id="run-title">From clone to answers in four commands</h2>
-    <p class="lede">You need Docker with Compose v2, GNU Make and <a href="https://docs.astral.sh/uv/">uv</a>. The Spark workers alone can claim 10 GiB of executor memory, so give Docker enough memory for the whole stack.</p>
-    <div class="run-step"><div class="n">1</div><div><h3>Start the stack and every streaming job</h3>
-      <div class="cmd"><pre><code>make pipeline PIPELINE=all</code></pre><button type="button" class="copy">Copy</button></div>
-      <p>Debezium snapshots the source tables, then streams every change; landing, bronze, silver and gold pick them up within a few 10-second micro-batches. Until a layer has data, the next job restarts with <code>PATH_NOT_FOUND</code> or <code>TABLE_OR_VIEW_NOT_FOUND</code>, which is expected.</p></div></div>
-    <div class="run-step"><div class="n">2</div><div><h3>Check the data, layer by layer</h3>
-      <div class="cmd"><pre><code>make data-quality</code></pre><button type="button" class="copy">Copy</button></div>
-      <p>Ends with a <code>DATA QUALITY</code> summary and exits 1 if any check fails.</p></div></div>
-    <div class="run-step"><div class="n">3</div><div><h3>Ask the four questions</h3>
-      <div class="cmd"><pre><code>curl -s localhost:8000/metrics/top-customers-by-pending-orders</code></pre><button type="button" class="copy">Copy</button></div>
-      <p>Or open the dashboard at <code>http://localhost:3000/d/gold-metrics</code>, the API docs at <code>http://localhost:8000/docs</code>, and the Spark master at <code>http://localhost:8080</code>.</p></div></div>
-    <div class="run-step"><div class="n">4</div><div><h3>Stop, keeping the data</h3>
-      <div class="cmd"><pre><code>make down</code></pre><button type="button" class="copy">Copy</button></div>
-      <p>Volumes survive, so the source, Kafka, the lake and gold are still there after the next <code>make pipeline</code>. <a href="https://github.com/jonathan5p/deel-home-task#readme">The README</a> has every command, and <a href="../operations/running-the-pipeline/">Running the pipeline</a> the details.</p></div></div>
-  </div>
-</section>
-
-<!-- 8. Production -->
-<section class="section" id="production" data-section aria-labelledby="production-title">
-  <div class="wrap">
-    <div class="eyebrow">8 &middot; What production would need</div>
-    <h2 id="production-title">Same design, managed pieces</h2>
-    <p class="lede">The local layout mirrors a production deployment on one small, shared cluster. Moving it is mostly configuration and sizing, not a redesign.</p>
-    <div class="grid g3">
-      <div class="card"><h3>Compute</h3><ul><li>Each streaming job as its own application: EMR in YARN cluster mode, or a Spark Operator <code>SparkApplication</code> on Kubernetes.</li><li>Fixed executors per stream, sized from the streaming metrics; dynamic allocation for batch jobs.</li></ul></div>
-      <div class="card"><h3>Storage and catalog</h3><ul><li>S3 instead of SeaweedFS, a configuration change.</li><li>A REST catalog or AWS Glue instead of the JDBC catalog.</li><li>Checkpoints and event logs on S3.</li></ul></div>
-      <div class="card"><h3>Throughput</h3><ul><li>More Kafka partitions per topic; <code>maxOffsetsPerTrigger</code> to cap catch-up batches.</li><li>Silver's state partitions chosen ahead of growth.</li><li>Gold is bound by its single writer lock: longer triggers, finer locking, or a store built for larger facts.</li></ul></div>
-      <div class="card"><h3>Observability</h3><ul><li>Streaming metrics in a time-series system instead of the Spark UI.</li><li>Per-batch stats in a separate <code>observability</code> catalog in the lake (proposed, <a href="../architecture/decisions/#d33--pipeline-metrics-in-a-separate-observability-catalog-proposed">D33</a>).</li></ul></div>
-      <div class="card"><h3>Data quality and upkeep</h3><ul><li>A data quality framework (such as Deequ, Great Expectations or Soda) for declarative checks, profiling, history and alerting.</li><li>Maintenance and retention submitted by a scheduler instead of Compose loops.</li></ul></div>
-      <div class="card"><h3>Read more</h3><p><a href="../architecture/sizing/#scaling-to-production">Scaling to production</a> in the sizing strategy, and <a href="../architecture/decisions/">all design decisions</a>.</p></div>
-    </div>
+<section class="section" id="next" aria-labelledby="next-title">
+  <h2 id="next-title">What production would need</h2>
+  <div class="body">
+    <p>The pipeline logic, the model and the checks are built as they would be in production. The platform around them is simplified for one machine:</p>
+    <ul>
+      <li>AWS S3 and a catalog service instead of SeaweedFS and the JDBC catalog.</li>
+      <li>Managed, replicated Kafka with more partitions and a schema registry.</li>
+      <li>Spark on EMR or Kubernetes, sized from measured streaming metrics.</li>
+      <li>Metrics, dashboards and alerts, and a data quality framework that keeps its results.</li>
+      <li>Secrets, TLS and authentication, infrastructure as code and deployments from CI.</li>
+    </ul>
+    <p><a href="../architecture/production/">The way to production &rarr;</a></p>
   </div>
 </section>
 </main>
 
 <footer>
-  <div class="wrap">
-    <span>Built from the project's repository and documentation.</span>
-    <span><a href="../">Documentation</a> &middot; <a href="https://github.com/jonathan5p/deel-home-task">GitHub</a> &middot; <a href="../reference/">Table reference</a></span>
-  </div>
+  <span>I built this pipeline for Deel's data engineering take-home.</span>
+  <span><a href="../">Documentation</a> &middot; <a href="https://github.com/jonathan5p/deel-home-task">GitHub</a> &middot; <a href="../reference/">Table reference</a></span>
 </footer>
-
-<aside class="panel" id="panel" role="dialog" aria-modal="false" aria-labelledby="panel-title" aria-hidden="true">
-  <div class="panel-head">
-    <div><div class="kicker" id="panel-kicker"></div><h3 id="panel-title" tabindex="-1"></h3><div class="tech" id="panel-tech"></div></div>
-    <button type="button" class="close icon-btn" id="panel-close" aria-label="Close details">&times;</button>
-  </div>
-  <div class="panel-body" id="panel-body"></div>
-</aside>
 
 <script>
 (function () {
   "use strict";
   const SVGNS = "http://www.w3.org/2000/svg";
-  const REPO = "https://github.com/jonathan5p/deel-home-task";
   const DEC = "../architecture/decisions/#";
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const narrow = () => window.matchMedia("(max-width: 1080px)").matches;
 
-  // Theme toggle: auto -> light -> dark.
+  // Theme: auto -> light -> dark.
   const root = document.documentElement;
   const themeBtn = document.getElementById("theme-toggle");
-  const themeLabel = document.getElementById("theme-label");
   const THEMES = ["auto", "light", "dark"];
   function applyTheme(t) {
     if (t === "auto") root.removeAttribute("data-theme"); else root.setAttribute("data-theme", t);
-    themeLabel.textContent = t[0].toUpperCase() + t.slice(1);
+    themeBtn.textContent = "Theme: " + t;
     themeBtn.setAttribute("aria-label", "Colour theme: " + (t === "auto" ? "automatic" : t));
   }
   let theme = "auto";
@@ -887,233 +476,196 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
   }
 
   const L = (label, href) => ({ label, href });
+  const D = (num, label, anchor) => ({ num, label, anchor });
+  // Text fields are trusted HTML written for this page.
   const NODES = [
-    { id: "source", x: 16, y: 110, w: 108, h: 80, layer: "source", form: "row", t: "finance_db", s: ["PostgreSQL 15", "supplied source"],
-      kicker: "Source", title: "Source database: finance_db", tech: ["PostgreSQL 15", "logical replication", "REPLICA IDENTITY FULL"],
-      what: "The live operational database supplied with the assignment. Its operations schema holds customers, products, orders and order_items, and a pg_cron data generator keeps creating orders and updating statuses, customers and products.",
-      how: ["Every committed change is written to PostgreSQL's write-ahead log; Debezium reads it through a logical replication slot.",
-        "The tables use REPLICA IDENTITY FULL, so updates and deletes carry the full row before the change.",
-        "The WAL position of a change (its LSN) only grows, in commit order. The pipeline uses it as _commit_sequence to order versions of a key.",
-        "Used exactly as provided: no DDL or connector changes."],
-      why: [["D29", "the source and the connector stay as provided", "d29--the-source-database-and-the-debezium-connector-stay-as-provided"], ["D20", "a separate analytics PostgreSQL keeps analytical load away from the source", "d20--a-separate-analytics-postgresql"]],
-      docs: [L("Source database and CDC", "../lakehouse/source-and-cdc/"), L("Supplied assignment README", "../reference/original-readme/")] },
-    { id: "debezium", x: 172, y: 110, w: 108, h: 80, layer: "kafka", form: "event", t: "Debezium", s: ["Kafka Connect", "as supplied"],
-      kicker: "CDC", title: "Debezium on Kafka Connect", tech: ["Debezium 2.4", "Kafka Connect", "JSON, no schemas"],
-      what: "Turns every row change into a change event with the row before and after, the operation, and where and when it was committed in the source.",
-      how: ["On start it snapshots each table (op r), then streams inserts (c), updates (u) and deletes (d).",
-        "A delete is followed by a tombstone: the same key with a null value, for log compaction.",
-        "source.lsn and source.ts_ms give the commit position and time; ts_ms is when Debezium processed the change.",
-        "A heartbeat every 10 seconds keeps the replication slot advancing while the tables are idle.",
-        "make cdc-pause and make cdc-resume stop and resume capture without losing changes."],
-      why: [["D29", "the decimals and timestamps are decoded downstream instead of reconfiguring the connector", "d29--the-source-database-and-the-debezium-connector-stay-as-provided"]],
-      docs: [L("Change event format", "../lakehouse/source-and-cdc/#message-format"), L("Pausing the source changes", "../operations/running-the-pipeline/#pausing-the-source-changes")] },
-    { id: "kafka", x: 328, y: 110, w: 108, h: 80, layer: "kafka", form: "event", t: "Kafka", s: ["4 CDC topics", "1 partition each"],
-      kicker: "Transport", title: "Kafka topics", tech: ["Confluent 7.5.0", "1 broker", "ZooKeeper"],
-      what: "One topic per source table, finance_db.operations.{customers, products, orders, order_items}. Keys are the primary key, values the Debezium JSON event.",
-      how: ["One broker with one partition per topic (the broker default): one read task per topic per batch.",
-        "Kafka and ZooKeeper keep their data in volumes across make down.",
-        "Delivery is at least once: after a connector restart, a change can come again at a new offset. Downstream identity therefore never relies on offsets."],
-      why: [["D30", "Kafka coordinates are lineage, not identity", "d30--change-identity-in-readable-columns-data-vault-hashing-only-in-part"]],
-      docs: [L("Topics", "../lakehouse/source-and-cdc/#topics"), L("Services", "../architecture/overview/#services")] },
-    { id: "landing", x: 484, y: 110, w: 108, h: 80, layer: "landing", form: "file", t: "Landing", s: ["raw Avro files", "landing-job"],
-      kicker: "Lake &middot; ingestion", title: "Landing: raw Avro files", tech: ["Spark Structured Streaming", "file sink", "Avro"],
-      what: "A replayable copy of every Kafka record exactly as delivered: key and value as raw bytes, plus topic, partition, offset, timestamp and timestamp type. Tombstones keep their null value.",
-      how: ["One streaming query per topic, from the earliest offset, into s3a://lake/landing/<topic>/ with no partition folders.",
-        "The file sink records committed files in _spark_metadata and the checkpoint records offsets, so a restart neither skips nor duplicates records.",
-        "Micro-batches every LANDING_TRIGGER_SECONDS (10 s); capped at 2 cores with spark.cores.max.",
-        "make spark-sql with the landing examples inspects any topic by key, offset range or time."],
-      why: [["D18", "raw Avro keeps a faithful, replayable record", "d18--landing-as-raw-avro-files-one-folder-per-topic"], ["D17", "the layered lake", "d17--layered-lake-landing-bronze-silver-gold-built-from-silver"]],
-      docs: [L("Landing", "../lakehouse/landing/"), L("Inspecting landing with Spark SQL", "../lakehouse/landing/#inspecting-the-landing-zone-with-spark-sql")] },
-    { id: "bronze", x: 640, y: 110, w: 108, h: 80, layer: "bronze", form: "typed", t: "Bronze", s: ["typed change log", "bronze-job"],
-      kicker: "Lake &middot; bronze", title: "Bronze: typed change log", tech: ["Iceberg", "days(_published_at)", "append-only"],
-      what: "One typed row per change event, no deduplication. Deletes keep their before image. Each row carries its Kafka coordinates as lineage and the change metadata the later layers rely on.",
-      how: ["parse_changes is a pure DataFrame transform (no Python UDFs), shared by the stream and the replay job.",
-        "Adds _change_op (create, update, delete, snapshot), _commit_sequence from source.lsn, _changed_at (source commit time), _captured_at and _content_hash, a SHA-256 of the business columns.",
-        "Decodes Debezium's variable-scale decimal, epoch-millisecond timestamps and day-number dates; renames quanity to quantity.",
-        "Two queries per topic: valid rows to lake.bronze.<entity>, invalid ones to <entity>_quarantine. Iceberg's sink skips batches it already committed.",
-        "Schemas are explicit, so a source change never alters bronze silently."],
-      why: [["D30", "a readable change identity and a content hash", "d30--change-identity-in-readable-columns-data-vault-hashing-only-in-part"], ["D31", "bronze is a faithful log", "d31--late-arrivals-are-history-deduplication-happens-in-silver"], ["D34", "metadata columns start with _", "d34--metadata-columns-start-with-_"]],
-      docs: [L("Bronze", "../lakehouse/bronze/"), L("Replaying a landing range", "../operations/maintenance-and-recovery/#replaying-a-landing-range-into-bronze"), L("Bronze tables", "../reference/bronze/")] },
-    { id: "quarantine", x: 640, y: 240, w: 108, h: 52, layer: "bad", form: "typed", t: "Quarantine", s: ["invalid records"],
-      kicker: "Lake &middot; bronze", title: "Quarantine tables", tech: ["Iceberg", "append-only"],
-      what: "Records that fail validation do not stop the stream: they are kept with their raw key and value, their Kafka coordinates, the landing file they came from and the first check they failed.",
-      how: ["Failure reasons: not a JSON Debezium envelope, unknown op (for example a truncate), a missing key column, a missing NOT NULL column, or an undecodable decimal.",
-        "Each record points at its landing file, so it can be fixed and replayed with make bronze-replay; a replay quarantines a record once, however often it runs."],
-      why: [["D17", "bronze keeps a quarantine table for records that fail validation", "d17--layered-lake-landing-bronze-silver-gold-built-from-silver"]],
-      docs: [L("Quarantine and failure reasons", "../lakehouse/bronze/")] },
-    { id: "silver", x: 796, y: 110, w: 108, h: 80, layer: "silver", form: "version", t: "Silver", s: ["version history", "silver-job"],
-      kicker: "Lake &middot; silver", title: "Silver: version history", tech: ["Iceberg", "RocksDB state", "days(_changed_at)"],
-      what: "One row per change identity, appended and never updated, so gold can stream it. A change delivered twice is one row; a late change is appended and takes its place in history by _commit_sequence.",
-      how: ["dropDuplicates on (key, _commit_sequence, _change_op), without a watermark, so a late change is never dropped.",
-        "The deduplication state lives in RocksDB on the executors' disks and is saved in the checkpoint every micro-batch; 2 shuffle partitions, one per core.",
-        "Adds _is_deleted; a delete version keeps the row's last known values.",
-        "Versions that change nothing (re-snapshots, audit-only updates) keep rows of their own; the views fold them."],
-      why: [["D36", "exact duplicates on write, unchanged versions on read", "d36--silver-deduplication-exact-duplicates-on-write-unchanged-versions-on-read"], ["D31", "late arrivals are history", "d31--late-arrivals-are-history-deduplication-happens-in-silver"], ["D17", "silver must stay append-only to be streamable", "d17--layered-lake-landing-bronze-silver-gold-built-from-silver"]],
-      docs: [L("Silver", "../lakehouse/silver/"), L("Silver tables", "../reference/silver/")] },
-    { id: "sviews", x: 796, y: 240, w: 108, h: 52, layer: "silver", form: "version", t: "Silver views", s: ["_history, _current"],
-      kicker: "Lake &middot; silver", title: "Silver history and current views", tech: ["Iceberg views", "Spark SQL", "Jinja templates"],
-      what: "Two views per entity: the version history with validity ranges, and the current state, one row per live key.",
-      how: ["Fold rule: per key, ordered by _commit_sequence, a version folds into the previous one when its _content_hash and _is_deleted both match.",
-        "_history adds _valid_from, _valid_to and _is_current; _current keeps the current, not-deleted rows.",
-        "Computed over the whole table on every read, so late versions need no special handling.",
-        "make lake-views and every maintenance run replace a view only when its SQL or descriptions changed."],
-      why: [["D36", "unchanged versions are folded on read", "d36--silver-deduplication-exact-duplicates-on-write-unchanged-versions-on-read"]],
+    { id: "source", x: 16, y: 110, w: 124, h: 80, layer: "source", form: "row", t: "finance_db", s: "PostgreSQL 15",
+      kicker: "Source", title: "The source database", built: "PostgreSQL 15, as supplied with the assignment",
+      hint: "the supplied orders database",
+      p: ["The live database that came with the assignment: customers, products, orders and order items. A generator keeps creating orders and changing them.",
+        "PostgreSQL writes every commit to its write-ahead log, and that is where the pipeline starts. I left the database and its connector exactly as supplied."],
+      why: [D("D29", "the source side stays as provided", "d29--the-source-database-and-the-debezium-connector-stay-as-provided"), D("D20", "analytics run on a separate PostgreSQL", "d20--a-separate-analytics-postgresql")],
+      docs: [L("Source database and CDC", "../lakehouse/source-and-cdc/")] },
+    { id: "debezium", x: 172, y: 110, w: 124, h: 80, layer: "kafka", form: "event", t: "Debezium", s: "Kafka Connect",
+      kicker: "Capture", title: "Debezium", built: "Debezium 2.4 on Kafka Connect, as supplied",
+      hint: "turns each row change into an event",
+      p: ["Debezium reads the write-ahead log and turns each row change into an event: the row before, the row after, the operation, and where in the log it was committed.",
+        "It first copies each table as a snapshot, then streams every insert, update and delete."],
+      why: [D("D29", "its formats are decoded downstream, the connector is unchanged", "d29--the-source-database-and-the-debezium-connector-stay-as-provided")],
+      docs: [L("The change event format", "../lakehouse/source-and-cdc/#message-format")] },
+    { id: "kafka", x: 328, y: 110, w: 124, h: 80, layer: "kafka", form: "event", t: "Kafka", s: "4 topics",
+      kicker: "Transport", title: "Kafka", built: "One broker, one topic per source table",
+      hint: "one topic per source table",
+      p: ["Each source table has its own topic, keyed by the primary key.",
+        "Kafka delivers at least once: after a connector restart the same change can arrive again, at a new offset. So nothing downstream uses the offset to identify a change."],
+      why: [D("D30", "a change is identified by its content, not its offset", "d30--change-identity-in-readable-columns-data-vault-hashing-only-in-part")],
+      docs: [L("Topics", "../lakehouse/source-and-cdc/#topics")] },
+    { id: "landing", x: 484, y: 110, w: 124, h: 80, layer: "landing", form: "file", t: "Landing", s: "raw Avro files",
+      kicker: "Lake", title: "Landing: a raw copy of Kafka", built: "Spark Structured Streaming, Avro files on SeaweedFS",
+      hint: "every Kafka record, unchanged",
+      p: ["The first streaming job copies every Kafka record into Avro files in the lake, unchanged, with its topic, partition and offset.",
+        "This copy is what I replay from when a later layer needs it. The job's checkpoint makes sure a restart neither skips nor repeats a record."],
+      why: [D("D18", "landing as raw Avro", "d18--landing-as-raw-avro-files-one-folder-per-topic")],
+      docs: [L("Landing", "../lakehouse/landing/")] },
+    { id: "bronze", x: 640, y: 110, w: 124, h: 80, layer: "bronze", form: "typed", t: "Bronze", s: "typed change log",
+      kicker: "Lake", title: "Bronze: a typed change log", built: "Spark Structured Streaming, Iceberg tables",
+      hint: "one typed row per change",
+      p: ["The bronze job turns each raw record into a typed row, one row per change. It decodes Debezium's number and date formats and adds what the later layers need: the operation, the position in the source log and a hash of the business columns.",
+        "A record that fails validation goes to a quarantine table instead of stopping the job. Bronze removes nothing, so it stays a faithful log."],
+      why: [D("D30", "a readable change identity", "d30--change-identity-in-readable-columns-data-vault-hashing-only-in-part"), D("D31", "duplicates are removed later, in silver", "d31--late-arrivals-are-history-deduplication-happens-in-silver")],
+      docs: [L("Bronze", "../lakehouse/bronze/")] },
+    { id: "quarantine", x: 640, y: 250, w: 124, h: 52, layer: "bad", form: "typed", t: "Quarantine", s: "invalid records",
+      kicker: "Lake", title: "Quarantine", built: "Iceberg tables next to bronze",
+      hint: "records bronze cannot read",
+      p: ["A record bronze cannot read, such as an unknown operation or a missing key, is kept here with the reason and the landing file it came from. The stream keeps going.",
+        "Once the cause is fixed, the record can be replayed into bronze."],
+      why: [D("D17", "each layer has one job", "d17--layered-lake-landing-bronze-silver-gold-built-from-silver")],
+      docs: [L("Bronze and its quarantine", "../lakehouse/bronze/"), L("Replaying into bronze", "../operations/maintenance-and-recovery/#replaying-a-landing-range-into-bronze")] },
+    { id: "silver", x: 796, y: 110, w: 124, h: 80, layer: "silver", form: "version", t: "Silver", s: "version history",
+      kicker: "Lake", title: "Silver: the version history", built: "Spark Structured Streaming, Iceberg tables",
+      hint: "every version, once",
+      p: ["Silver keeps every version of every customer, product, order and item, once. A change that arrives twice is stored once. A change that arrives late is still kept, and takes its place in the history.",
+        "Silver only ever appends. That is what lets the gold job read it as a stream."],
+      why: [D("D36", "how silver removes duplicates", "d36--silver-deduplication-exact-duplicates-on-write-unchanged-versions-on-read"), D("D31", "late arrivals are history", "d31--late-arrivals-are-history-deduplication-happens-in-silver")],
+      docs: [L("Silver", "../lakehouse/silver/")] },
+    { id: "sviews", x: 796, y: 250, w: 124, h: 52, layer: "silver", form: "version", t: "Silver views", s: "history, current",
+      kicker: "Lake", title: "Silver views", built: "Iceberg views, computed on read",
+      hint: "history and current state per table",
+      p: ["Two views per table: the full history, with the period each version was valid, and the current state.",
+        "They are computed when they are read, so a late change needs no special handling. Versions that change nothing are folded together here."],
+      why: [D("D36", "unchanged versions are folded on read", "d36--silver-deduplication-exact-duplicates-on-write-unchanged-versions-on-read")],
       docs: [L("Silver views", "../lakehouse/silver/")] },
-    { id: "gold", x: 952, y: 76, w: 140, h: 148, layer: "gold", form: "star", t: "Gold", s: ["PostgreSQL 18.6"],
-      kicker: "Gold &middot; PostgreSQL", title: "Gold: the star schema in PostgreSQL", tech: ["PostgreSQL 18.6", "Spark JDBC", "psycopg", "advisory lock"],
-      what: "The serving layer: SCD2 customer and product dimensions, seeded date and status dimensions, append-only history facts partitioned by month, and current-state tables for orders and items. Consumers read public views in gold; the pipeline writes gold_internal.",
-      how: ["Four streaming queries, one per silver table. Each micro-batch is written by Spark's JDBC writer into an unlogged staging table, then merged by the driver in one transaction.",
-        "Every merge takes one advisory lock first, so the four streams' merges never miss each other's rows.",
-        "History: INSERT ... ON CONFLICT DO NOTHING. Current state: MERGE that only applies a higher _commit_sequence. Deletes are soft.",
-        "A dimension merge re-resolves the dimension keys of the facts it affects, so a late customer or product still ends in the right version.",
-        "is_open is stored on current_orders, and partial indexes hold only the open orders.",
-        "Retention drops whole monthly history partitions older than 36 months; current state and dimensions are never trimmed."],
-      why: [["D3", "PostgreSQL, not ClickHouse", "d3--gold-in-postgresql-not-clickhouse"], ["D32", "the dimensional model", "d32--the-gold-dimensional-model"], ["D35", "public views over an internal schema", "d35--public-views-over-an-internal-schema"], ["D40", "indexes from query plans", "d40--gold-indexes-chosen-from-the-query-plans-of-the-current-use-cases"], ["D37", "retention by monthly partitions", "d37--gold-retention-by-monthly-partitions"], ["D38", "rebuild from silver", "d38--rebuild-gold-from-silver-with-an-optional-cutoff"]],
-      docs: [L("Gold", "../lakehouse/gold/"), L("Gold model", "../lakehouse/gold/model/"), L("Gold writer", "../lakehouse/gold/writer/"), L("Gold tables and views", "../reference/gold/")] },
-    { id: "lakegold", x: 952, y: 240, w: 140, h: 52, layer: "gold", form: "star", t: "lake.gold views", s: ["computed from silver"],
-      kicker: "Gold &middot; lake", title: "Gold in the lake: Iceberg views", tech: ["Iceberg views", "natural keys", "full history"],
-      what: "One Iceberg view per public gold relation, computed from silver at read time with the same rules as PostgreSQL gold. Nothing writes them but make lake-views; they store nothing.",
-      how: ["Folding and validity come from the silver _history views; current state is the latest change per key, without deleted keys.",
-        "Natural keys (customer_id, product_id) instead of PostgreSQL's surrogate keys; facts carry the attributes resolved as of each change.",
-        "Built from the same declarations as the gold writer; the calendar and status views are checked against PostgreSQL's seeds.",
-        "The gold data quality check compares every PostgreSQL view with its lake view."],
-      why: [["D39", "gold in the lake as views over silver", "d39--gold-in-the-lake-as-iceberg-views-over-silver"]],
-      docs: [L("Gold in the lake", "../lakehouse/gold/writer/#gold-in-the-lake"), L("Querying the lake", "../serving/lake-access/")] },
-    { id: "api", x: 1150, y: 40, w: 118, h: 56, layer: "serve", form: "answer", t: "Analytics API", s: ["FastAPI :8000"],
-      kicker: "Serving", title: "Analytics API", tech: ["FastAPI 0.162.4", "psycopg pool", "read-only login"],
-      what: "The four business questions, freshness and health over HTTP, read from the gold views only.",
-      how: ["Connects as api_reader, a member of the read-only gold_reader role, with a 5 s statement timeout; no access to gold_internal.",
-        "Each metric returns exactly the rows of its query in analytics/sql/gold/, in the same order.",
-        "Starts even while the database is down, reports itself unhealthy and reconnects when it is back.",
-        "A slim Python 3.14 image run by an unprivileged user; interactive docs at /docs."],
-      why: [["D35", "consumers read the public views", "d35--public-views-over-an-internal-schema"]],
-      docs: [L("Analytics API", "../serving/api/"), L("Read-only service logins", "../architecture/infrastructure/#read-only-service-logins")] },
-    { id: "grafana", x: 1150, y: 122, w: 118, h: 56, layer: "serve", form: "answer", t: "Grafana", s: ["Gold metrics :3000"],
-      kicker: "Serving", title: "Grafana: Gold metrics dashboard", tech: ["Grafana 13.0.2", "provisioned as code"],
-      what: "One panel per business question plus freshness per entity, refreshed every 30 seconds. Anonymous visitors can view it.",
-      how: ["Datasource and dashboard are provisioned from monitoring/grafana/ and cannot be changed from the UI.",
-        "Each question panel runs exactly the query of its file in analytics/sql/gold/; unit tests check that they match.",
-        "Connects as the read-only grafana login with a 30 s statement timeout."],
-      why: [["D35", "consumers read the public views", "d35--public-views-over-an-internal-schema"]],
+    { id: "gold", x: 952, y: 70, w: 140, h: 160, layer: "gold", form: "star", t: "Gold", s: "PostgreSQL 18.6",
+      kicker: "Gold", title: "Gold: a star schema in PostgreSQL", built: "Spark Structured Streaming writing to PostgreSQL 18.6",
+      hint: "the star schema that answers the questions",
+      p: ["The gold job keeps a star schema in a separate PostgreSQL: customer and product dimensions that keep their history, history facts for orders and items, and current-state tables.",
+        "Each micro-batch is staged, then merged in one transaction. Current state only accepts a newer version, so a late or replayed change never overwrites newer data.",
+        "Consumers read public views; the tables the pipeline writes stay internal."],
+      why: [D("D3", "PostgreSQL, not ClickHouse", "d3--gold-in-postgresql-not-clickhouse"), D("D32", "the dimensional model", "d32--the-gold-dimensional-model"), D("D35", "public views over an internal schema", "d35--public-views-over-an-internal-schema")],
+      docs: [L("Gold", "../lakehouse/gold/"), L("The model", "../lakehouse/gold/model/"), L("The writer", "../lakehouse/gold/writer/")] },
+    { id: "lakegold", x: 952, y: 250, w: 140, h: 52, layer: "gold", form: "star", t: "Gold in the lake", s: "views over silver",
+      kicker: "Gold", title: "Gold in the lake", built: "Iceberg views over silver",
+      hint: "the same model, computed from silver",
+      p: ["The same gold model also exists in the lake, as views over silver. They store nothing and compute the answer when read, over the full history.",
+        "The gold data quality check compares PostgreSQL with them."],
+      why: [D("D39", "gold in the lake as views", "d39--gold-in-the-lake-as-iceberg-views-over-silver")],
+      docs: [L("Gold in the lake", "../lakehouse/gold/writer/#gold-in-the-lake")] },
+    { id: "api", x: 1150, y: 40, w: 118, h: 56, layer: "serve", form: "answer", t: "HTTP API", s: "FastAPI",
+      kicker: "Serving", title: "Analytics API", built: "FastAPI, with a read-only database login",
+      hint: "the four answers over HTTP",
+      p: ["A small FastAPI service answers the four questions over HTTP, plus how fresh each table is. It reads only the public gold views, with a read-only login."],
+      why: [D("D35", "consumers read the public views", "d35--public-views-over-an-internal-schema")],
+      docs: [L("Analytics API", "../serving/api/")] },
+    { id: "grafana", x: 1150, y: 122, w: 118, h: 56, layer: "serve", form: "answer", t: "Grafana", s: "Gold metrics",
+      kicker: "Serving", title: "Grafana dashboard", built: "Grafana, provisioned from the repository",
+      hint: "one panel per question",
+      p: ["A dashboard with one panel per question and the freshness of each table, refreshed every 30 seconds. It is provisioned from files in the repository and runs the same SQL as the API."],
+      why: [D("D35", "consumers read the public views", "d35--public-views-over-an-internal-schema")],
       docs: [L("Grafana", "../serving/grafana/")] },
-    { id: "sparksql", x: 1150, y: 240, w: 118, h: 52, layer: "serve", form: "answer", t: "Spark SQL", s: ["make spark-sql"],
-      kicker: "Serving", title: "Spark SQL on the lake", tech: ["Spark SQL", "Iceberg views"],
-      what: "make spark-sql opens a Spark SQL shell on the cluster that can query every lake table and view, including the silver views and lake.gold.",
-      how: ["Runs in its own driver container like any other application.",
-        "The business questions can be answered from lake.gold over the full history, for example the top 3 delivery dates by open orders."],
-      why: [["D39", "the lake has the gold model too", "d39--gold-in-the-lake-as-iceberg-views-over-silver"]],
-      docs: [L("The lake gold views", "../serving/lake-access/#the-lake-gold-views")] },
-    { id: "rest", x: 1150, y: 310, w: 118, h: 52, layer: "serve", form: "answer", t: "DuckDB", s: ["via REST catalog"],
-      kicker: "Serving", title: "DuckDB through the Iceberg REST catalog", tech: ["iceberg-rest :8181", "read-only", "catalog profile"],
-      what: "An optional read-only Iceberg REST catalog over the JDBC catalog, so engines such as DuckDB can attach the lake and read the bronze and silver tables.",
-      how: ["Starts with make up PROFILES=catalog and logs in as lake_catalog_reader, which can only read the catalog database.",
-        "DuckDB reads tables only: the Iceberg views are stored in Spark SQL, so the equivalent SQL is written over the silver tables.",
-        "The infra tests use the same path to read scenario tables back without starting Spark drivers."],
-      why: [["D9", "a REST catalog was the production-like alternative to the JDBC catalog", "d9--iceberg-with-a-jdbc-catalog-on-the-analytics-postgresql"]],
-      docs: [L("Query the lake from DuckDB", "../serving/lake-access/#query-the-lake-from-duckdb"), L("Iceberg REST catalog", "../architecture/infrastructure/#iceberg-rest-catalog")] },
+    { id: "sparksql", x: 1150, y: 250, w: 118, h: 52, layer: "serve", form: "answer", t: "Spark SQL", s: "on the lake",
+      kicker: "Serving", title: "Spark SQL on the lake", built: "A SQL shell on the Spark cluster",
+      hint: "query any lake table or view",
+      p: ["<code>make spark-sql</code> opens a SQL shell that can query every table and view in the lake, including the gold views over the full history."],
+      why: [D("D39", "the lake has the gold model too", "d39--gold-in-the-lake-as-iceberg-views-over-silver")],
+      docs: [L("Querying the lake", "../serving/lake-access/")] },
+    { id: "rest", x: 1150, y: 316, w: 118, h: 52, layer: "serve", form: "answer", t: "DuckDB", s: "REST catalog",
+      kicker: "Serving", title: "DuckDB", built: "An optional read-only Iceberg REST catalog",
+      hint: "read the lake without Spark",
+      p: ["An optional read-only Iceberg REST catalog lets engines such as DuckDB read the lake's tables without Spark. The infra tests use it too, to read results back quickly."],
+      why: [D("D9", "the Iceberg catalog", "d9--iceberg-with-a-jdbc-catalog-on-the-analytics-postgresql")],
+      docs: [L("Query the lake from DuckDB", "../serving/lake-access/#query-the-lake-from-duckdb")] },
 
-    { id: "seaweedfs", x: 16, y: 408, w: 160, h: 62, layer: "landing", side: true, t: "SeaweedFS", s: ["S3 object store, bucket lake"],
+    { id: "seaweedfs", x: 16, y: 410, w: 160, h: 56, layer: "landing", t: "SeaweedFS", s: "S3 object store",
       related: ["landing", "bronze", "quarantine", "silver"],
-      kicker: "Platform", title: "SeaweedFS: the lake's object store", tech: ["SeaweedFS 4.52", "S3 API", "weed mini"],
-      what: "One S3-compatible container holds the landing files, the Iceberg data and metadata, the streaming checkpoints and the data quality reports.",
-      how: ["Runs as a single weed mini container and creates the lake bucket on start.",
-        "S3 API on port 8333 and a filer UI on 8888 to browse files and checkpoints.",
-        "Any S3-compatible store or AWS S3 is a configuration change."],
-      why: [["D13", "SeaweedFS instead of MinIO", "d13--object-store-seaweedfs-instead-of-minio"], ["D8", "fully local", "d8--fully-local-no-cloud-services"]],
+      kicker: "Platform", title: "SeaweedFS, the lake's storage", built: "One container with an S3 API",
+      hint: "where the lake's files live",
+      p: ["One S3-compatible container holds the landing files, the Iceberg tables, the streaming checkpoints and the data quality reports.",
+        "Moving to AWS S3 is a configuration change."],
+      why: [D("D13", "SeaweedFS instead of MinIO", "d13--object-store-seaweedfs-instead-of-minio")],
       docs: [L("Data lake (SeaweedFS)", "../architecture/infrastructure/#data-lake-seaweedfs")] },
-    { id: "catalog", x: 194, y: 408, w: 160, h: 62, layer: "source", side: true, t: "Iceberg catalog", s: ["JDBC, on analytics-db"],
+    { id: "catalog", x: 194, y: 410, w: 160, h: 56, layer: "source", t: "Iceberg catalog", s: "in PostgreSQL",
       related: ["bronze", "silver", "sviews", "lakegold", "quarantine", "rest", "gold"],
-      kicker: "Platform", title: "Analytics PostgreSQL and the Iceberg JDBC catalog", tech: ["PostgreSQL 18.6", "Iceberg JDBC catalog", "schema V1"],
-      what: "A separate PostgreSQL instance, never the source: database analytics holds gold, and database iceberg_catalog holds the Iceberg JDBC catalog, which stores the lake's tables and views.",
-      how: ["Every Iceberg commit updates the catalog; the JDBC catalog with schema version V1 also stores views.",
-        "Consumers use read-only service logins in the gold_reader role, created by make db-logins.",
-        "The optional REST catalog serves the same catalog read-only."],
-      why: [["D9", "Iceberg with a JDBC catalog", "d9--iceberg-with-a-jdbc-catalog-on-the-analytics-postgresql"], ["D20", "a separate analytics PostgreSQL", "d20--a-separate-analytics-postgresql"]],
+      kicker: "Platform", title: "The analytics PostgreSQL and the Iceberg catalog", built: "PostgreSQL 18.6, Iceberg JDBC catalog",
+      hint: "the lake's catalog and gold's database",
+      p: ["A second PostgreSQL, never the source, holds two databases: gold, and the Iceberg catalog that records every table and view in the lake.",
+        "Keeping the catalog here means one service less to run."],
+      why: [D("D9", "Iceberg with a JDBC catalog", "d9--iceberg-with-a-jdbc-catalog-on-the-analytics-postgresql"), D("D20", "a separate analytics PostgreSQL", "d20--a-separate-analytics-postgresql")],
       docs: [L("Analytics database", "../architecture/infrastructure/#analytics-database")] },
-    { id: "spark", x: 372, y: 408, w: 160, h: 62, layer: "kafka", side: true, t: "Spark cluster", s: ["master + 2 workers, 10 cores"],
+    { id: "spark", x: 372, y: 410, w: 160, h: 56, layer: "kafka", t: "Spark cluster", s: "1 master, 2 workers",
       related: ["landing", "bronze", "silver", "gold"],
-      kicker: "Platform", title: "Spark standalone cluster", tech: ["Spark 4.1.4", "Iceberg 1.12.0", "client mode"],
-      what: "A standalone master with two workers of 5 cores and 5 GiB each. Every application gets its own throwaway driver container; its executors run on the shared workers.",
-      how: ["Each application is capped at spark.cores.max=2: the four streaming jobs use 8 of the 10 cores and leave 2 for ad-hoc runs and maintenance.",
-        "One image runs the master, the workers and every driver, so versions always match.",
-        "Streaming jobs are Compose services with restart: unless-stopped; a failed job resumes from its checkpoints.",
-        "Sizing ties each setting to a variable: input rate, partitions, trigger interval, state size and the gold write path."],
-      why: [["D27", "one driver container per application", "d27--one-driver-container-per-application-executors-on-shared-workers"], ["D14", "Spark 4.1.4 with Iceberg 1.12.0", "d14--spark-414-with-iceberg-1120"]],
+      kicker: "Platform", title: "The Spark cluster", built: "Spark 4.1.4 with Iceberg 1.12.0, standalone",
+      hint: "runs every job",
+      p: ["A small standalone cluster: one master and two workers. Each job gets its own driver container, and its executors share the workers.",
+        "The streaming jobs restart on failure and continue from their checkpoints. The sizing strategy ties each setting to what drives it: input rate, partitions, trigger interval and state size."],
+      why: [D("D27", "one driver container per application", "d27--one-driver-container-per-application-executors-on-shared-workers")],
       docs: [L("Spark sizing strategy", "../architecture/sizing/"), L("Running the pipeline", "../operations/running-the-pipeline/")] },
-    { id: "dq", x: 550, y: 408, w: 160, h: 62, layer: "ok", side: true, t: "Data quality", s: ["make data-quality"],
+    { id: "dq", x: 550, y: 410, w: 160, h: 56, layer: "ok", t: "Data quality", s: "Kafka to gold",
       related: ["landing", "bronze", "silver", "gold", "quarantine", "lakegold"], relatedDq: true,
-      kicker: "Operations", title: "Data quality checks", tech: ["Spark job", "JSON reports in the lake", "data-quality profile"],
-      what: "A chain of checks that compares each layer with the one before it, from Kafka to gold, and fails if anything is missing, duplicated or different.",
-      how: ["landing: every Kafka offset landed once, with the same bytes. bronze: every landed record in bronze or quarantine exactly once. silver: every change identity once. gold: every PostgreSQL view equals its lake view over silver.",
-        "Each check is bounded by what the downstream stream has committed, so pipeline lag never causes a false failure.",
-        "Every run writes a JSON report to the lake and exits 1 on a failure; the data-quality profile runs it on a schedule.",
-        "The checks are production code, unit-tested on small DataFrames, and never part of the infra tests."],
-      why: [["D39", "the gold check reuses the lake gold views", "d39--gold-in-the-lake-as-iceberg-views-over-silver"]],
+      kicker: "Operations", title: "Data quality checks", built: "A Spark job, run on demand or on a schedule",
+      hint: "each layer checked against the one before",
+      p: ["A chain of checks compares each layer with the one before it, from Kafka to gold, and fails if a record is missing, duplicated or different.",
+        "Each check only looks at what the next layer has already committed, so normal lag is never reported as missing data. Every run writes a report to the lake."],
+      why: [D("D39", "the gold check uses the lake gold views", "d39--gold-in-the-lake-as-iceberg-views-over-silver")],
       docs: [L("Data quality checks", "../lakehouse/data-quality/")] },
-    { id: "maint", x: 728, y: 408, w: 160, h: 62, layer: "bronze", side: true, t: "Lake maintenance", s: ["compaction, expiry guard"],
+    { id: "maint", x: 728, y: 410, w: 160, h: 56, layer: "bronze", t: "Maintenance", s: "lake tables, daily",
       related: ["bronze", "silver", "quarantine", "sviews", "lakegold"],
-      kicker: "Operations", title: "Lake maintenance", tech: ["Iceberg procedures", "maintenance profile", "every 24 h"],
-      what: "Keeps the bronze and silver tables healthy while the streams run: compacts small files, expires old snapshots and removes orphan files, then refreshes the views.",
-      how: ["Compaction commits replace snapshots, which Iceberg's streaming reader skips, so downstream streams see no new data.",
-        "Expiry keeps 7 days and the last 10 snapshots. The guard first reads every downstream stream's checkpoint and skips expiry when a stream still needs a snapshot.",
-        "Orphan files older than 3 days are removed through the table's own FileIO.",
-        "One table failing does not stop the others; the run fails at the end."],
-      why: [["D31", "maintenance must not outrun the streams", "d31--late-arrivals-are-history-deduplication-happens-in-silver"]],
+      kicker: "Operations", title: "Lake maintenance", built: "Iceberg's maintenance procedures, scheduled",
+      hint: "keeps the tables healthy",
+      p: ["A scheduled job compacts small files, removes old snapshots and deletes orphan files while the streams keep running.",
+        "Before it removes a snapshot, it checks that no stream still needs it."],
+      why: [D("D31", "maintenance must not outrun the streams", "d31--late-arrivals-are-history-deduplication-happens-in-silver")],
       docs: [L("Lake maintenance", "../operations/maintenance-and-recovery/#lake-maintenance")] },
-    { id: "retention", x: 906, y: 408, w: 160, h: 62, layer: "gold", side: true, t: "Gold retention", s: ["36 months, by partition"],
+    { id: "retention", x: 906, y: 410, w: 160, h: 56, layer: "gold", t: "Gold upkeep", s: "retention, rebuild",
       related: ["gold"],
-      kicker: "Operations", title: "Gold retention and rebuild", tech: ["plain Python, psycopg", "monthly partitions"],
-      what: "Keeps 36 months of history facts in PostgreSQL by dropping whole monthly partitions; the lake keeps the full history. Gold can also be rebuilt from silver.",
-      how: ["One function first gives every month in the default partition a partition of its own, then drops the months outside the window, under the gold writer lock.",
-        "Current state and dimensions are never trimmed, so an old open order keeps its row.",
-        "make gold-rebuild CONFIRM=1 [TO_TIME=...] resets gold and loads silver in one batch through the stream's own merge; a rebuild up to T equals gold streamed from the changes committed up to T."],
-      why: [["D37", "retention by monthly partitions", "d37--gold-retention-by-monthly-partitions"], ["D38", "rebuild from silver with an optional cutoff", "d38--rebuild-gold-from-silver-with-an-optional-cutoff"]],
-      docs: [L("Gold retention", "../operations/maintenance-and-recovery/#gold-retention"), L("Rebuilding gold from silver", "../operations/maintenance-and-recovery/#rebuilding-gold-from-silver")] },
-    { id: "history", x: 1084, y: 408, w: 160, h: 62, layer: "kafka", side: true, t: "History Server", s: ["Spark event logs :18080"],
+      kicker: "Operations", title: "Gold retention and rebuild", built: "Plain Python against PostgreSQL",
+      hint: "36 months in gold; rebuild from silver",
+      p: ["PostgreSQL keeps 36 months of history by dropping whole monthly partitions; the lake keeps everything.",
+        "Gold can also be rebuilt from silver with the same merge the stream uses, optionally up to a point in time."],
+      why: [D("D37", "retention by monthly partitions", "d37--gold-retention-by-monthly-partitions"), D("D38", "rebuild from silver", "d38--rebuild-gold-from-silver-with-an-optional-cutoff")],
+      docs: [L("Gold retention", "../operations/maintenance-and-recovery/#gold-retention"), L("Rebuilding gold", "../operations/maintenance-and-recovery/#rebuilding-gold-from-silver")] },
+    { id: "history", x: 1084, y: 410, w: 160, h: 56, layer: "kafka", t: "History Server", s: "Spark event logs",
       related: ["spark"],
-      kicker: "Operations", title: "Spark History Server", tech: ["history profile", "rolling event logs"],
-      what: "Every driver writes rolling event logs to a shared volume, so finished or crashed applications can still be inspected; the History Server shows them.",
-      how: ["Event logs are always written, in 128 MiB rolling files.",
-        "The server runs under the history profile, which make pipeline starts.",
-        "While a job runs, its own UI is on ports 4040 to 4045, with a Structured Streaming tab per query."],
-      why: [["D23", "event logs always written, optional history server", "d23--event-logs-always-written-optional-history-server"]],
+      kicker: "Operations", title: "Spark History Server", built: "Optional, started by make pipeline",
+      hint: "inspect finished or crashed jobs",
+      p: ["Every job writes event logs, so a finished or crashed job can still be inspected in the History Server."],
+      why: [D("D23", "event logs are always written", "d23--event-logs-always-written-optional-history-server")],
       docs: [L("Spark History Server", "../architecture/infrastructure/#spark-history-server-optional")] }
   ];
   const NODE = Object.fromEntries(NODES.map(n => [n.id, n]));
 
   const GOLD_ROWS = [
-    { id: "stage", label: "stage_* (unlogged)" },
-    { id: "dims", label: "SCD2 dimensions" },
+    { id: "stage", label: "staging" },
+    { id: "dims", label: "dimensions" },
     { id: "facts", label: "history facts" },
     { id: "current", label: "current state" },
-    { id: "views", label: "gold views (public)" }
+    { id: "views", label: "public views" }
   ];
 
   const EDGES = [
-    ["source", "debezium", "M124,150 H172"],
-    ["debezium", "kafka", "M280,150 H328"],
-    ["kafka", "landing", "M436,150 H484"],
-    ["landing", "bronze", "M592,150 H640"],
-    ["landing", "quarantine", "M538,190 C538,250 592,266 640,266"],
-    ["bronze", "silver", "M748,150 H796"],
-    ["silver", "gold", "M904,150 H952"],
-    ["silver", "sviews", "M850,190 V240"],
-    ["sviews", "lakegold", "M904,266 H952"],
-    ["lakegold", "sparksql", "M1092,266 H1150"],
-    ["silver", "rest", "M904,172 C920,172 928,182 928,198 V316 C928,330 938,336 954,336 H1150", true],
-    ["gold", "api", "M1092,120 C1124,120 1118,68 1150,68"],
+    ["source", "debezium", "M140,150 H172"],
+    ["debezium", "kafka", "M296,150 H328"],
+    ["kafka", "landing", "M452,150 H484"],
+    ["landing", "bronze", "M608,150 H640"],
+    ["landing", "quarantine", "M546,190 C546,252 596,276 640,276"],
+    ["bronze", "silver", "M764,150 H796"],
+    ["silver", "gold", "M920,150 H952"],
+    ["silver", "sviews", "M858,190 V250"],
+    ["sviews", "lakegold", "M920,276 H952"],
+    ["lakegold", "sparksql", "M1092,276 H1150"],
+    ["silver", "rest", "M920,176 C932,176 936,186 936,200 V326 C936,338 944,342 958,342 H1150", true],
+    ["gold", "api", "M1092,110 C1124,110 1118,68 1150,68"],
     ["gold", "grafana", "M1092,150 H1150"]
   ];
 
   const DQS = [
-    { id: "dq-landing", x: 460, y: 150, check: "landing", label: "Data quality check landing: Kafka to landing",
-      text: "Reconciles the landing zone with Kafka for every topic and partition: every offset landed exactly once (unique_offsets), no gaps against the offsets Kafka actually holds (contiguous_offsets), landing starts at or before Kafka's earliest retained offset, and the landed keys and values equal Kafka's bytes (same_bytes_as_kafka)." },
-    { id: "dq-bronze", x: 616, y: 150, check: "bronze", label: "Data quality check bronze: landing to bronze and quarantine",
-      text: "Matches landing records with bronze and quarantine by Kafka coordinates: every landed record whose file both queries committed is in bronze or quarantine (landed_records_held), never in both or twice (held_exactly_once), and each table holds only records of files its own query committed. Tombstones are left out because bronze drops them." },
-    { id: "dq-silver", x: 772, y: 150, check: "silver", label: "Data quality check silver: bronze to silver",
-      text: "Compares silver with bronze by change identity at the bronze snapshot silver's last committed batch read up to: silver holds every change bronze held and no other (same_changes_as_bronze), and no change identity twice (changes_held_once). A change bronze holds twice, such as a redelivery, is expected once." },
-    { id: "dq-gold", x: 928, y: 150, check: "gold", label: "Data quality check gold: silver to PostgreSQL gold",
-      text: "Compares every PostgreSQL gold view with the lake gold view of the same name, computed over silver at the snapshots the gold job committed (one gold_matches_silver result per view). Surrogate keys are compared as the _commit_sequence of the dimension version they name, history from the first month PostgreSQL still keeps, and a stale lake view fails." }
+    { id: "dq-landing", x: 468, check: "landing", title: "Kafka to landing",
+      text: "Every Kafka record is in landing exactly once, with the same bytes, and no offset is missing." },
+    { id: "dq-bronze", x: 624, check: "bronze", title: "Landing to bronze",
+      text: "Every landed record is in bronze or in quarantine, once, and never in both." },
+    { id: "dq-silver", x: 780, check: "silver", title: "Bronze to silver",
+      text: "Silver holds every change bronze holds, each one once, and nothing else. A redelivered change is expected once." },
+    { id: "dq-gold", x: 936, check: "gold", title: "Silver to gold",
+      text: "Each PostgreSQL gold view matches the same view computed from silver in the lake." }
   ];
 
   // ---------- Rendering ----------
@@ -1124,6 +676,8 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
   const gDqs = document.getElementById("dqs");
   const gTokens = document.getElementById("tokens");
   const gNotes = document.getElementById("notes");
+  const hint = document.getElementById("hint");
+  const HINT_DEFAULT = hint.innerHTML;
 
   function el(tag, attrs, parent, text) {
     const e = document.createElementNS(SVGNS, tag);
@@ -1133,137 +687,148 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
     return e;
   }
 
-  [[6, 16, 440, "Source and CDC"], [470, 16, 452, "Lakehouse: Iceberg on SeaweedFS"], [940, 16, 334, "Gold and serving"]].forEach(([x, y, w, label]) => {
-    el("rect", { class: "lane", x, y, width: w, height: 360, rx: 14 }, gLanes);
-    el("text", { class: "lane-label", x: x + 14, y: y + 22 }, gLanes, label);
+  [[6, 16, 456, "Source and capture"], [474, 16, 456, "Lake: Iceberg on SeaweedFS"], [942, 16, 334, "Gold and serving"]].forEach(([x, y, w, label]) => {
+    el("rect", { class: "lane", x, y, width: w, height: 362, rx: 6 }, gLanes);
+    el("text", { class: "lane-label", x: x + 12, y: y + 22 }, gLanes, label);
   });
-  el("text", { class: "lane-label", x: 18, y: 398 }, gLanes, "Platform and operations");
+  el("text", { class: "lane-label", x: 18, y: 400 }, gLanes, "Platform and operations");
 
   const edgeEls = {};
   EDGES.forEach(([a, b, d, dashed]) => {
-    const p = el("path", { class: "edge" + (dashed ? " dashed" : ""), d, "marker-end": "url(#arrow)" }, gEdges);
-    edgeEls[a + ">" + b] = p;
+    edgeEls[a + ">" + b] = el("path", { class: "edge" + (dashed ? " dashed" : ""), d, "marker-end": "url(#arrow)" }, gEdges);
   });
+
+  function setHint(html) { hint.innerHTML = html || HINT_DEFAULT; }
 
   const nodeEls = {};
   const goldRowEls = {};
   NODES.forEach(n => {
-    const g = el("g", { class: "node", tabindex: 0, role: "button", "data-id": n.id,
-      "aria-label": n.title.replace(/&middot;/g, "") + ". Open details." }, gNodes);
+    const g = el("g", { class: "node", tabindex: 0, role: "button", "data-id": n.id, "aria-label": n.title + ". Show the explanation." }, gNodes);
     g.style.setProperty("--lc", LAYER[n.layer]);
-    el("rect", { class: "box", x: n.x, y: n.y, width: n.w, height: n.h, rx: 10 }, g);
-    el("rect", { class: "bar", x: n.x, y: n.y + 8, width: 4, height: n.h - 16, rx: 2 }, g);
-    const tx = n.x + 14;
+    el("rect", { class: "box", x: n.x, y: n.y, width: n.w, height: n.h, rx: 6 }, g);
+    el("rect", { class: "bar", x: n.x, y: n.y, width: 4, height: n.h, rx: 2 }, g);
     const big = n.h >= 70;
-    el("text", { class: "t1", x: tx, y: n.y + (big ? 28 : 22) }, g, n.t);
-    n.s.forEach((line, i) => el("text", { class: "t2", x: tx, y: n.y + (big ? 46 : 39) + i * 14 }, g, line));
+    el("text", { class: "t1", x: n.x + 14, y: n.y + (big ? 30 : 23) }, g, n.t);
+    el("text", { class: "t2", x: n.x + 14, y: n.y + (big ? 49 : 41) }, g, n.s);
     if (n.id === "gold") {
       GOLD_ROWS.forEach((r, i) => {
         const rg = el("g", { class: "sub-row" }, g);
-        el("rect", { x: n.x + 10, y: n.y + 54 + i * 18, width: n.w - 18, height: 15, rx: 4 }, rg);
-        el("text", { x: n.x + 17, y: n.y + 65.5 + i * 18 }, rg, r.label);
+        el("rect", { x: n.x + 12, y: n.y + 60 + i * 19, width: n.w - 20, height: 16, rx: 3 }, rg);
+        el("text", { x: n.x + 19, y: n.y + 72.5 + i * 19 }, rg, r.label);
         goldRowEls[r.id] = rg;
       });
     }
     nodeEls[n.id] = g;
-    g.addEventListener("click", () => openPanel(n.id, g));
-    g.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openPanel(n.id, g); } });
-    if (n.related) {
-      g.addEventListener("mouseenter", () => markRelated(n, true));
-      g.addEventListener("mouseleave", () => markRelated(n, false));
-      g.addEventListener("focus", () => markRelated(n, true));
-      g.addEventListener("blur", () => markRelated(n, false));
-    }
+    const activate = () => showNode(n.id, g);
+    g.addEventListener("click", activate);
+    g.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); activate(); } });
+    const enter = () => { setHint(`<b>${n.t}</b>: ${n.hint}.`); markRelated(n, true); };
+    const leave = () => { setHint(); markRelated(n, false); };
+    g.addEventListener("mouseenter", enter);
+    g.addEventListener("mouseleave", leave);
+    g.addEventListener("focus", enter);
+    g.addEventListener("blur", leave);
   });
 
   const dqEls = {};
   DQS.forEach(q => {
-    const g = el("g", { class: "dq", tabindex: 0, role: "button", "aria-label": q.label + ". Open details.", transform: `translate(${q.x},${q.y - 22})` }, gDqs);
-    el("title", {}, g, q.label);
-    el("path", { class: "dq-shape", d: "M0,-10L10,0L0,10L-10,0z" }, g);
-    el("path", { class: "dq-tick", d: "M-4,0.5L-1,3.5L4.5,-3" }, g);
+    const g = el("g", { class: "dq", tabindex: 0, role: "button", "aria-label": "Data quality check " + q.check + ": " + q.title + ". Show the explanation.", transform: `translate(${q.x},126)` }, gDqs);
+    el("title", {}, g, "Data quality check: " + q.title);
+    el("circle", { r: 10 }, g);
+    el("path", { d: "M-4.5,0.5L-1.2,3.8L4.8,-3.2" }, g);
     dqEls[q.id] = g;
-    g.addEventListener("click", () => openDqPanel(q, g));
-    g.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openDqPanel(q, g); } });
+    const activate = () => showCheck(q, g);
+    const enter = () => setHint(`<b>Check ${q.check}</b>: ${q.title.toLowerCase()}.`);
+    g.addEventListener("click", activate);
+    g.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); activate(); } });
+    g.addEventListener("mouseenter", enter);
+    g.addEventListener("mouseleave", () => setHint());
+    g.addEventListener("focus", enter);
+    g.addEventListener("blur", () => setHint());
   });
 
   function markRelated(n, on) {
+    if (stepping) return;
     (n.related || []).forEach(id => nodeEls[id] && nodeEls[id].classList.toggle("related", on));
     if (n.relatedDq) Object.values(dqEls).forEach(d => d.classList.toggle("related", on));
   }
 
-  // Legend
   const LEGEND = [
-    ["row", "source", "Row committed in the source"],
-    ["event", "kafka", "Debezium change event in Kafka"],
-    ["file", "landing", "Raw Kafka record in a landing file"],
-    ["typed", "bronze", "Typed bronze row with change metadata"],
-    ["version", "silver", "Deduplicated silver version"],
-    ["star", "gold", "Gold: dimension, fact, current state"],
-    ["answer", "serve", "Answered by a business view"]
+    ["row", "source", "a row committed in the source"],
+    ["event", "kafka", "a Debezium change event"],
+    ["file", "landing", "a raw record in a landing file"],
+    ["typed", "bronze", "a typed bronze row"],
+    ["version", "silver", "a silver version"],
+    ["star", "gold", "a row in gold"],
+    ["answer", "serve", "an answer to a question"]
   ];
-  const legend = document.getElementById("legend");
-  LEGEND.forEach(([form, layer, text]) => {
-    const li = document.createElement("li");
-    li.innerHTML = `<svg width="26" height="24" viewBox="-13 -12 26 24" aria-hidden="true"><path d="${FORMS[form]}" fill="${LAYER[layer]}"/></svg><span>${text}</span>`;
-    legend.appendChild(li);
-  });
-  const opLi = document.createElement("li");
-  opLi.innerHTML = `<span style="margin-left:4px"><b>c</b> create, <b>u</b> update, <b>d</b> delete, <b>t</b> tombstone, <b>!</b> invalid record</span>`;
-  legend.appendChild(opLi);
+  const legendHTML = LEGEND.map(([form, layer, text]) =>
+    `<li><svg width="22" height="22" viewBox="-13 -13 26 26" aria-hidden="true"><path d="${FORMS[form]}" fill="${LAYER[layer]}"/></svg><span>${text}</span></li>`).join("")
+    + "<li><span>The letter on a shape is the operation: c create, u update, d delete, t tombstone, ! invalid.</span></li>";
+  document.getElementById("legend").innerHTML = legendHTML;
 
-  // ---------- Side panel ----------
-  const panel = document.getElementById("panel");
-  const panelTitle = document.getElementById("panel-title");
-  const panelKicker = document.getElementById("panel-kicker");
-  const panelTech = document.getElementById("panel-tech");
-  const panelBody = document.getElementById("panel-body");
-  let panelReturn = null;
+  // ---------- Explanation beside the diagram ----------
+  const explain = document.getElementById("explain");
+  const startHTML = explain.innerHTML;
+  let returnFocus = null;
+  let showing = "start";
 
-  function esc(s) { return String(s).replace(/&(?!middot;)/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
-  function codeify(s) {
-    // Wraps identifiers that look like code (snake_case, dotted names, make targets) in <code>.
-    const part = "(?:[A-Za-z0-9_.]|&lt;|&gt;)";
-    const re = new RegExp("(make [a-z-]+(?: [A-Z_]+=[^ ,;)]*[^ ,;).])*|s3a://[^\\s,]*[^\\s,.]|lake\\." + part + "*(?:[a-z_]|&gt;)|" + part + "*_" + part + "*(?:[A-Za-z0-9_]|&gt;))", "g");
-    return esc(s).replace(re, "<code>$1</code>");
-  }
-  function showPanel(kicker, title, color, tech, html, returnEl) {
-    panel.style.setProperty("--lc", color);
-    panelKicker.innerHTML = kicker;
-    panelTitle.textContent = title;
-    panelTech.innerHTML = tech.map(t => `<span class="chip">${esc(t)}</span>`).join("");
-    panelBody.innerHTML = html;
-    panelBody.scrollTop = 0;
-    panel.classList.add("open");
-    panel.setAttribute("aria-hidden", "false");
-    panelReturn = returnEl || null;
-    panelTitle.focus({ preventScroll: true });
-  }
-  function openPanel(id, returnEl) {
-    const n = NODE[id];
+  function clearActive() {
     Object.values(nodeEls).forEach(g => g.classList.remove("active"));
-    if (!stepping) nodeEls[id].classList.add("active");
-    let html = `<h4>What it does</h4><p>${codeify(n.what)}</p><h4>How</h4><ul>${n.how.map(h => `<li>${codeify(h)}</li>`).join("")}</ul>`;
-    html += `<h4>Why</h4><ul>${n.why.map(([num, text, anchor]) => `<li><a href="${DEC}${anchor}">${num}</a>: ${esc(text)}</li>`).join("")}</ul>`;
-    html += `<h4>Read more</h4><ul class="links">${n.docs.map(d => `<li><a href="${d.href}">${esc(d.label)} &rarr;</a></li>`).join("")}</ul>`;
-    showPanel(n.kicker, n.title, LAYER[n.layer], n.tech, html, returnEl);
+    Object.values(dqEls).forEach(g => g.classList.remove("active"));
   }
-  function openDqPanel(q, returnEl) {
-    const html = `<h4>What it checks</h4><p>${codeify(q.text)}</p>
-      <h4>How it runs</h4><ul><li>${codeify("make data-quality CHECK=" + q.check + " runs it as its own Spark application, next to the running streams.")}</li>
-      <li>Bounded by what the downstream query has committed, so lag is never reported as missing data.</li>
-      <li>Results are printed as JSON lines and saved in a report in the lake; the run exits 1 when a check fails.</li></ul>
-      <h4>Read more</h4><ul class="links"><li><a href="../lakehouse/data-quality/">Data quality checks &rarr;</a></li><li><a href="../lakehouse/data-quality/#data-quality-chain">The data quality chain &rarr;</a></li></ul>`;
-    showPanel("Data quality", "Check: " + q.check, LAYER.ok, ["make data-quality", "JSON report"], html, returnEl);
+  function revealExplain() {
+    if (!narrow()) return;
+    const r = explain.getBoundingClientRect();
+    if (r.top > window.innerHeight * 0.6 || r.top < 0) explain.scrollIntoView({ block: "start", behavior: reducedMotion ? "auto" : "smooth" });
   }
-  function closePanel() {
-    if (!panel.classList.contains("open")) return;
-    panel.classList.remove("open");
-    panel.setAttribute("aria-hidden", "true");
-    if (!stepping) Object.values(nodeEls).forEach(g => g.classList.remove("active"));
-    if (panelReturn) panelReturn.focus({ preventScroll: true });
+  function render(html, focus) {
+    explain.innerHTML = html;
+    explain.scrollTop = 0;
+    const h = explain.querySelector("h2");
+    if (focus && h) { h.setAttribute("tabindex", "-1"); h.focus({ preventScroll: true }); }
+    const close = explain.querySelector(".close:not(#step-exit)");
+    if (close) close.addEventListener("click", () => showStart(true));
   }
-  document.getElementById("panel-close").addEventListener("click", closePanel);
+  function head(eyebrow, color, title, closeLabel, closeId) {
+    return `<div class="head"><div><div class="eyebrow"><span class="sw" style="--lc:${color}"></span>${eyebrow}</div><h2>${title}</h2></div><button type="button" class="close"${closeId ? ` id="${closeId}"` : ""}>${closeLabel || "Close"}</button></div>`;
+  }
+  function showNode(id, from) {
+    if (stepping) exitSteps(true);
+    const n = NODE[id];
+    clearActive();
+    nodeEls[id].classList.add("active");
+    let html = head(n.kicker, LAYER[n.layer], n.title);
+    html += `<p class="built">${n.built}</p>`;
+    html += n.p.map(s => `<p>${s}</p>`).join("");
+    html += `<div class="why">${n.why.map(d => `<p>Why: <a href="${DEC}${d.anchor}">${d.num}</a>, ${d.label}.</p>`).join("")}</div>`;
+    html += `<p class="more">Read more: ${n.docs.map(d => `<a href="${d.href}">${d.label} &rarr;</a>`).join(" ")}</p>`;
+    returnFocus = from || null;
+    showing = id;
+    render(html, true);
+    revealExplain();
+  }
+  function showCheck(q, from) {
+    if (stepping) exitSteps(true);
+    clearActive();
+    dqEls[q.id].classList.add("active");
+    let html = head("Data quality check", LAYER.ok, q.title);
+    html += `<p class="built"><code>make data-quality CHECK=${q.check}</code></p>`;
+    html += `<p>${q.text}</p>`;
+    html += "<p>The four checks form one chain from Kafka to gold. A run exits with code 1 if any check fails, and saves its report in the lake.</p>";
+    html += `<p class="more">Read more: <a href="../lakehouse/data-quality/">Data quality checks &rarr;</a></p>`;
+    returnFocus = from || null;
+    showing = q.id;
+    render(html, true);
+    revealExplain();
+  }
+  function showStart(restoreFocus) {
+    clearActive();
+    showing = "start";
+    render(startHTML, false);
+    if (restoreFocus && returnFocus) returnFocus.focus({ preventScroll: true });
+    returnFocus = null;
+  }
 
   // ---------- Animation ----------
   const SPEED = 120;
@@ -1278,19 +843,20 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
   const MAIN = ["source", "debezium", "kafka", "landing", "bronze", "silver", "gold", "api"];
   const SCRIPT = [
     { at: 0, op: "c", route: MAIN, forks: { silver: [["silver", "sviews", "lakegold", "sparksql"]], gold: [["gold", "grafana"]] },
-      caption: "<b>Insert.</b> The generator creates order 1 as <code>PENDING</code>. Snapshot rows and inserts travel the same way." },
+      caption: "<b>Insert.</b> Order 1 is created as PENDING. It flows through every layer and now counts as an open order." },
     { at: 3400, op: "u", route: MAIN, forks: { silver: [["silver", "rest"]], gold: [["gold", "grafana"]] },
-      caption: "<b>Update.</b> Order 1 moves from <code>PENDING</code> to <code>REPROCESSING</code>: a new silver version, a new history fact, and current state replaced because its <code>_commit_sequence</code> is higher." },
+      caption: "<b>Update.</b> Order 1 moves to REPROCESSING. Silver adds a version; gold adds a history row and updates the current state." },
     { at: 6800, op: "u", route: ["debezium", "kafka", "landing", "bronze", "silver"], drop: { silver: "duplicate dropped" },
-      caption: "<b>Redelivery.</b> After a connector restart the same change arrives again at a new offset. Bronze keeps it as a faithful log; silver drops it by change identity." },
+      caption: "<b>The same update again.</b> After a connector restart, Kafka delivers the change a second time. Bronze keeps it; silver recognises it and drops it." },
     { at: 10200, op: "d", route: MAIN, forks: { kafka: [["kafka", "landing", "bronze"]], gold: [["gold", "grafana"]] },
       tombstoneAt: "kafka",
-      caption: "<b>Delete.</b> Illustrative: the generator never deletes. The delete keeps the last values and is soft in gold, so late events cannot revive the order. Its tombstone is landed and skipped by bronze." },
+      caption: "<b>Delete</b> (for illustration; the generator never deletes). Gold marks the order as deleted instead of removing it, so a late event cannot bring it back." },
     { at: 13600, op: "!", route: ["kafka", "landing", "quarantine"],
-      caption: "<b>Invalid record.</b> A record bronze cannot validate, for example a truncate (<code>op t</code>), goes to quarantine with its landing file. The stream keeps going." }
+      caption: "<b>An invalid record.</b> Something bronze cannot read goes to quarantine, with the reason. The stream keeps going." }
   ];
   const LOOP_LENGTH = 21000;
   const caption = document.getElementById("caption");
+  const CAPTION_DEFAULT = caption.innerHTML;
 
   function tokenEl(form, layer, op) {
     const g = el("g", { class: "token" }, gTokens);
@@ -1300,9 +866,8 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
   }
   function setForm(t, nodeId) {
     const n = NODE[nodeId];
-    const layer = t.op === "!" && nodeId !== "kafka" ? (nodeId === "quarantine" ? "bad" : n.layer) : n.layer;
     t.g.firstChild.setAttribute("d", FORMS[n.form]);
-    t.g.firstChild.setAttribute("fill", LAYER[layer]);
+    t.g.firstChild.setAttribute("fill", LAYER[n.layer]);
   }
   function spawn(op, route, opts) {
     const t = { op, route, i: 0, phase: "dwell", t: DWELL * 0.6, opts: opts || {}, g: tokenEl("row", "source", op) };
@@ -1345,7 +910,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
       remove(t);
       return;
     }
-    if (id === "quarantine") floatNote(n.x + n.w / 2, n.y + n.h + 16, "quarantined: unknown op");
+    if (id === "quarantine") floatNote(n.x + n.w / 2, n.y + n.h + 16, "quarantined");
     t.phase = "dwell";
     t.t = 0;
     if (t.i === t.route.length - 1) setForm(t, id);
@@ -1353,8 +918,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
   }
   function depart(t) {
     if (t.i >= t.route.length - 1) { remove(t); return; }
-    const key = t.route[t.i] + ">" + t.route[t.i + 1];
-    const path = edgeEls[key];
+    const path = edgeEls[t.route[t.i] + ">" + t.route[t.i + 1]];
     if (!path) { remove(t); return; }
     setForm(t, t.route[t.i]);
     t.path = path;
@@ -1407,82 +971,81 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
     clearTokens();
     loopClock = 0;
     scriptIndex = 0;
-    caption.innerHTML = "Press <b>Play</b> to stream a few changes of order 1 through the pipeline, or <b>Follow one change</b> to go hop by hop.";
+    caption.innerHTML = CAPTION_DEFAULT;
   }
   playBtn.addEventListener("click", () => {
-    if (stepping) exitSteps();
+    if (stepping) exitSteps(false);
     setPlaying(!playing);
   });
   document.getElementById("reset-btn").addEventListener("click", () => {
-    if (stepping) exitSteps();
+    if (stepping) exitSteps(true);
     setPlaying(false);
     resetLoop();
+    showStart(false);
   });
-  document.getElementById("motion-note").textContent = reducedMotion ? "Reduced motion is on: the animation starts only when you press Play." : "";
 
   if ("IntersectionObserver" in window) {
     new IntersectionObserver(entries => { visible = entries[0].isIntersecting; }, { threshold: 0.05 }).observe(svg);
   }
 
-  // ---------- Step-through mode ----------
+  // ---------- Follow one change ----------
   const STEPS = [
     { node: "source", form: "row", layer: "source", title: "A commit in finance_db",
-      body: "The source's data generator updates order 1, moving it from PENDING to REPROCESSING, and the transaction commits.",
+      body: "The generator moves order 1 from PENDING to REPROCESSING, and the transaction commits.",
       payload: "UPDATE operations.orders\n   SET status = 'REPROCESSING', updated_at = ...\n WHERE order_id = 1;\nCOMMIT;   -- 2026-11-08 14:21:00.025 UTC",
-      link: L("Source database", "../lakehouse/source-and-cdc/#source-database") },
+      link: L("The source database", "../lakehouse/source-and-cdc/#source-database") },
     { node: "source", form: "row", layer: "source", title: "Written to the write-ahead log",
-      body: "PostgreSQL writes the change to its WAL at a log sequence number (LSN) that only grows in commit order. Because the table uses REPLICA IDENTITY FULL, the full row before the change is logged too.",
-      payload: "WAL record\n  lsn      26767664     -- becomes _commit_sequence\n  txId     952\n  table    operations.orders\n  before   full old row (REPLICA IDENTITY FULL)\n  after    new row",
+      body: "PostgreSQL logs the change at a position that only grows, in commit order. Later I use that position to put the versions of an order in order.",
+      payload: "WAL record\n  lsn     26767664     -- later _commit_sequence\n  table   operations.orders\n  before  the full old row\n  after   the new row",
       link: L("What _commit_sequence is", "../lakehouse/gold/model/#what-_commit_sequence-is") },
-    { node: "debezium", form: "event", layer: "kafka", title: "Debezium emits a change event",
-      body: "Kafka Connect's Debezium connector reads the WAL through a logical replication slot and turns the change into a JSON event. Dates are days since 1970-01-01 and timestamps epoch milliseconds.",
-      payload: '{\n  "before": {"order_id": 1, "status": "PENDING", ...},\n  "after":  {"order_id": 1, "order_date": 20765,\n             "delivery_date": 20775,\n             "status": "REPROCESSING",\n             "updated_at": 1794147660022, ...},\n  "source": {"table": "orders", "txId": 952,\n             "lsn": 26767664, "ts_ms": 1794147660025, ...},\n  "op": "u",\n  "ts_ms": 1794147660561\n}',
-      link: L("Change event format", "../lakehouse/source-and-cdc/#message-format") },
-    { node: "kafka", form: "event", layer: "kafka", title: "Published to a Kafka topic",
-      body: "The event is appended to the orders topic, keyed by the primary key. Delivery is at least once: after a connector restart the same change can arrive again at a new offset.",
-      payload: 'topic      finance_db.operations.orders\npartition  0\nkey        {"order_id": 1}\nvalue      the change event (JSON)',
+    { node: "debezium", form: "event", layer: "kafka", title: "Debezium writes a change event",
+      body: "Debezium reads the log and describes the change as a JSON event, with the row before and after. Dates arrive as day numbers and times as epoch milliseconds.",
+      payload: '{\n  "before": {"order_id": 1, "status": "PENDING", ...},\n  "after":  {"order_id": 1, "delivery_date": 20775,\n             "status": "REPROCESSING", ...},\n  "source": {"table": "orders", "lsn": 26767664,\n             "ts_ms": 1794147660025, ...},\n  "op": "u"\n}',
+      link: L("The change event format", "../lakehouse/source-and-cdc/#message-format") },
+    { node: "kafka", form: "event", layer: "kafka", title: "Published to Kafka",
+      body: "The event goes to the orders topic, keyed by the order id. If the connector restarts, the same event can arrive twice.",
+      payload: 'topic      finance_db.operations.orders\npartition  0\nkey        {"order_id": 1}\nvalue      the change event',
       link: L("Topics", "../lakehouse/source-and-cdc/#topics") },
-    { node: "landing", form: "file", layer: "landing", title: "Landed as a raw Avro record",
-      body: "Within one 10-second micro-batch, landing-job writes the record unchanged to an Avro file and commits it in _spark_metadata and its checkpoint. This file is the replay source for bronze.",
-      payload: "s3a://lake/landing/finance_db.operations.orders/part-....avro\n  key            bytes   {\"order_id\": 1}\n  value          bytes   the change event, as delivered\n  topic          finance_db.operations.orders\n  partition      0\n  offset         <Kafka offset>\n  timestamp      <Kafka publish time>\n  timestampType  0",
+    { node: "landing", form: "file", layer: "landing", title: "Copied into landing",
+      body: "Within one 10-second micro-batch, the landing job writes the record unchanged into an Avro file in the lake.",
+      payload: "landing/finance_db.operations.orders/part-....avro\n  key        {\"order_id\": 1}     raw bytes\n  value      the change event     raw bytes\n  topic      finance_db.operations.orders\n  partition  0\n  offset     <Kafka offset>",
       link: L("Landing", "../lakehouse/landing/") },
-    { node: "bronze", form: "typed", layer: "bronze", title: "Typed in bronze, with change metadata",
-      body: "bronze-job parses the landed record into a typed row and appends it to lake.bronze.orders. Records that fail validation go to quarantine; tombstones are skipped. Nothing is deduplicated here.",
-      payload: "lake.bronze.orders\n  order_id           1\n  order_date         2026-11-08\n  delivery_date      2026-11-18\n  status             REPROCESSING\n  updated_at         2026-11-08 14:21:00.022\n  _record_source     finance_db.operations.orders\n  _source_partition  0\n  _source_offset     <Kafka offset>\n  _change_op         update\n  _commit_sequence   26767664\n  _changed_at        2026-11-08 14:21:00.025\n  _captured_at       2026-11-08 14:21:00.561\n  _content_hash      sha256 of the business columns",
-      link: L("Bronze columns", "../lakehouse/bronze/") },
-    { node: "silver", form: "version", layer: "silver", title: "Versioned in silver, duplicates dropped",
-      body: "silver-job keeps one row per change identity, with its RocksDB state in the checkpoint. A redelivered copy of this change would be dropped; a late older change would still be appended. The history view closes the PENDING version at this change.",
-      payload: "dropDuplicates(order_id, _commit_sequence, _change_op)\n  (1, 26767664, update)  new  -> append\n\nlake.silver.orders_history\n  status        _valid_from               _valid_to\n  PENDING       ...                       2026-11-08 14:21:00.025\n  REPROCESSING  2026-11-08 14:21:00.025   null  (current)",
+    { node: "bronze", form: "typed", layer: "bronze", title: "Typed in bronze",
+      body: "The bronze job turns the record into a typed row and adds the change metadata. Nothing is removed here.",
+      payload: "lake.bronze.orders\n  order_id          1\n  delivery_date     2026-11-18\n  status            REPROCESSING\n  _change_op        update\n  _commit_sequence  26767664\n  _changed_at       2026-11-08 14:21:00.025\n  _content_hash     hash of the business columns",
+      link: L("Bronze", "../lakehouse/bronze/") },
+    { node: "silver", form: "version", layer: "silver", title: "A new version in silver",
+      body: "Silver stores this change once; a second copy would be dropped, and an older change arriving late would still be kept. In the history view, the PENDING version now ends where this one starts.",
+      payload: "lake.silver.orders_history (order 1)\n  status        valid from                valid to\n  PENDING       ...                       2026-11-08 14:21:00.025\n  REPROCESSING  2026-11-08 14:21:00.025   (current)",
       link: L("Silver", "../lakehouse/silver/") },
-    { node: "gold", sub: "stage", form: "star", layer: "gold", title: "Staged, then merged under one lock",
-      body: "gold-job writes the micro-batch into an unlogged staging table with Spark's JDBC writer, outside any lock. The driver then opens one PostgreSQL transaction and takes the gold writer lock before merging.",
-      payload: "TRUNCATE + INSERT gold_internal.stage_fact_order_history   -- Spark JDBC\nBEGIN;\nSELECT pg_advisory_xact_lock(hashtextextended('gold_internal', 0));\n  ... merge (next steps) ...\nCOMMIT;\n-- then Spark commits the batch in the gold checkpoint",
+    { node: "gold", sub: "stage", form: "star", layer: "gold", title: "Staged, then merged in one transaction",
+      body: "The gold job writes the batch into a staging table, then merges it into the model in one PostgreSQL transaction. A lock keeps the four gold streams from missing each other's rows.",
+      payload: "write the batch to a staging table   -- Spark\nBEGIN;\n  take the gold writer lock\n  merge history, current state, dimensions\nCOMMIT;\n-- then Spark records the batch as done",
       link: L("Writing gold", "../lakehouse/gold/writer/#writing-gold") },
-    { node: "gold", sub: "facts", form: "star", layer: "gold", title: "A history fact row",
-      body: "The change is appended to fact_order_history unless it is already stored, so a replayed batch adds nothing. It gets its status key and the customer version valid at its _changed_at.",
-      payload: "INSERT INTO gold_internal.fact_order_history (...)\n  order_id 1, _commit_sequence 26767664,\n  _changed_at 2026-11-08 14:21:00.025,\n  status_key -> REPROCESSING, customer_key -> version as of _changed_at\nON CONFLICT (order_id, _commit_sequence, _changed_at) DO NOTHING;",
+    { node: "gold", sub: "facts", form: "star", layer: "gold", title: "A history row",
+      body: "The change is added to the order history unless it is already there, so a replayed batch adds nothing.",
+      payload: "INSERT INTO fact_order_history (...)\n  order 1, REPROCESSING, at 14:21:00.025\nON CONFLICT DO NOTHING;",
       link: L("Versioning rules", "../lakehouse/gold/model/#versioning") },
     { node: "gold", sub: "current", form: "star", layer: "gold", title: "Current state only moves forward",
-      body: "The latest change per key is merged into current_orders only if its _commit_sequence is higher than the stored one. is_open is recomputed with the status: REPROCESSING is open.",
-      payload: "MERGE INTO gold_internal.current_orders AS target\nUSING (latest staged change per order_id) AS source\n  ON target.order_id = source.order_id\nWHEN MATCHED AND source._commit_sequence > target._commit_sequence\n  THEN UPDATE SET status_key = REPROCESSING, is_open = true, ...\nWHEN NOT MATCHED THEN INSERT ...;",
-      link: L("Gold writer", "../lakehouse/gold/writer/#writing-gold") },
-    { node: "gold", sub: "dims", form: "star", layer: "gold", title: "And for customers and products: SCD2",
-      body: "A customer or product change appends a dimension version instead. The versions view derives _valid_to and _is_current on read, folding versions that change nothing, and the merge re-resolves the facts that point at the touched keys.",
-      payload: "INSERT INTO gold_internal.dim_customer (...)\nON CONFLICT (customer_id, _commit_sequence) DO NOTHING;\n-- then UPDATE fact_order_history rows whose customer_key\n-- now resolves to a different version (IS DISTINCT FROM)",
+      body: "The current row for order 1 is replaced only if this change is newer than the one stored. REPROCESSING still counts as open.",
+      payload: "MERGE INTO current_orders\n  ON order_id\nWHEN MATCHED AND the change is newer\n  THEN UPDATE SET status = REPROCESSING, is_open = true\nWHEN NOT MATCHED THEN INSERT ...;",
+      link: L("The gold writer", "../lakehouse/gold/writer/#writing-gold") },
+    { node: "gold", sub: "dims", form: "star", layer: "gold", title: "Customers and products keep versions",
+      body: "A customer or product change adds a new version instead (SCD2). Each order fact points at the customer version that was valid when the order changed.",
+      payload: "dim_customer (customer 42)\n  version 1   valid until the address change\n  version 2   current\n\nfact_order_history -> the version valid at the change",
       link: L("Dimension keys of the facts", "../lakehouse/gold/model/#dimension-keys-of-the-facts") },
     { node: "api", also: ["grafana"], sub: "views", form: "answer", layer: "serve", title: "Answered by the business view",
-      body: "gold.open_orders keeps the open, not-deleted current orders, and the business-question views read it through partial indexes. The API and the Grafana panel run the same query, so order 1 now counts under its delivery date with status REPROCESSING.",
-      payload: "SELECT delivery_date, status_code, open_orders\nFROM gold.open_orders_by_delivery_date_and_status\nORDER BY delivery_date, status_code;\n\nGET /metrics/open-orders-by-delivery-date-and-status\n-> [{\"delivery_date\": \"2026-11-18\", \"status_code\": \"REPROCESSING\", \"open_orders\": ...}]",
+      body: "The open-orders views read the current state. The API and the Grafana panel run the same query, so order 1 now counts under its delivery date as REPROCESSING.",
+      payload: "GET /metrics/open-orders-by-delivery-date-and-status\n\n[{\"delivery_date\": \"2026-11-18\",\n  \"status_code\": \"REPROCESSING\",\n  \"open_orders\": ...}]",
       link: L("The four business questions", "../lakehouse/gold/model/#the-four-business-questions") },
     { node: "lakegold", also: ["sviews"], form: "star", layer: "gold", title: "The same answer from the lake",
-      body: "lake.gold computes the same relations from silver at read time, over the full history and with natural keys. make data-quality CHECK=gold compares every PostgreSQL view with its lake view at the silver snapshots gold committed.",
-      payload: "SELECT delivery_date, open_orders\nFROM lake.gold.top_delivery_dates_by_open_orders\nORDER BY open_orders DESC, delivery_date;",
+      body: "The lake computes the same views from silver when they are read. The gold data quality check compares the two.",
+      payload: "SELECT delivery_date, open_orders\nFROM lake.gold.top_delivery_dates_by_open_orders;",
       link: L("Gold in the lake", "../lakehouse/gold/writer/#gold-in-the-lake") }
   ];
 
-  const consoleEl = document.getElementById("console");
-  const shell = document.querySelector(".flow-shell");
   const stepBtn = document.getElementById("step-btn");
+  const scroller = document.getElementById("diagram-scroll");
   let stepping = false;
   let stepIdx = 0;
   let stepTok = null;
@@ -1490,22 +1053,29 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
 
   function anchorFor(s) {
     const n = NODE[s.node];
-    if (s.sub) {
+    if (s.sub && s.node === "gold") {
       const i = GOLD_ROWS.findIndex(r => r.id === s.sub);
-      if (s.node === "gold") return { x: n.x + 4, y: n.y + 61.5 + i * 18 };
+      return { x: n.x + 4, y: n.y + 68 + i * 19 };
     }
     return { x: n.x + n.w / 2, y: n.y - 2 };
   }
   function edgesBetween(a, b) {
     const hot = [];
-    const order = ["source", "debezium", "kafka", "landing", "bronze", "silver", "gold", "api"];
-    const ia = order.indexOf(a), ib = order.indexOf(b);
-    if (ia >= 0 && ib > ia) for (let i = ia; i < ib; i++) hot.push(order[i] + ">" + order[i + 1]);
+    const ia = MAIN.indexOf(a), ib = MAIN.indexOf(b);
+    if (ia >= 0 && ib > ia) for (let i = ia; i < ib; i++) hot.push(MAIN[i] + ">" + MAIN[i + 1]);
     if (b === "lakegold") hot.push("silver>sviews", "sviews>lakegold");
     if (b === "api") hot.push("gold>grafana");
     return hot;
   }
-  function renderStep(prevIdx) {
+  function keepInView(nodeId) {
+    if (scroller.scrollWidth <= scroller.clientWidth) return;
+    const n = NODE[nodeId];
+    const scale = svg.getBoundingClientRect().width / 1280;
+    const cx = (n.x + n.w / 2) * scale;
+    scroller.scrollTo({ left: Math.max(0, cx - scroller.clientWidth / 2), behavior: reducedMotion ? "auto" : "smooth" });
+  }
+  function escapeHtml(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+  function renderStep(prevIdx, focusNext) {
     const s = STEPS[stepIdx];
     Object.values(nodeEls).forEach(g => g.classList.remove("active", "related"));
     Object.values(goldRowEls).forEach(g => g.classList.remove("lit"));
@@ -1513,7 +1083,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
     nodeEls[s.node].classList.add("active");
     (s.also || []).forEach(id => nodeEls[id].classList.add("active"));
     if (s.sub && goldRowEls[s.sub]) goldRowEls[s.sub].classList.add("lit");
-    if (s.node === "api") { nodeEls.gold.classList.add("related"); goldRowEls.views.classList.add("lit"); }
+    if (s.node === "api") nodeEls.gold.classList.add("related");
     const prev = prevIdx != null ? STEPS[prevIdx] : null;
     if (prev) edgesBetween(prev.node, s.node).forEach(k => edgeEls[k] && edgeEls[k].classList.add("hot"));
 
@@ -1523,22 +1093,25 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
     const to = anchorFor(s);
     moveStepToken(stepPos || to, to);
     stepPos = to;
+    keepInView(s.node);
 
-    const bars = STEPS.map((_, i) => `<span class="${i <= stepIdx ? "done" : ""}"></span>`).join("");
-    consoleEl.innerHTML = `<div class="progress" aria-hidden="true">${bars}</div>
-      <div class="step-grid"><div>
-      <div class="step-head"><span class="step-count">Step ${stepIdx + 1} of ${STEPS.length}</span><h3 class="step-title">${esc(s.title)}</h3></div>
-      <p class="step-body">${codeify(s.body)}</p>
+    const pct = ((stepIdx + 1) / STEPS.length * 100).toFixed(1);
+    const final = stepIdx === STEPS.length - 1;
+    let html = head(`Follow one change &middot; step ${stepIdx + 1} of ${STEPS.length}`, LAYER[s.layer], s.title, "Exit", "step-exit");
+    html += `<div class="progress" aria-hidden="true"><i style="width:${pct}%"></i></div>
+      <p>${s.body}</p>
+      <pre class="payload" tabindex="0" aria-label="Example at this step"><code>${escapeHtml(s.payload)}</code></pre>
       <div class="step-nav">
-        <button type="button" id="step-prev" ${stepIdx === 0 ? "disabled" : ""}>&larr; Previous</button>
-        <button type="button" id="step-next" class="btn-primary">${stepIdx === STEPS.length - 1 ? "Finish" : "Next &rarr;"}</button>
-        <button type="button" id="step-exit">Exit</button>
-        <a class="small" href="${s.link.href}">${esc(s.link.label)} &rarr;</a>
-      </div></div>
-      <pre class="payload" tabindex="0" aria-label="Example record at this step"><code>${esc(s.payload)}</code></pre></div>`;
-    document.getElementById("step-prev").addEventListener("click", prevStep);
-    document.getElementById("step-next").addEventListener("click", nextStep);
-    document.getElementById("step-exit").addEventListener("click", () => { exitSteps(); stepBtn.focus(); });
+        <button type="button" id="step-prev" ${stepIdx === 0 ? "disabled" : ""}>&larr; Back</button>
+        <button type="button" id="step-next" class="primary">${final ? "Finish" : "Next &rarr;"}</button>
+        <span class="keys">or the arrow keys</span>
+      </div>
+      <p class="more">Read more: <a href="${s.link.href}">${s.link.label} &rarr;</a></p>`;
+    render(html, false);
+    document.getElementById("step-prev").addEventListener("click", () => prevStep(true));
+    document.getElementById("step-next").addEventListener("click", () => nextStep(true));
+    document.getElementById("step-exit").addEventListener("click", () => { exitSteps(false); stepBtn.focus(); });
+    if (focusNext) document.getElementById("step-next").focus({ preventScroll: true });
   }
   function moveStepToken(from, to) {
     if (reducedMotion || (from.x === to.x && from.y === to.y)) {
@@ -1546,7 +1119,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
       return;
     }
     const start = performance.now();
-    const dur = 650;
+    const dur = 600;
     (function anim(now) {
       const p = Math.min(1, (now - start) / dur);
       const e = p < .5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
@@ -1558,24 +1131,20 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
   function enterSteps() {
     setPlaying(false);
     clearTokens();
-    closePanel();
+    clearActive();
     stepping = true;
+    showing = "steps";
     svg.classList.add("stepping");
-    shell.classList.add("stepping");
-    // The platform band plays no part in the walkthrough; cropping it keeps the diagram and the step card on one screen.
-    svg.setAttribute("viewBox", "0 0 1280 384");
-    const top = shell.getBoundingClientRect().top + window.scrollY - 64;
-    window.scrollTo({ top, behavior: reducedMotion ? "auto" : "smooth" });
     stepBtn.setAttribute("aria-pressed", "true");
+    caption.innerHTML = "Following one update to order 1. Use <b>Next</b>, or the arrow keys, to move along.";
     stepIdx = 0;
     stepPos = null;
-    renderStep(null);
+    renderStep(null, true);
+    revealExplain();
   }
-  function exitSteps() {
+  function exitSteps(quiet) {
     stepping = false;
     svg.classList.remove("stepping");
-    shell.classList.remove("stepping");
-    svg.setAttribute("viewBox", "0 0 1280 484");
     stepBtn.setAttribute("aria-pressed", "false");
     if (stepTok) { stepTok.remove(); stepTok = null; }
     stepPos = null;
@@ -1583,141 +1152,34 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
     Object.values(goldRowEls).forEach(g => g.classList.remove("lit"));
     Object.values(edgeEls).forEach(p => p.classList.remove("hot"));
     resetLoop();
+    if (!quiet) showStart(false);
   }
-  function nextStep() {
-    if (stepIdx < STEPS.length - 1) { const p = stepIdx; stepIdx++; renderStep(p); focusStepNext(); return true; }
-    exitSteps();
-    caption.innerHTML = "That was one change, end to end. Press <b>Play</b> to watch several, or click any component for its details.";
+  function nextStep(focusNext) {
+    if (stepIdx < STEPS.length - 1) { const p = stepIdx; stepIdx++; renderStep(p, focusNext); return; }
+    exitSteps(false);
+    caption.innerHTML = "That was one change, from the commit to the answer. Press <b>Play</b> to watch several, or click any box for its explanation.";
     stepBtn.focus();
-    return false;
   }
-  function prevStep() {
-    if (stepIdx > 0) { const p = stepIdx; stepIdx--; renderStep(p); focusStepNext(); }
+  function prevStep(focusNext) {
+    if (stepIdx > 0) { const p = stepIdx; stepIdx--; renderStep(p, focusNext); }
   }
-  function focusStepNext() {
-    const b = document.getElementById("step-next");
-    if (b && consoleEl.contains(document.activeElement) === false && document.activeElement !== document.body) return;
-    if (b) b.focus({ preventScroll: true });
-  }
-  stepBtn.addEventListener("click", () => { if (stepping) exitSteps(); else enterSteps(); });
-  document.getElementById("hero-follow").addEventListener("click", () => {
-    setTimeout(() => { if (!stepping) enterSteps(); }, reducedMotion ? 0 : 450);
-  });
+  stepBtn.addEventListener("click", () => { if (stepping) exitSteps(false); else enterSteps(); });
 
-  // ---------- Section navigation ----------
-  const sections = Array.from(document.querySelectorAll("[data-section]"));
-  const navLinks = Array.from(document.querySelectorAll(".navlinks a"));
-  function currentSectionIndex() {
-    const y = window.scrollY + 80 + window.innerHeight * 0.2;
-    let idx = 0;
-    sections.forEach((s, i) => { if (s.offsetTop <= y) idx = i; });
-    return idx;
-  }
-  function updateNav() {
-    const id = sections[currentSectionIndex()].id;
-    navLinks.forEach(a => a.setAttribute("aria-current", String(a.getAttribute("href") === "#" + id)));
-  }
-  let navTick = false;
-  window.addEventListener("scroll", () => {
-    if (navTick) return;
-    navTick = true;
-    requestAnimationFrame(() => { updateNav(); navTick = false; });
-  }, { passive: true });
-  updateNav();
-  // While a smooth scroll is still running, count from its target, not from where the page happens to be.
-  let navTarget = -1, navAt = 0;
-  function goSection(delta) {
-    const base = performance.now() - navAt < 900 && navTarget >= 0 ? navTarget : currentSectionIndex();
-    const i = Math.max(0, Math.min(sections.length - 1, base + delta));
-    navTarget = i; navAt = performance.now();
-    sections[i].scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "start" });
-  }
   document.addEventListener("keydown", e => {
-    if (e.key === "Escape") { if (panel.classList.contains("open")) { closePanel(); return; } if (stepping) { exitSteps(); return; } }
-    if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    if (e.key === "Escape") {
+      if (stepping) { exitSteps(false); stepBtn.focus(); return; }
+      if (showing !== "start") { showStart(true); return; }
+    }
+    if (!stepping || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
     const tag = (e.target.tagName || "").toLowerCase();
     if (tag === "input" || tag === "textarea" || tag === "select" || e.target.isContentEditable) return;
-    if (e.target.closest && e.target.closest(".payload, .cmd pre, .table-wrap, .diagram-scroll")) {
-      const el2 = e.target.closest(".payload, .cmd pre, .table-wrap, .diagram-scroll");
-      if (el2.scrollWidth > el2.clientWidth && e.target === el2) return;
-    }
-    if (e.key === "ArrowRight") {
-      e.preventDefault();
-      if (stepping) { if (!nextStep()) goSection(1); } else goSection(1);
-    } else if (e.key === "ArrowLeft") {
-      e.preventDefault();
-      if (stepping && stepIdx > 0) prevStep(); else goSection(-1);
-    }
+    if (e.target.classList && e.target.classList.contains("payload") && e.target.scrollWidth > e.target.clientWidth) return;
+    const focusInside = explain.contains(document.activeElement);
+    if (e.key === "ArrowRight") { e.preventDefault(); nextStep(focusInside); }
+    else if (e.key === "ArrowLeft") { e.preventDefault(); prevStep(focusInside); }
   });
 
-  // ---------- Decision filters ----------
-  const filterBtns = Array.from(document.querySelectorAll("[data-filter]"));
-  filterBtns.forEach(b => b.addEventListener("click", () => {
-    const f = b.dataset.filter;
-    filterBtns.forEach(x => x.setAttribute("aria-pressed", String(x === b)));
-    document.querySelectorAll("#decision-grid .decision").forEach(c => { c.hidden = f !== "all" && c.dataset.cat !== f; });
-  }));
-
-  // ---------- Late arrival simulator ----------
-  const SIM = [
-    { seq: 500, status: "PROCESSING", open: true },
-    { seq: 420, status: "PENDING", open: true },
-    { seq: 610, status: "COMPLETED", open: false }
-  ];
-  const simApplied = [];
-  let simCurrent = null;
-  const simHistory = document.getElementById("sim-history");
-  const simCurrentEl = document.getElementById("sim-current");
-  const simMsg = document.getElementById("sim-msg");
-  const simBtns = Array.from(document.querySelectorAll("[data-sim]"));
-  function renderSim(newSeq) {
-    const rows = simApplied.slice().sort((a, b) => a.seq - b.seq);
-    simHistory.innerHTML = rows.length ? rows.map((r, i) => {
-      const next = rows[i + 1];
-      return `<tr class="${r.seq === newSeq ? "new" : ""}"><td>${r.seq}</td><td><code>${r.status}</code></td><td>${next ? "change " + next.seq : "&mdash; (latest)"}</td></tr>`;
-    }).join("") : `<tr><td colspan="3" class="muted">No changes yet</td></tr>`;
-    simCurrentEl.innerHTML = simCurrent ? `<tr class="${simCurrent.seq === newSeq ? "new" : ""}"><td><code>${simCurrent.status}</code></td><td>${simCurrent.seq}</td><td>${simCurrent.open ? '<span class="pill-ok">open</span>' : '<span class="muted">closed</span>'}</td></tr>` : `<tr><td colspan="3" class="muted">No row yet</td></tr>`;
-    simBtns.forEach(b => { if (b.dataset.sim !== "reset") b.disabled = simApplied.includes(SIM[+b.dataset.sim]); });
-  }
-  simBtns.forEach(b => b.addEventListener("click", () => {
-    if (b.dataset.sim === "reset") {
-      simApplied.length = 0; simCurrent = null;
-      simMsg.textContent = "Apply the changes in the order they arrive.";
-      renderSim(); return;
-    }
-    const c = SIM[+b.dataset.sim];
-    if (simApplied.includes(c)) return;
-    simApplied.push(c);
-    let msg = `History gets the change at ${c.seq}: inserted unless (order_id, _commit_sequence) is already stored. `;
-    if (!simCurrent) { simCurrent = c; msg += "Current state had no row, so it is inserted."; }
-    else if (c.seq > simCurrent.seq) { msg += `Current state is replaced: ${c.seq} is higher than ${simCurrent.seq}.`; simCurrent = c; }
-    else msg += `Current state stays ${simCurrent.status}: ${c.seq} is lower than ${simCurrent.seq}, so the late change is history only, valid until the next change.`;
-    simMsg.textContent = msg;
-    renderSim(c.seq);
-  }));
-  renderSim();
-
-  // ---------- Index timings ----------
-  const EXPLAIN = [
-    ["pending_items_by_product", [344, 380], [37, 46]],
-    ["open_orders_by_delivery_date_and_status", [31, 33], [8, 10]],
-    ["top_delivery_dates_by_open_orders", [30, 35], [3, 4]],
-    ["top_customers_by_pending_orders", [16, 21], [12, 13]]
-  ];
-  const maxMs = 380;
-  const barsEl = document.getElementById("explain-bars");
-  EXPLAIN.forEach(([view, b, a]) => {
-    const row = document.createElement("div");
-    row.className = "bar-row";
-    const pct = v => (v / maxMs * 100).toFixed(2) + "%";
-    row.innerHTML = `<div class="label"><code>${view}</code></div>
-      <div class="bar-line" aria-hidden="true" title="Before: ${b[0]}–${b[1]} ms"><div class="bar-area"><div class="range before" style="width:${pct(b[1])}"></div></div><span class="val">${b[0]}–${b[1]} ms</span></div>
-      <div class="bar-line" aria-hidden="true" title="After: ${a[0]}–${a[1]} ms"><div class="bar-area"><div class="range after" style="width:${pct(a[1])}"></div></div><span class="val">${a[0]}–${a[1]} ms</span></div>
-      <span class="sr-only">${view}: before ${b[0]} to ${b[1]} milliseconds, after ${a[0]} to ${a[1]} milliseconds.</span>`;
-    barsEl.appendChild(row);
-  });
-
-  // ---------- Copy buttons ----------
+  // ---------- Copy button ----------
   document.querySelectorAll(".copy").forEach(btn => btn.addEventListener("click", async () => {
     const text = btn.parentElement.querySelector("code").textContent;
     try { await navigator.clipboard.writeText(text); btn.textContent = "Copied"; }
