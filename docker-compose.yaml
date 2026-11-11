@@ -21,6 +21,7 @@ x-spark-worker: &spark-worker
     timeout: 5s
     retries: 10
     start_period: 20s
+    start_interval: 1s
 
 x-spark-app: &spark-app
   image: ${COMPOSE_PROJECT_NAME}-spark-app
@@ -119,6 +120,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 30s
+      start_interval: 1s
 
   api:
     build:
@@ -142,6 +145,7 @@ services:
       timeout: 10s
       retries: 5
       start_period: 10s
+      start_interval: 1s
 
   seaweedfs:
     image: chrislusf/seaweedfs:4.52
@@ -160,6 +164,7 @@ services:
       timeout: 5s
       retries: 10
       start_period: 10s
+      start_interval: 1s
 
   iceberg-rest:
     build:
@@ -194,6 +199,7 @@ services:
       timeout: 5s
       retries: 10
       start_period: 20s
+      start_interval: 1s
 
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
@@ -273,6 +279,7 @@ services:
       timeout: 5s
       retries: 10
       start_period: 20s
+      start_interval: 1s
 
   spark-app:
     <<: *spark-app
@@ -342,6 +349,7 @@ services:
     <<: *spark-app
     profiles: [maintenance]
     hostname: maintenance-job
+    init: true
     restart: unless-stopped
     depends_on:
       spark-master:
@@ -381,6 +389,7 @@ services:
     <<: *spark-app
     profiles: [maintenance]
     hostname: gold-retention-job
+    init: true
     restart: unless-stopped
     depends_on:
       analytics-db:
@@ -403,6 +412,7 @@ services:
     <<: *spark-app
     profiles: [data-quality]
     hostname: data-quality-job
+    init: true
     restart: unless-stopped
     depends_on:
       spark-master:
@@ -458,6 +468,7 @@ services:
       timeout: 5s
       retries: 10
       start_period: 20s
+      start_interval: 1s
 
   grafana:
     image: grafana/grafana-oss:13.0.2
@@ -488,6 +499,7 @@ services:
       timeout: 5s
       retries: 10
       start_period: 20s
+      start_interval: 1s
 
   # Kafka monitoring console
   conduktor-console:
@@ -520,6 +532,7 @@ services:
       timeout: 5s
       retries: 10
       start_period: 60s
+      start_interval: 1s
 
   conduktor-db:
     image: postgres:16.8
@@ -536,6 +549,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 30s
+      start_interval: 1s
 
 volumes:
   pg-data:
