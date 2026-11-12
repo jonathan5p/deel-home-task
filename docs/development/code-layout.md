@@ -24,14 +24,16 @@ analytics/
       settings.py           pipeline settings (Kafka, lake, analytics database)
       schemas/              the Avro table and column schemas, their loader, and the landing record schema
       quality/              data quality: checks.py (the check framework), job.py (runs the checks named in CHECK), report.py (the JSON report)
-      landing/              landing layer: job.py (streaming job), quality.py (data quality checks)
-      lake/                 code the lake layers share: metadata column names, Spark types, Iceberg table creation and description sync, Iceberg view creation and sync, checkpoint and snapshot bounds, starting and awaiting streaming queries
-      bronze/               bronze layer: source entities, the transforms from landing records to bronze rows, job.py (streaming job) and quality.py (data quality checks)
-      silver/               silver layer: the transform from bronze rows to version rows, the history and current views, and job.py (streaming job)
-      gold/                 gold layer: ddl.py and ddl.sql.j2 (the gold DDL from the gold Avro schemas), scd2.py (the SCD2 SQL),
+      lake/                 the lake layers
+        shared/             code the lake layers share: metadata column names, Spark types, Iceberg table creation and description sync, Iceberg view creation and sync, checkpoint and snapshot bounds, starting and awaiting streaming queries
+        landing/            landing layer: job.py (streaming job), quality.py (data quality checks)
+        bronze/             bronze layer: source entities, the transforms from landing records to bronze rows, job.py (streaming job) and quality.py (data quality checks)
+        silver/             silver layer: the transform from bronze rows to version rows, the history and current views (SQL templates in sql/), and job.py (streaming job)
+        gold/               gold layer: ddl.py and sql/ddl.sql.j2 (the gold DDL from the gold Avro schemas), scd2.py (the SCD2 SQL),
                             facts.py (the history fact and current-state SQL), dimensions.py (the dimensions and facts
-                            and their lookups), sink.py, postgres.py, job.py (the gold streaming job) and
-                            retention.py and rebuild.py (the gold retention and rebuild jobs)
+                            and their lookups), sink.py, postgres.py, job.py (the gold streaming job),
+                            retention.py and rebuild.py (the gold retention and rebuild jobs), and sql/ (their SQL templates)
+          views/            the gold views in the lake, with their SQL templates in sql/
       observability/        the Prometheus exporter: exporter.py (its entry point), stage_exporter.py (completed Spark stages, read from the History Server), table_stats.py (Iceberg table statistics, read with PyIceberg) and schedule.py (their periodic tasks)
     tests/
   sql/gold/                 the four business questions as SQL on the gold views in PostgreSQL
@@ -43,7 +45,7 @@ tests/infra/                infra tests that drive an isolated copy of the stack
   apps/                     Spark applications they submit (UI check, Iceberg smoke check, version and hold apps, fixture helpers)
 ```
 
-Pipeline code is grouped by layer, `pipelines/<layer>/` (for example `pipelines/landing/job.py` for the landing job). Tests mirror the source tree of their project: `analytics/<project>/src/<project>/<path>/<module>.py` is tested in `analytics/<project>/tests/<path>/test_<module>.py`.
+Pipeline code is grouped by layer, `pipelines/lake/<layer>/` (for example `pipelines/lake/landing/job.py` for the landing job). Tests mirror the source tree of their project: `analytics/<project>/src/<project>/<path>/<module>.py` is tested in `analytics/<project>/tests/<path>/test_<module>.py`.
 
 PySpark is not a dependency: it comes from the Spark image, so the pipelines always run the cluster's exact Spark version.
 

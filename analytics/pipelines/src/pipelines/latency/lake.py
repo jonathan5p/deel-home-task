@@ -1,7 +1,7 @@
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 
-from pipelines.lake.columns import MetadataColumn
+from pipelines.lake.shared.columns import MetadataColumn
 from pipelines.latency.layers import Layer
 from pipelines.latency.probe import Change, ProbeTarget
 from pipelines.latency.sql import Row, identifier, relation, single_integer

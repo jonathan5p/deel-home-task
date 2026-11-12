@@ -1,7 +1,7 @@
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 
-from pipelines.bronze.entities import CUSTOMERS, ORDERS
+from pipelines.lake.bronze.entities import CUSTOMERS, ORDERS
 from pipelines.latency.layers import Layer
 from pipelines.latency.probe import (
     Change,

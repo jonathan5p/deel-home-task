@@ -1,14 +1,14 @@
 # Bronze
 
-Bronze is a typed, faithful log of every change event: one row per event, no deduplication. The package `analytics/pipelines/src/pipelines/bronze/` holds:
+Bronze is a typed, faithful log of every change event: one row per event, no deduplication. The package `analytics/pipelines/src/pipelines/lake/bronze/` holds:
 
 - `entities.py`: one `Entity` per source table, built from its Avro schema in `pipelines/schemas/sources/`, with its key, content and audit columns, its NOT NULL columns and the JSON row schema Debezium emits. `entity_for_topic` resolves the entity from the last segment of a `<prefix>.<schema>.<table>` topic and rejects unknown tables.
 - `parse.py`: `parse_changes(records, entity)` turns landing records (the Kafka columns as landed, plus `_landing_file`, the path of the landing file each record was read from) into typed bronze rows and quarantine rows. It is a pure DataFrame transform, so it works on batch and streaming DataFrames.
-- `columns.py`: the names of the raw Kafka columns quarantine keeps (`RawColumn`) and the column order of bronze and quarantine metadata, as string enums and tuples used instead of literals. The metadata column names themselves (`MetadataColumn`) and the `_change_op` values (`ChangeOp`) are in `pipelines/lake/columns.py`, shared with silver.
+- `columns.py`: the names of the raw Kafka columns quarantine keeps (`RawColumn`) and the column order of bronze and quarantine metadata, as string enums and tuples used instead of literals. The metadata column names themselves (`MetadataColumn`) and the `_change_op` values (`ChangeOp`) are in `pipelines/lake/shared/columns.py`, shared with silver.
 - `decimals.py` and `content_hash.py`: the decimal decoding and the content hash below, in plain Spark SQL functions (no Python UDFs).
-- `job.py`: the bronze streaming job, which runs `parse_changes` on every landing topic folder and appends the results to Iceberg tables. Starting the queries and the fail-fast wait below are shared with silver, in `pipelines/lake/streams.py`.
+- `job.py`: the bronze streaming job, which runs `parse_changes` on every landing topic folder and appends the results to Iceberg tables. Starting the queries and the fail-fast wait below are shared with silver, in `pipelines/lake/shared/streams.py`.
 
-The bronze and quarantine tables are defined by their templates (`tables/bronze_template.avsc` and `tables/bronze_quarantine_template.avsc`, both partitioned by `_published_at`). `table_definition` in `pipelines/lake/tables.py` builds any layer's table from its template, and the same module creates the Iceberg tables and updates their descriptions for every layer.
+The bronze and quarantine tables are defined by their templates (`tables/bronze_template.avsc` and `tables/bronze_quarantine_template.avsc`, both partitioned by `_published_at`). `table_definition` in `pipelines/lake/shared/tables.py` builds any layer's table from its template, and the same module creates the Iceberg tables and updates their descriptions for every layer.
 
 Run it as a service with `make pipeline PIPELINE=bronze` (see [Running the pipeline](../operations/running-the-pipeline.md)). It reads what the landing job writes, so run both, or `PIPELINE=all`. Until the landing job has written a topic's first file, the bronze job stops with `PATH_NOT_FOUND` for that topic's folder and Compose restarts it. Don't also start it with `make spark-submit` while the service runs: both would write to the same tables with the same checkpoints.
 

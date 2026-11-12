@@ -7,15 +7,15 @@ from pyspark.sql import functions as F
 from pyspark.sql.types import StructField, StructType
 
 from common.settings import AnalyticsDbSettings
-from pipelines.gold import job, rebuild
-from pipelines.gold.dimensions import DIMENSIONS, FACTS
-from pipelines.gold.lake.views import FRESHNESS, SEEDED, GoldLakeViews, refresh_gold_views
-from pipelines.gold.sink import jdbc_options
-from pipelines.lake.tables import table_definition
-from pipelines.lake.types import SPARK_TYPES
+from pipelines.lake.gold import job, rebuild
+from pipelines.lake.gold.dimensions import DIMENSIONS, FACTS
+from pipelines.lake.gold.sink import jdbc_options
+from pipelines.lake.gold.views.views import FRESHNESS, SEEDED, GoldLakeViews, refresh_gold_views
+from pipelines.lake.shared.tables import table_definition
+from pipelines.lake.shared.types import SPARK_TYPES
+from pipelines.lake.silver.views import refresh_views
 from pipelines.schemas.definitions import EntityDefinition
 from pipelines.settings import SilverSettings
-from pipelines.silver.views import refresh_views
 
 LAKE_CATALOG = "spark.sql.catalog.lake"
 LAKE_VIEWS = "--lake-views"

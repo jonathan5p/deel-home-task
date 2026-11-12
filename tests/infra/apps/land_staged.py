@@ -4,7 +4,7 @@ import sys
 
 from pyspark.sql import DataFrame, SparkSession
 
-from pipelines.landing.job import TopicReader, run
+from pipelines.lake.landing.job import TopicReader, run
 from pipelines.schemas import KAFKA_RECORD_SCHEMA
 from pipelines.settings import KafkaSettings, LandingSettings
 

@@ -5,14 +5,14 @@ from typing import NamedTuple
 
 from pyspark.sql import Row, SparkSession
 
-from pipelines.gold.lake.views import GoldLakeViews, refresh_gold_views
-from pipelines.lake.checkpoints import (
+from pipelines.lake.gold.views.views import GoldLakeViews, refresh_gold_views
+from pipelines.lake.shared.checkpoints import (
     CheckpointFiles,
     HadoopCheckpointFiles,
     committed_snapshots,
 )
+from pipelines.lake.silver.views import MissingSilverTablesError, refresh_views
 from pipelines.settings import MaintenanceSettings, SilverSettings
-from pipelines.silver.views import MissingSilverTablesError, refresh_views
 
 type Sql = Callable[[str], list[Row]]
 type Clock = Callable[[], datetime]

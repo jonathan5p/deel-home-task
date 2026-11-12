@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 import duckdb
 
 from common.settings import InvalidSettingError, MissingSettingsError
-from pipelines.bronze.entities import ENTITIES, UnknownEntityError
+from pipelines.lake.bronze.entities import ENTITIES, UnknownEntityError
 from pipelines.latency.duck import (
     GOLD_ALIAS,
     SOURCE_ALIAS,

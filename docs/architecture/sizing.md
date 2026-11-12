@@ -13,13 +13,13 @@ The Spark cluster is sized for one developer machine running the whole stack in 
 | Cores per application | 2; 1 for bronze | `spark.cores.max` in `docker-compose.yaml` and the Makefile | Tasks a job runs at once |
 | Executor shape | 1 core and 1 GiB per executor, so 2 executors for a 2-core application | `spark.executor.cores=1`, `spark.executor.memory=1g` in `docker-compose.yaml` and the Makefile | Where an application's tasks run, and the batch size and state an executor can hold |
 | Worker resources | 2 workers × 5 cores, 5 GiB | `SPARK_WORKER_CORES`, `SPARK_WORKER_MEMORY` | How many applications run at once |
-| Shuffle and state partitions | 2 in silver; Spark's default elsewhere, where no query shuffles | `pipelines/silver/job.py` | State stores per silver entity |
-| State store | RocksDB, no watermark | `pipelines/silver/job.py` | State grows by one small entry per change |
-| Iceberg write distribution | `none` | `pipelines/lake/tables.py` | Files per commit |
+| Shuffle and state partitions | 2 in silver; Spark's default elsewhere, where no query shuffles | `pipelines/lake/silver/job.py` | State stores per silver entity |
+| State store | RocksDB, no watermark | `pipelines/lake/silver/job.py` | State grows by one small entry per change |
+| Iceberg write distribution | `none` | `pipelines/lake/shared/tables.py` | Files per commit |
 | Lake maintenance | Every 6 hours; snapshots kept 24 hours (and the newest 10) | `MAINTENANCE_INTERVAL_HOURS`, `MAINTENANCE_SNAPSHOT_RETENTION_HOURS` in `.env`; `maintenance` profile | Small files and snapshots per table between runs |
-| Silver state commits | RocksDB changelog checkpointing | `pipelines/silver/job.py` | What each batch uploads to the checkpoint |
+| Silver state commits | RocksDB changelog checkpointing | `pipelines/lake/silver/job.py` | What each batch uploads to the checkpoint |
 | Rate limit | none (`maxOffsetsPerTrigger` unset) | landing job | Size of the first batch after a backlog |
-| Gold write path | Spark JDBC into staging, then one PostgreSQL transaction under the writer lock | `pipelines/gold/sink.py`, `pipelines/gold/postgres.py` | Gold throughput |
+| Gold write path | Spark JDBC into staging, then one PostgreSQL transaction under the writer lock | `pipelines/lake/gold/sink.py`, `pipelines/lake/gold/postgres.py` | Gold throughput |
 
 The input rate follows from the source's schedule:
 - `generate_orders(100)` runs every minute. Each of its iterations either creates an order with 26 items or updates the status of an open order.
