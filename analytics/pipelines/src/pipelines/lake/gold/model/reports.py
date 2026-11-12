@@ -125,9 +125,10 @@ def pending_items_by_product(
 
 
 def _top(rows: DataFrame, total: str) -> DataFrame:
-    """The rows with the `TOP_PLACES` highest totals; rows that tie share a place, so more
-    rows can come back."""
-    place = F.dense_rank().over(Window.orderBy(F.col(total).desc()))
+    """The rows ranked in the first `TOP_PLACES` places by total, as RANK() numbers them: rows
+    that tie share a place and the next place is skipped, so every row tied for the last place
+    comes back."""
+    place = F.rank().over(Window.orderBy(F.col(total).desc()))
     return (
         rows.where(F.col(total) > 0)
         .withColumn("__place", place)

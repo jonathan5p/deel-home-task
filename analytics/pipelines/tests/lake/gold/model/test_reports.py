@@ -152,7 +152,7 @@ def test_a_replayed_batch_recounts_the_same_numbers(spark: SparkSession) -> None
     assert rows_of(after_replay, *BY_DATE[:-1]) == rows_of(after_first, *BY_DATE[:-1])
 
 
-def test_the_top_delivery_dates_keep_every_date_tied_for_a_place(spark: SparkSession) -> None:
+def test_the_top_delivery_dates_skip_the_place_after_a_tie(spark: SparkSession) -> None:
     counts = [
         (date(2026, 11, 1), "PENDING", 3),
         (date(2026, 11, 1), "PROCESSING", 2),
@@ -171,6 +171,27 @@ def test_the_top_delivery_dates_keep_every_date_tied_for_a_place(spark: SparkSes
         (date(2026, 11, 1), 5),
         (date(2026, 11, 2), 4),
         (date(2026, 11, 3), 4),
+    ]
+
+
+def test_the_top_delivery_dates_keep_every_date_tied_for_third_place(spark: SparkSession) -> None:
+    counts = [
+        (date(2026, 11, 1), "PENDING", 5),
+        (date(2026, 11, 2), "PENDING", 4),
+        (date(2026, 11, 3), "PENDING", 3),
+        (date(2026, 11, 4), "PENDING", 3),
+        (date(2026, 11, 5), "PENDING", 2),
+    ]
+    report = spark.createDataFrame(
+        counts, "delivery_date date, status_code string, open_orders long"
+    )
+
+    top = top_delivery_dates_by_open_orders(report)
+
+    assert rows_of(top, "delivery_date", "open_orders") == [
+        (date(2026, 11, 1), 5),
+        (date(2026, 11, 2), 4),
+        (date(2026, 11, 3), 3),
         (date(2026, 11, 4), 3),
     ]
 
@@ -195,5 +216,4 @@ def test_the_top_customers_keep_ties_and_take_the_current_name(spark: SparkSessi
         (1, "Ada Lovelace", 5),
         (2, "Grace", 5),
         (3, None, 4),
-        (4, None, 3),
     ]
