@@ -70,7 +70,7 @@
         "reduceOptions": {
           "values": true,
           "calcs": [],
-          "fields": "/^lag_seconds$/"
+          "fields": ""
         },
         "orientation": "vertical",
         "textMode": "value_and_name",

@@ -51,3 +51,5 @@ def test_freshness_shows_one_lag_in_seconds_per_entity_from_the_freshness_view()
     assert relations(target["rawSql"]) == {"gold.data_freshness"}
     assert freshness["fieldConfig"]["defaults"]["unit"] == "s"
     assert freshness["options"]["reduceOptions"]["values"] is True
+    # Each value is named after its entity, so a field filter by name would match nothing.
+    assert freshness["options"]["reduceOptions"]["fields"] == ""
