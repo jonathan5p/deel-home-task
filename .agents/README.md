@@ -73,7 +73,6 @@ Record decisions and learnings as you work; they are the source for the M6 and M
 - [Decision log](knowledge/decisions.md): architecture and process decisions with alternatives and consequences. Append entries and mark changed ones superseded.
 - [Learnings](knowledge/learnings.md): source-data facts, gotchas and evidence, each labeled verified, reported or external.
 - [M7 docs notes](knowledge/m7-docs-notes.md): explanations the user chose to keep for the M7 docs revamp. Add to it only when the user asks.
-- [Before submission](knowledge/before-submission.md): the user's personal pre-submission checklist. Remind them of open items whenever submission, the final README or M7 comes up.
 - [Archive](knowledge/archive/): finished task logs, kept for history only.
 
 ## Local-only files and scope
