@@ -17,6 +17,7 @@ The numbers (D3, D13, ...) come from the project's decision log, and other pages
 | [D14 · Spark 4.1.4 with Iceberg 1.12.0](#d14--spark-414-with-iceberg-1120) | The newest Spark that Iceberg ships a runtime for, in one shared image |
 | [D27 · One driver container per application](#d27--one-driver-container-per-application-executors-on-shared-workers) | A driver failure, its memory, logs and UI belong to one application only |
 | [D23 · Event logs always written](#d23--event-logs-always-written-optional-history-server) | Finished or crashed applications can still be inspected |
+| [D43 · Sizing from measured metrics](#d43--cluster-sizing-and-triggers-from-measured-metrics) | Each setting changed one at a time and measured under the real load |
 | **Lake layers** | |
 | [D17 · Landing, bronze, silver; gold from silver](#d17--layered-lake-landing-bronze-silver-gold-built-from-silver) | Each layer has one job, and an append-only silver keeps gold streamable |
 | [D18 · Landing as raw Avro](#d18--landing-as-raw-avro-files-one-folder-per-topic) | An exact, replayable copy of Kafka |
@@ -152,6 +153,45 @@ The numbers (D3, D13, ...) come from the project's decision log, and other pages
 **Alternatives considered.** No History Server at all, the first plan; or one always running.
 
 **Outcome.** Past and crashed runs can be inspected at any time ([Spark History Server](infrastructure.md#spark-history-server-optional)). In production, the event logs would live on object storage, with a cleaner for old logs.
+
+### D43 · Cluster sizing and triggers from measured metrics
+
+**Context.** The cluster's settings were estimates: 10-second triggers everywhere, 2 cores per application in whatever executors the master handed out, and lake maintenance only when someone started its profile. A first look at the metrics (#195) showed the cluster nearly idle (each job's cores busy 1–2 % of the time, executor heaps under a quarter of 1 GiB, no spill), gold about 40 seconds behind the source because every hop waited one full 10-second interval, bronze and silver tables growing by about 60–120 small files an hour that were never compacted, and the Iceberg table statistics missing from Prometheus.
+
+**Decision.** Six changes, each in its own commit and measured on its own for 20 minutes against the one before, under the source's own generator only:
+
+1. The table statistics exporter measures every table even when one has an empty snapshot (the quarantine tables'), which had stopped it from publishing any series.
+2. Landing keeps its 10-second trigger; bronze and silver trigger every 2 seconds and gold every 5 (`.env`). The batch-over-trigger alert and the streaming dashboard compare each job with its own trigger, which Prometheus records per job.
+3. Lake maintenance runs every 6 hours as part of the pipeline (`maintenance` profile) and keeps 24 hours of snapshots.
+4. Every application runs 1-core, 1 GiB executors (`spark.executor.cores=1`, `spark.executor.memory=1g`).
+5. Bronze runs on 1 core.
+6. Silver commits its RocksDB state as a changelog.
+
+**Why.**
+
+- The source changes in one burst a minute, so shorter downstream triggers add no batches; they only stop each hop from waiting for the next 10-second boundary. Landing keeps 10 seconds because it reads Kafka and writes the files every later layer reads.
+- Gold's batches are bound by PostgreSQL merges under one lock, not by Spark, so its trigger only has to be shorter than the wait it removes.
+- Compaction every 6 hours bounds the small files a table carries to a quarter of a day; 24 hours of snapshots still allow a day of time travel, while every commit rewrites a far shorter snapshot list than with 7 days. Expiry already skips tables whose readers still need an older snapshot.
+- A fixed executor size makes `spark.cores.max` mean a number of executors, spread over both workers, whatever state the workers are in.
+- Bronze used about 1 % of 2 cores; its second core is worth more in the ad-hoc share.
+- The changelog avoids uploading a RocksDB snapshot on every silver batch, and Spark documents the switch on an existing checkpoint as supported in both directions; silver's checkpoint was backed up first and kept its state.
+
+**Alternatives considered.**
+
+- A 2-second trigger for landing as well: landing's wait in Kafka is the largest hop left, but landing writes one Avro file per topic per batch for every later layer to read, and the generator's burst a minute would then be split into more, smaller batches and files.
+- A load test or a faster generator to find the cores and memory the jobs really need: rejected by the user, because a real source cannot be sped up either; the jobs are sized for the load they get.
+- A rate limit (`maxOffsetsPerTrigger`) or smaller executors: not needed at this load, and not measurable without more of it.
+- Hash write distribution or partitioning changes to make fewer files per commit: compaction is cheaper and keeps the streams' batches free of a shuffle.
+
+**Outcome.** Measured on the real load ([sizing](sizing.md#measured-on-the-real-load)):
+
+- Gold latency fell from about 39 seconds after the source commit (p50, 43–50 at p95) to about 12–15 seconds (products up to 18), with p95 between 16 and 34 seconds, the high end when a change arrived behind a slow dimension batch; the hops after landing went from 9–10 seconds each to 1–2.5.
+- One maintenance run rewrote 182–595 small files per table into 2, taking bronze from 983 to 16 data files and silver from 1,814 to 20, and the average data file from about 17 and 11 KiB to 120 and 75 KiB right after it. Bronze and silver batches were also faster just after compaction (bronze p95 1.0 s to 0.6 s), and slowed again as the files came back.
+- The executor shape and bronze's single core changed no batch time; every 2-core job ran one executor on each worker, and bronze on one core kept its p95 near 1 second.
+- Silver's state commit time fell from 134–146 ms at p50 (181–201 at p95) in the run before to 86–92 ms (126–147 at p95), with no snapshot upload left on the commit path; silver restarted on its existing checkpoint with its state and passed its data quality checks.
+- The jobs never came near their limits (cores 0.2–2.3 % busy, executor heaps at most 260 MiB of 1 GiB, GC under 3 %, no spill, no failed tasks), so the core and memory limits could not be sized at this load.
+- Gold's dimension batches take 10–19 seconds at p95, longer than the 5-second trigger, and grew over the afternoon; that is PostgreSQL time and is not changed by any of these settings.
+- The data quality checks that read live checkpoints can race a 2-second trigger: two of four full runs each failed one bronze or silver check that passed when run again, and the last full run passed all 53.
 
 ## Lake layers
 

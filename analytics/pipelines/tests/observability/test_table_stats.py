@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 
 import pytest
@@ -7,6 +8,7 @@ from analytics.pipelines.tests.observability.table_stats_setup import (
     SMALL,
     FakeTables,
     catalog,
+    commit_no_rows,
     files,
 )
 from pipelines.observability.table_stats import (
@@ -94,6 +96,40 @@ def test_a_partition_compaction_fixed_disappears_from_the_partition_gauge() -> N
     )
 
 
+def test_a_table_that_cannot_be_read_does_not_hide_the_others(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    registry = CollectorRegistry()
+    tables = FakeTables(
+        {
+            ("bronze", "customers"): files(("a", 10)),
+            ("bronze", "orders"): files(("a", 10), ("a", 20)),
+        },
+        unreadable={("bronze", "customers")},
+    )
+
+    with caplog.at_level(logging.ERROR):
+        measured = collector(tables, registry).collect_tables()
+
+    assert measured == 1
+    assert registry.get_sample_value("iceberg_table_data_files", ORDERS) == 2
+    assert "bronze.customers" in caplog.text
+
+
+def test_a_table_that_cannot_be_read_does_not_hide_the_others_per_partition() -> None:
+    registry = CollectorRegistry()
+    tables = FakeTables(
+        {("bronze", "customers"): files(("a", 10)), ("bronze", "orders"): files(("day=1", 10))},
+        unreadable={("bronze", "customers")},
+    )
+
+    measured = collector(tables, registry).collect_partitions()
+
+    assert measured == 1
+    day = ORDERS | {"partition": "day=1"}
+    assert registry.get_sample_value("iceberg_partition_small_files", day) == 1
+
+
 def test_only_the_configured_namespaces_are_read() -> None:
     tables = FakeTables({("bronze", "orders"): files(), ("gold", "x"): files()})
 
@@ -124,3 +160,10 @@ def test_iceberg_tables_reads_the_current_data_files_with_their_partitions(tmp_p
 
 def test_an_empty_table_has_no_data_files(tmp_path: Path) -> None:
     assert IcebergTables(catalog(tmp_path)).data_files("silver", "orders") == []
+
+
+def test_a_table_whose_latest_commit_added_no_rows_has_no_data_files(tmp_path: Path) -> None:
+    local = catalog(tmp_path)
+    commit_no_rows(local, "bronze.orders_quarantine")
+
+    assert IcebergTables(local).data_files("bronze", "orders_quarantine") == []

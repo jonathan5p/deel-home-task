@@ -73,3 +73,9 @@ Mark each item with how it is known: **verified** (read in source or observed at
 - **Verified:** Spark 4 runs with ANSI mode on: `CAST(bigint AS BINARY)` is rejected.
 - **Verified:** building the same image tag from three services in one `docker compose up --build` can fail the first time; build once (`docker compose build spark-master`) before `up`.
 - **Verified:** Kafka in Compose has no health check; wait for `kafka-topics --list` to succeed before using it (infra `Stack.up`).
+
+## Sizing run on the real load (verified 2026-11-12, issue #195)
+- **Verified:** PyIceberg 0.12 `table.inspect.data_files()` raises `ArrowInvalid: Must pass at least one table` when the current snapshot has no manifests, which every streaming batch that writes no rows commits (the bronze quarantine tables). Check `snapshot.manifests(io)` first.
+- **Verified:** Spark event logs record a `QueryProgressEvent` only for batches that read rows; idle triggers log only idle events.
+- **Verified:** SeaweedFS's `weed shell` has no `fs.cp`; copy a filer tree by GET and PUT on the filer's HTTP API (directories have bit 31 set in `Mode` in the JSON listing).
+- **Verified:** with 2 s triggers, `make data-quality` can fail a bronze check (a `sources/0/<n>.compact` log file compacted away while read) or a silver check (a bronze snapshot newer than the one the check loaded); a rerun passes.

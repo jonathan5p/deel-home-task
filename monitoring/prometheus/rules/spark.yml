@@ -1,4 +1,25 @@
 groups:
+  # Prometheus cannot read the jobs' settings, so each job's trigger interval is recorded here.
+  # KEEP THESE IN STEP WITH THE *_TRIGGER_SECONDS VALUES IN .env.
+  - name: spark-streaming-triggers
+    rules:
+      - record: spark_streaming_trigger_seconds
+        expr: vector(10)
+        labels:
+          service: landing-job
+      - record: spark_streaming_trigger_seconds
+        expr: vector(2)
+        labels:
+          service: bronze-job
+      - record: spark_streaming_trigger_seconds
+        expr: vector(2)
+        labels:
+          service: silver-job
+      - record: spark_streaming_trigger_seconds
+        expr: vector(5)
+        labels:
+          service: gold-job
+
   - name: spark-streaming
     rules:
       - alert: StreamingQueryFallingBehind
@@ -12,14 +33,13 @@ groups:
             For 5 minutes the query's processing rate ({{ $value | humanize }} rows/s) stayed below
             its input rate, so its backlog grows.
 
-      # The pipeline jobs trigger every 10 seconds by default (*_TRIGGER_SECONDS).
       - alert: StreamingBatchOverTrigger
-        expr: spark_streaming_latency > 10000
+        expr: spark_streaming_latency > on (service) group_left () (1000 * spark_streaming_trigger_seconds)
         for: 5m
         labels:
           severity: warning
         annotations:
           summary: "{{ $labels.query }} on {{ $labels.service }} takes longer than its trigger"
           description: >-
-            For 5 minutes the micro-batches took longer than the 10 s trigger (the last one
-            {{ $value }} ms), so batches start late and the delay adds up.
+            For 5 minutes the micro-batches took longer than the job's trigger interval (the last
+            one {{ $value }} ms), so batches start late and the delay adds up.

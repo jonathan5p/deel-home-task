@@ -1,11 +1,14 @@
+import logging
 from collections import Counter as Tally
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
 
 from prometheus_client import CollectorRegistry, Gauge
 from pyiceberg.catalog import Catalog
 from pyiceberg.exceptions import NoSuchNamespaceError
+
+log = logging.getLogger(__name__)
 
 TABLE_LABELS = ("namespace", "table")
 PARTITION_LABELS = (*TABLE_LABELS, "partition")
@@ -74,7 +77,11 @@ class IcebergTables:
         return sorted(found)
 
     def data_files(self, namespace: str, table: str) -> list[DataFile]:
-        files = self.catalog.load_table((namespace, table)).inspect.data_files()
+        loaded = self.catalog.load_table((namespace, table))
+        snapshot = loaded.current_snapshot()
+        if snapshot is None or not snapshot.manifests(loaded.io):
+            return []
+        files = loaded.inspect.data_files()
         return [
             DataFile(
                 partition_name(row["partition"]), row["file_size_in_bytes"], row["record_count"]
@@ -140,21 +147,26 @@ class TableStatsCollector:
     small_file_bytes: int
 
     def collect_tables(self) -> int:
-        stats = {
-            (namespace, table): table_stats(
-                self.source.data_files(namespace, table), self.small_file_bytes
-            )
-            for namespace, table in self.source.tables(self.namespaces)
-        }
+        stats = self._read_each(lambda files: table_stats(files, self.small_file_bytes))
         self.metrics.record_tables(stats)
         return len(stats)
 
     def collect_partitions(self) -> int:
-        small_files = {
-            (namespace, table): small_files_by_partition(
-                self.source.data_files(namespace, table), self.small_file_bytes
-            )
-            for namespace, table in self.source.tables(self.namespaces)
-        }
+        small_files = self._read_each(
+            lambda files: small_files_by_partition(files, self.small_file_bytes)
+        )
         self.metrics.record_partitions(small_files)
         return len(small_files)
+
+    def _read_each[T](self, measure: Callable[[list[DataFile]], T]) -> dict[tuple[str, str], T]:
+        """Measure every table; one that cannot be read is logged and left out, so it never
+        hides the others."""
+        measured: dict[tuple[str, str], T] = {}
+        for namespace, table in self.source.tables(self.namespaces):
+            try:
+                files = self.source.data_files(namespace, table)
+            except Exception:
+                log.exception("%s.%s: data files not read", namespace, table)
+                continue
+            measured[(namespace, table)] = measure(files)
+        return measured

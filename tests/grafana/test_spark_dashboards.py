@@ -16,7 +16,6 @@ TABLES = "iceberg-tables"
 SPARK_AND_LAKE = folder_dashboards(SPARK_AND_LAKE_FOLDER)
 SPARK = [uid for uid in SPARK_AND_LAKE if uid != TABLES]
 GIB = 1024**3
-TRIGGER_SECONDS = 10
 
 
 def threshold(uid: str, title: str) -> float:
@@ -75,8 +74,15 @@ def test_executor_memory_is_shown_against_the_one_gib_heap() -> None:
     assert threshold("spark-cluster", "Executor peak heap and RSS vs 1 GiB") == GIB
 
 
-def test_batch_duration_is_shown_against_the_trigger() -> None:
-    assert threshold("spark-streaming", "Batch duration vs the 10 s trigger") == TRIGGER_SECONDS
+def test_batch_duration_is_shown_as_a_share_of_each_jobs_trigger() -> None:
+    [(_, target)] = [
+        (item, target)
+        for item, target in targets("spark-streaming")
+        if item["title"] == "Batch duration / trigger"
+    ]
+
+    assert threshold("spark-streaming", "Batch duration / trigger") == 1
+    assert "spark_streaming_trigger_seconds" in metric_names(target["expr"])
 
 
 def test_the_table_dashboard_shows_hourly_file_changes_and_otherwise_rate_intervals() -> None:

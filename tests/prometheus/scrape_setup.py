@@ -46,13 +46,21 @@ def rule_files() -> list[Path]:
     return sorted(RULES.glob("*.yml"))
 
 
-def alert_rules() -> list[Config]:
+def rules() -> list[Config]:
     return [
         rule
         for path in rule_files()
         for group in yaml.safe_load(path.read_text(encoding="utf-8"))["groups"]
         for rule in group["rules"]
     ]
+
+
+def alert_rules() -> list[Config]:
+    return [rule for rule in rules() if "alert" in rule]
+
+
+def recording_rules() -> list[Config]:
+    return [rule for rule in rules() if "record" in rule]
 
 
 def parse_exposition(text: str) -> list[Series]:
@@ -151,5 +159,7 @@ def scraped(job: str) -> list[Series]:
 
 @cache
 def stored_metric_names() -> frozenset[str]:
-    """Every metric name Prometheus stores from the scraped pages, plus its own `up`."""
-    return frozenset({series["__name__"] for job in JOB_PAGES for series in scraped(job)} | {"up"})
+    """Every metric name Prometheus stores from the scraped pages and its recording rules, plus
+    its own `up`."""
+    scraped_names = {series["__name__"] for job in JOB_PAGES for series in scraped(job)}
+    return frozenset(scraped_names | {rule["record"] for rule in recording_rules()} | {"up"})

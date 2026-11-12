@@ -329,3 +329,17 @@ Format per entry: status (`accepted`, `proposed`, `superseded by Dn`), context, 
 - **Alternatives:** the JMX exporter as a Java agent (one more jar and port per JVM, same metrics under other names); a Pushgateway (keeps a dead driver's last values); Prometheus's Docker service discovery (needs the Docker socket, root on the host); per-stage metrics from a `SparkListener` in every driver (a JVM plugin, lost with the driver, while the History Server already has every stage); folders from the dashboards' directory names (lowercase folder names, and the Gold dashboard leaves its folder).
 - **Consequences:** a driver nobody scrapes pays nothing; without the profile the Spark dashboards stay empty and Gold is unaffected. The Gold provider points at its file, not the directory, because Grafana walks provider directories recursively.
 - **Final report:** in `docs/architecture/decisions.md` (D42) and `docs/operations/monitoring.md`.
+
+## D43 · Cluster sizing and triggers from measured metrics
+- **Status:** accepted (2026-11-12). GitHub: #195 (depends on #69, #194).
+- **Decision (user-approved list, one commit and one 20-minute measurement each, real generator load only):**
+  1. The table statistics exporter survives tables whose current snapshot has no manifests (the quarantine tables'), which had made it publish nothing.
+  2. Triggers: landing 10 s, bronze and silver 2 s, gold 5 s in `.env`; Prometheus records each job's trigger (`spark_streaming_trigger_seconds`), the batch-over-trigger alert and the streaming dashboard compare against it; a unit test keeps the rules in step with `.env` (the checks container now mounts `.env`).
+  3. Lake maintenance every 6 hours as part of running the pipeline; snapshots kept 24 hours.
+  4. `spark.executor.cores=1`, `spark.executor.memory=1g` for the pipeline services, the scheduled maintenance and quality services and `make spark-submit`.
+  5. Bronze on `spark.cores.max=1`.
+  6. Silver RocksDB changelog checkpointing (Spark 4.1 docs: switching an existing checkpoint is supported both ways, on restart). Silver's checkpoint was copied to `/buckets/lake/backups/checkpoints-silver-20261112T1407Z` first.
+- **Evidence:** gold p50 about 39 s → 12–15 s; hops after landing 9–10 s → 1–2.5 s; one compaction 983 → 16 bronze and 1,814 → 20 silver files; silver state commit p50 134–146 → 86–92 ms; executor shape and bronze's one core changed no batch time. Every job's cores were 0.1–2.3 % busy, heaps ≤ 262 MiB of 1 GiB, GC < 3 %, no spill: the limits could not be sized at this load.
+- **Rejected:** load test or faster generator (user: measure the real load only), rate limit and memory cut (not now), a 2 s landing trigger (more, smaller landing files for no fewer batches).
+- **Consequences:** gold dimension batches (PostgreSQL merges) take 12–20 s at p95, above the 5 s trigger, and grew over the afternoon; data quality checks reading live checkpoints can race the 2 s triggers (a rerun passes).
+- **Final report:** `docs/architecture/decisions.md` (D43) and `docs/architecture/sizing.md` (Measured on the real load).

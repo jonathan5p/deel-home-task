@@ -78,7 +78,7 @@ Optional services are grouped in Compose profiles and are not started by a plain
    make pipeline PIPELINE=all
    ```
 
-   Debezium snapshots the source tables, then streams every change; the landing, bronze, silver and gold jobs pick them up within a few micro-batches (10 seconds each). Follow them with `make pipeline-logs PIPELINE=all`, or watch the Structured Streaming tab of each job's UI ([running the pipeline](docs/operations/running-the-pipeline.md)). Until a layer has data, the next job stops with `PATH_NOT_FOUND` or `TABLE_OR_VIEW_NOT_FOUND` and Compose restarts it; that is expected.
+   Debezium snapshots the source tables, then streams every change; the landing, bronze, silver and gold jobs pick them up within a few micro-batches (every 10 seconds for landing, 2 for bronze and silver, 5 for gold). Follow them with `make pipeline-logs PIPELINE=all`, or watch the Structured Streaming tab of each job's UI ([running the pipeline](docs/operations/running-the-pipeline.md)). Until a layer has data, the next job stops with `PATH_NOT_FOUND` or `TABLE_OR_VIEW_NOT_FOUND` and Compose restarts it; that is expected.
 
 2. **Check the data.** Each check compares one layer with the one before it, from Kafka to gold, and fails if anything is missing, duplicated or different:
 

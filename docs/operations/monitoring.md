@@ -80,12 +80,12 @@ Every micro-batch adds files, and [lake maintenance](maintenance-and-recovery.md
 
 ## Alerts
 
-`monitoring/prometheus/rules/spark.yml` defines two alert rules, each firing after 5 minutes:
+`monitoring/prometheus/rules/spark.yml` defines two alert rules, each firing after 5 minutes. Prometheus cannot read the jobs' settings, so the same file records each pipeline job's trigger interval as `spark_streaming_trigger_seconds{service="<job>-job"}` (10 s for landing, 2 s for bronze and silver, 5 s for gold, as in `.env`); a unit test fails when the two disagree, so change both together.
 
 | Alert | Fires when |
 | --- | --- |
 | `StreamingQueryFallingBehind` | A query's processing rate stays below its input rate: its backlog grows |
-| `StreamingBatchOverTrigger` | A query's micro-batches take longer than the 10 s trigger: batches start late |
+| `StreamingBatchOverTrigger` | A query's micro-batches take longer than its job's trigger interval (`spark_streaming_trigger_seconds`): batches start late |
 
 They show in Prometheus at <http://localhost:9090/alerts>. No Alertmanager runs, so nobody is notified; production would route them to one. `tests/prometheus/spark_rules_test.yml` holds their `promtool` tests.
 
@@ -97,7 +97,7 @@ They show in Prometheus at <http://localhost:9090/alerts>. No Alertmanager runs,
 | Do the jobs use the cores they hold? | Spark cluster → Busy task slots per application | Busy slots well under the granted cores mean `spark.cores.max` can shrink |
 | Is the executor memory enough? | Spark cluster → Executor peak heap and RSS vs 1 GiB, GC share of task time | Heap peaks near 1 GiB or GC above 10 % mean more memory or smaller partitions |
 | Does each query keep up? | Spark streaming → Input vs processing rate, Processing / input ratio | Ratio at or above 1 |
-| Is the trigger right? | Spark streaming → Batch duration vs the 10 s trigger, Share of time over the trigger | Batches well under the line; a growing share means a longer trigger or more cores |
+| Is the trigger right? | Spark streaming → Batch duration / trigger, Share of time over the trigger | Batches well under 100 % of their job's trigger; a growing share means a longer trigger or more cores |
 | Does silver's state level off? | Spark streaming → State rows, State size, State growth | Growth falling towards zero once the deduplication window is full |
 | Are the partitions the right size? | Spark stages → Tasks per stage, Stages with a median task under 100 ms, Stage duration p50 and p95 | Many stages with sub-100 ms median tasks mean fewer partitions (`spark.sql.shuffle.partitions`) would do |
 | Is the work even across tasks? | Spark stages → Skew p95 | Skews above about 3 mean a hot key or uneven input files |

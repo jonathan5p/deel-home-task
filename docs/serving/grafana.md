@@ -58,8 +58,8 @@ The **Spark and lake** folder holds three Spark dashboards over the Prometheus d
 | --- | --- | --- |
 | Throughput | Input vs processing rate | Rows per second read and processed in the last micro-batch, per query |
 | Throughput | Processing / input ratio | Processing rate divided by input rate while rows arrive, against 1 |
-| Batch duration | Batch duration vs the 10 s trigger | Duration of the last micro-batch, against the trigger |
-| Batch duration | Share of time over the trigger | Share of samples in which the last micro-batch took longer than the trigger |
+| Batch duration | Batch duration / trigger | Duration of the last micro-batch as a share of its job's trigger interval, against 100 % |
+| Batch duration | Share of time over the trigger | Share of samples in which the last micro-batch took longer than its job's trigger |
 | State | State rows, State size, State growth | Rows, memory and growth of each query's state store (silver's deduplication) |
 | Stages and tasks | Completed stages and tasks, Failed stages and tasks | Stages and tasks completed per second and failed, per driver |
 

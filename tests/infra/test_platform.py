@@ -1,6 +1,6 @@
 import json
 
-from tests.infra.stack import MasterApp, Stack, wait_until
+from tests.infra.stack import MasterApp, Stack, WorkerExecutor, wait_until
 
 SMOKE_APP = "tests/infra/apps/iceberg_smoke_check.py"
 VERSIONS_APP = "tests/infra/apps/versions_check.py"
@@ -10,6 +10,11 @@ CONNECTORS_APP = "tests/infra/apps/connectors_check.py"
 
 def running_with_executors(apps: list[MasterApp]) -> set[str]:
     return {app["name"] for app in apps if app["state"] == "RUNNING" and app["cores"] > 0}
+
+
+def app_executors(executors: list[WorkerExecutor], app_id: str) -> list[int]:
+    """The memory in MiB of each executor of the app."""
+    return [executor["memory"] for executor in executors if executor["appid"] == app_id]
 
 
 def test_iceberg_smoke_check_writes_catalog_metadata_and_lake_files(stack: Stack) -> None:
@@ -78,3 +83,28 @@ def test_two_applications_run_at_the_same_time(stack: Stack) -> None:
         returncode, output = stack.finish(run)
         assert returncode == 0, output
     assert stack.driver_containers() == []
+
+
+def test_an_application_gets_single_core_one_gib_executors_spread_over_both_workers(
+    stack: Stack,
+) -> None:
+    run = stack.start_app(
+        HOLD_APP, "40", conf={"spark.cores.max": "4", "spark.app.name": "hold-shape"}
+    )
+
+    wait_until(
+        lambda: any(
+            app["name"] == "hold-shape" and app["cores"] == 4 for app in stack.active_apps()
+        ),
+        timeout=180,
+        message="hold-shape never ran with its four cores",
+    )
+    [app_id] = [app["id"] for app in stack.active_apps() if app["name"] == "hold-shape"]
+    by_worker = {
+        worker: app_executors(executors, app_id)
+        for worker, executors in stack.worker_executors().items()
+    }
+    assert by_worker == {"spark-worker-1": [1024, 1024], "spark-worker-2": [1024, 1024]}
+
+    returncode, output = stack.finish(run)
+    assert returncode == 0, output

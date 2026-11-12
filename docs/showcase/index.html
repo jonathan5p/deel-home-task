@@ -541,16 +541,16 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
       <div class="card latency">
         <div class="latency-head">
           <h3>From a source commit to gold</h3>
-          <div class="metric">39&ndash;40 s <small>median, 41 s at p95</small></div>
+          <div class="metric">15&ndash;18 s <small>median, 39&ndash;41 s at p95</small></div>
         </div>
-        <div class="timeline" role="img" aria-label="Median seconds from the source commit: landing 10, bronze 19 to 20, silver 30 to 31, gold 39 to 40.">
-          <div class="seg" style="--lc:var(--c-landing)"><b>Landing</b><span>10 s</span></div>
-          <div class="seg" style="--lc:var(--c-bronze)"><b>Bronze</b><span>19&ndash;20 s</span></div>
-          <div class="seg" style="--lc:var(--c-silver)"><b>Silver</b><span>30&ndash;31 s</span></div>
-          <div class="seg" style="--lc:var(--c-gold)"><b>Gold</b><span>39&ndash;40 s</span></div>
+        <div class="timeline" role="img" aria-label="Median seconds from the source commit: landing 9, bronze 10 to 11, silver 12, gold 15 to 18.">
+          <div class="seg" style="--lc:var(--c-landing)"><b>Landing</b><span>9 s</span></div>
+          <div class="seg" style="--lc:var(--c-bronze)"><b>Bronze</b><span>10&ndash;11 s</span></div>
+          <div class="seg" style="--lc:var(--c-silver)"><b>Silver</b><span>12 s</span></div>
+          <div class="seg" style="--lc:var(--c-gold)"><b>Gold</b><span>15&ndash;18 s</span></div>
         </div>
-        <p>The commit reaches Kafka in about 0.3 s. Each Spark job then adds about one trigger interval, 10 seconds by default.</p>
-        <p class="src"><code>make latency-probe PROBES=3</code>, every entity, in pull request <a href="https://github.com/jonathan5p/deel-home-task/pull/197">#197</a>, merged 2026-11-11; <a href="../operations/latency-results/">latest measured results</a>; <a href="../operations/latency/">end-to-end latency</a>.</p>
+        <p>The commit reaches Kafka in about 0.3 s and waits up to 10 s for landing&rsquo;s next batch. Bronze, silver and gold trigger every 2, 2 and 5 seconds, so each adds 1 to 4 s; the p95 is a change that arrives behind one of gold&rsquo;s slow dimension merges in PostgreSQL. With 10-second triggers everywhere, gold was 39&ndash;40 s at the median.</p>
+        <p class="src"><code>make latency-probe PROBES=10</code>, every entity, on 2026-11-12 after the sizing changes of issue <a href="https://github.com/jonathan5p/deel-home-task/issues/195">#195</a> (<a href="../architecture/sizing/#measured-on-the-real-load">measured runs</a>); <a href="../operations/latency-results/">latest measured results</a>; <a href="../operations/latency/">end-to-end latency</a>.</p>
       </div>
       <div class="card">
         <h3>Data quality</h3>
@@ -804,8 +804,8 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
       kicker: "Platform", title: "The Spark cluster", tech: ["Spark 4.1.4", "Iceberg 1.12.0", "standalone"],
       hint: "runs every job",
       what: "A small standalone cluster: one master and two workers. Each job gets its own driver container, and its executors share the workers.",
-      how: ["The streaming jobs restart on failure and continue from their checkpoints. Each setting is sized from what drives it: input rate, partitions, trigger interval and state size."],
-      why: [D("D27", "one driver container per application", "d27--one-driver-container-per-application-executors-on-shared-workers")],
+      how: ["The streaming jobs restart on failure and continue from their checkpoints. Each setting is sized from what drives it: input rate, partitions, trigger interval and state size, and was measured on the real load: every executor has 1 core and 1 GiB, and the jobs use a few percent of them."],
+      why: [D("D27", "one driver container per application", "d27--one-driver-container-per-application-executors-on-shared-workers"), D("D43", "sizing from measured metrics", "d43--cluster-sizing-and-triggers-from-measured-metrics")],
       docs: [L("Spark sizing strategy", "../architecture/sizing/"), L("Running the pipeline", "../operations/running-the-pipeline/")] },
     { id: "dq", x: 465, y: 424, w: 122, h: 60, layer: "ok", t: "Data quality", s: "Kafka to gold",
       related: ["landing", "bronze", "silver", "gold", "quarantine", "lakegold"], relatedDq: true,
@@ -1148,7 +1148,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
         <li><b>Grafana</b> <span>the &ldquo;${esc(q.panel)}&rdquo; panel</span></li>
         <li><b>SQL file</b> ${ident("analytics/sql/gold/" + q.file)}</li></ul>
       <pre class="payload" tabindex="0" aria-label="The query"><code>${esc(q.sql)}</code></pre>
-      <h4>How fresh</h4><p>About 40 seconds after the commit in the source, with the default 10-second triggers.</p>`
+      <h4>How fresh</h4><p>About 15 to 18 seconds after the commit in the source at the median, with landing triggering every 10 seconds and the later jobs every 2 to 5.</p>`
       + readMore([L("The four business questions", "../lakehouse/gold/model/#the-four-business-questions"),
         L("Open orders and pending items", "../lakehouse/gold/model/#open-orders-and-pending-items"),
         L("End-to-end latency", "../operations/latency/")]);

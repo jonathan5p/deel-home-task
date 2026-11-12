@@ -14,6 +14,7 @@ from analytics.pipelines.tests.silver.job_setup import (
     no_bronze_rows,
     run_until_caught_up,
     silver_rows,
+    state_changelogs,
     topic,
     write_bronze,
 )
@@ -23,7 +24,14 @@ from pipelines.lake.columns import ChangeOp, MetadataColumn
 from pipelines.lake.tables import TABLE_TEMPLATES, table_definition
 from pipelines.lake.types import SPARK_TYPES
 from pipelines.schemas.render import avro_field, render_table_schema
-from pipelines.silver.job import SILVER, STATE_PARTITIONS, entity_stream, run
+from pipelines.silver.job import (
+    CHANGELOG_CHECKPOINTING,
+    SESSION_CONF,
+    SILVER,
+    STATE_PARTITIONS,
+    entity_stream,
+    run,
+)
 
 pytestmark = pytest.mark.usefixtures("job_session_conf")
 
@@ -139,6 +147,34 @@ def test_the_deduplication_state_is_in_rocksdb_with_one_partition_per_core_the_j
     assert operator["operatorName"] == "dedupe"
     assert any(metric.startswith("rocksdb") for metric in operator["customMetrics"])
     assert operator["numShufflePartitions"] == STATE_PARTITIONS
+
+
+def test_the_deduplication_state_commits_a_changelog_per_batch(
+    spark: SparkSession, silver_settings: SilverSettingsFactory, iceberg_catalog: str
+) -> None:
+    settings = silver_settings(CUSTOMERS, catalog=iceberg_catalog)
+    write_bronze(spark, settings, CUSTOMERS, [bronze_change(CUSTOMERS, 1, ChangeOp.CREATE)])
+
+    run_until_caught_up(spark, settings)
+
+    assert state_changelogs(settings, CUSTOMERS)
+
+
+def test_a_checkpoint_written_before_the_changelog_keeps_its_state_once_it_is_on(
+    spark: SparkSession, silver_settings: SilverSettingsFactory, iceberg_catalog: str
+) -> None:
+    settings = silver_settings(CUSTOMERS, catalog=iceberg_catalog)
+    created = bronze_change(CUSTOMERS, 1, ChangeOp.CREATE)
+    write_bronze(spark, settings, CUSTOMERS, [created])
+    run_until_caught_up(spark, settings, {**SESSION_CONF, CHANGELOG_CHECKPOINTING: "false"})
+    assert not state_changelogs(settings, CUSTOMERS)
+
+    updated = bronze_change(CUSTOMERS, 2, ChangeOp.UPDATE)
+    write_bronze(spark, settings, CUSTOMERS, [redelivered(created, 51), updated])
+    run_until_caught_up(spark, settings)
+
+    assert commit_sequences(silver_rows(spark, settings, CUSTOMERS)) == [1, 2]
+    assert state_changelogs(settings, CUSTOMERS)
 
 
 def test_silver_tables_are_partitioned_by_change_day_and_store_every_description(

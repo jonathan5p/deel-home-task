@@ -2,6 +2,15 @@
 
 `make pipeline` runs the streaming jobs as long-running Compose services (profile `pipeline`), one driver container per job. Name the job with `PIPELINE`, or use `all` for every job:
 
+To run the whole pipeline as it is meant to run, with its metrics, the REST catalog and the scheduled lake maintenance:
+
+```sh
+make up PROFILES="metrics catalog maintenance"   # the stack, Prometheus, the REST catalog, and maintenance every 6 hours
+make pipeline PIPELINE=all PROFILES=catalog       # the four streaming jobs and the lake views
+```
+
+The `maintenance` profile starts `maintenance-job`, which compacts the bronze and silver tables and expires their old snapshots every `MAINTENANCE_INTERVAL_HOURS` (6 in `.env`), and `gold-retention-job` ([Maintenance and recovery](maintenance-and-recovery.md#lake-maintenance)). Without it the streams still run, but every table keeps every small file and snapshot it ever committed.
+
 ```sh
 make pipeline PIPELINE=landing        # start the stack, the History Server and the landing job
 make pipeline PIPELINE=gold           # the same with the gold job
@@ -39,6 +48,6 @@ Where to look while a job runs:
 - **Landing files** in the SeaweedFS filer UI at <http://localhost:8888/buckets/lake/landing/>, one folder per topic.
 - **Spark dashboards** in Grafana, with the `metrics` profile (`make up PROFILES=metrics`): rates, batch durations and state of every query, and the cluster's cores and memory over time ([Monitoring Spark](monitoring.md)).
 
-Each job service submits its application with the same settings as `make spark-submit`, plus `spark.cores.max=2` and the service name as the driver host, so executors on the workers can connect back to it. The services restart unless they were stopped (`restart: unless-stopped`): a job whose driver fails is restarted and resumes from its checkpoints, without skipping or duplicating records. A container stopped with `make pipeline-stop` or `docker stop`/`docker kill` stays stopped until the next `make pipeline`.
+Each job service submits its application with the same settings as `make spark-submit` (1-core, 1 GiB executors: `spark.executor.cores=1`, `spark.executor.memory=1g`), plus `spark.cores.max=2` (1 for bronze) and the service name as the driver host, so executors on the workers can connect back to it. The services restart unless they were stopped (`restart: unless-stopped`): a job whose driver fails is restarted and resumes from its checkpoints, without skipping or duplicating records. A container stopped with `make pipeline-stop` or `docker stop`/`docker kill` stays stopped until the next `make pipeline`.
 
-The cluster has two workers with 5 cores and 5 GiB each, and each job takes at most 2 cores. The four streaming jobs (landing, bronze, silver and gold) use 8 cores and up to 8 GiB of executor memory, which leaves 2 cores and 2 GiB for ad-hoc runs (`make spark-submit`, `make spark-sql`, `make data-quality`); further runs wait for free cores until one ends. Each executor takes Spark's default 1 GiB.
+The cluster has two workers with 5 cores and 5 GiB each. Every executor has 1 core and 1 GiB, so a job capped at 2 cores runs two executors, one on each worker while both have a free core. Landing, silver and gold take 2 cores each and bronze 1, so the four streaming jobs use 7 cores and 7 GiB of executor memory, which leaves 3 cores and 3 GiB for ad-hoc runs (`make spark-submit`, `make spark-sql`, `make data-quality`, a scheduled maintenance run), each capped at 2 cores: one gets its 2 cores, a second one starts on the core that is left, and further runs wait for free cores until one ends ([sizing](../architecture/sizing.md#cluster-allocation)).
