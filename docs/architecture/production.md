@@ -7,7 +7,7 @@ The planned next steps are tracked as issues in the [M8 · Ideas and experiments
 Two things make the move cheaper than it looks:
 
 - **The code holds no deployment details.** Brokers, topics, the lake root, the catalog and the database are required environment variables, so another environment is a new set of values, not a code change ([configuration](../operations/configuration.md)).
-- **Every component speaks a standard protocol.** The lake speaks S3, the tables are standard Iceberg, the source is Kafka with Debezium, and gold is plain PostgreSQL.
+- **Every component speaks a standard protocol.** The lake speaks S3, the tables are standard Iceberg (gold included), the source is Kafka with Debezium, and gold is served from plain PostgreSQL.
 
 ## Summary
 
@@ -17,6 +17,7 @@ Two things make the move cheaper than it looks:
 | [Object store](#object-store) | One SeaweedFS container | AWS S3 or another managed S3-compatible store | |
 | [Kafka](#kafka-and-the-source) | One broker, one partition per topic, JSON without a schema registry | Managed Kafka, replicated, with more partitions and a schema registry | #84 |
 | [Security](#authentication-tls-and-secrets) | Local credentials in `.env`, plain-text connections, no API authentication | A secrets manager, TLS everywhere, IAM roles, authenticated API and dashboards | |
+| [Gold serving](#gold-serving) | Spark writes gold to Iceberg and copies it into one PostgreSQL that serves the API and Grafana | A columnar serving store, such as ClickHouse, fed from the same batches; the top 3 ranked over candidate sets | |
 | [Spark](#spark-deployment-and-sizing) | Standalone cluster, client-mode driver containers, shared executors | YARN on EMR, EMR Serverless or Kubernetes, executors per application, sized from measured metrics | #58, #195 |
 | [Scheduling](#orchestration-and-scheduling) | Compose services that loop with `sleep` | An orchestrator or scheduled cluster jobs, with retries and alerts | |
 | [Monitoring](#monitoring-and-alerting) | Spark UI, History Server, a freshness view, Spark metrics in Prometheus and Grafana | Metrics in a time-series system, dashboards and alerts | #69, #126, #127, #194 |
@@ -59,6 +60,17 @@ Two things make the move cheaper than it looks:
 - IAM roles for S3 and the catalog instead of static keys.
 - TLS on Kafka, PostgreSQL, the object store and every HTTP endpoint.
 - Authentication on the API (OAuth or an API gateway) and single sign-on for Grafana.
+
+## Gold serving
+
+**Here.** The gold job computes the model with Spark, stores it as Iceberg tables in `lake.gold`, and copies each micro-batch into PostgreSQL with plain upserts ([D44](decisions.md#d44--gold-modelled-in-spark-on-iceberg-postgresql-as-serving-copy)). PostgreSQL serves the business questions from small report tables, consistent per batch, and keeps 36 months of history; the lake keeps all of it for analytical engines.
+
+**In production.**
+
+- **A columnar serving store for scale.** When the facts or the number of readers outgrow one PostgreSQL, a store built for analytical serving, such as ClickHouse, takes the copy's place ([D3](decisions.md#d3--gold-in-postgresql-not-clickhouse)). The model's logic stays in Spark, so only the copy step changes: it writes the same computed rows, and the snapshot bookkeeping in `sync_state` carries over. ClickHouse's eventual deduplication matters less when every row arrives already computed, but readers still need the per-batch consistency PostgreSQL gives today, for example by swapping a batch's report tables at once.
+- **PostgreSQL read replicas** meanwhile, for more API and Grafana readers.
+- **Ranking at scale.** The top 3 is ranked over the whole per-key report table every batch, which is cheap while that table holds thousands of keys. With millions of customers, rank a candidate set instead, the current top N plus the keys the batch touched, with a periodic full re-rank to correct any drift.
+- **Gold tables in the maintenance schedule.** Merge-on-read commits add delete files to the gold Iceberg tables every batch, so they are compacted and their snapshots expired on the same schedule as bronze and silver.
 
 ## Spark deployment and sizing
 
@@ -128,4 +140,4 @@ Two things make the move cheaper than it looks:
 
 ## Further ideas
 
-The [M8 · Ideas and experiments](https://github.com/jonathan5p/deel-home-task/milestone/7) milestone collects the experiments that would come next, such as a fast path from bronze to gold if latency matters (#87), and ClickHouse for gold if the facts outgrow PostgreSQL ([D3](decisions.md#d3--gold-in-postgresql-not-clickhouse)).
+The [M8 · Ideas and experiments](https://github.com/jonathan5p/deel-home-task/milestone/7) milestone collects the experiments that would come next, such as a fast path from bronze to gold if latency matters (#87), and a columnar serving store for gold if the facts outgrow PostgreSQL ([Gold serving](#gold-serving)).

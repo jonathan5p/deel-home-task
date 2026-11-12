@@ -9,17 +9,17 @@ The Spark cluster is sized for one developer machine running the whole stack in 
 | Input rate | Up to about 2,700 change events per minute, in a burst at the start of each minute | `pg_cron` schedule of the supplied database (`db-scripts/initialize_db_ddl.sql`) | Rows per micro-batch |
 | Topic partitions | 1 per topic (broker default; Debezium's topics are auto-created) | Kafka broker | Kafka read parallelism: one task per topic per batch |
 | Trigger interval | Landing 10 s, bronze and silver 2 s, gold 5 s | `LANDING_`, `BRONZE_`, `SILVER_`, `GOLD_TRIGGER_SECONDS` in `.env` (code default 10 s) | Latency per hop, Iceberg commits, file sizes |
-| Batch duration | p95 about 1–2 s for landing, bronze and silver; gold p95 12–20 s ([measured](#measured-on-the-real-load)) | — | Must stay below the trigger interval |
+| Batch duration | p95 about 1–2 s for landing, bronze and silver ([measured](#measured-on-the-real-load)); gold **[pending measurement: gold batch p50 / p95 with the Spark and Iceberg write path]** | — | Must stay below the trigger interval |
 | Cores per application | 2; 1 for bronze | `spark.cores.max` in `docker-compose.yaml` and the Makefile | Tasks a job runs at once |
 | Executor shape | 1 core and 1 GiB per executor, so 2 executors for a 2-core application | `spark.executor.cores=1`, `spark.executor.memory=1g` in `docker-compose.yaml` and the Makefile | Where an application's tasks run, and the batch size and state an executor can hold |
 | Worker resources | 2 workers × 5 cores, 5 GiB | `SPARK_WORKER_CORES`, `SPARK_WORKER_MEMORY` | How many applications run at once |
-| Shuffle and state partitions | 2 in silver; Spark's default elsewhere, where no query shuffles | `pipelines/lake/silver/job.py` | State stores per silver entity |
+| Shuffle and state partitions | 2 in silver, 4 in gold; Spark's default elsewhere, where no query shuffles | `pipelines/lake/silver/job.py`, `pipelines/lake/gold/job.py` | State stores per silver entity; tasks per shuffle stage in gold |
 | State store | RocksDB, no watermark | `pipelines/lake/silver/job.py` | State grows by one small entry per change |
 | Iceberg write distribution | `none` | `pipelines/lake/shared/tables.py` | Files per commit |
 | Lake maintenance | Every 6 hours; snapshots kept 24 hours (and the newest 10) | `MAINTENANCE_INTERVAL_HOURS`, `MAINTENANCE_SNAPSHOT_RETENTION_HOURS` in `.env`; `maintenance` profile | Small files and snapshots per table between runs |
 | Silver state commits | RocksDB changelog checkpointing | `pipelines/lake/silver/job.py` | What each batch uploads to the checkpoint |
 | Rate limit | none (`maxOffsetsPerTrigger` unset) | landing job | Size of the first batch after a backlog |
-| Gold write path | Spark JDBC into staging, then one PostgreSQL transaction under the writer lock | `pipelines/lake/gold/sink.py`, `pipelines/lake/gold/postgres.py` | Gold throughput |
+| Gold write path | Spark transforms of the touched keys, one Iceberg `mergeInto` per table, then Spark JDBC into staging and one PostgreSQL upsert transaction, all under one lock in the driver | `pipelines/lake/gold/writer.py`, `pipelines/lake/gold/serving.py` | Gold throughput |
 
 The input rate follows from the source's schedule:
 - `generate_orders(100)` runs every minute. Each of its iterations either creates an order with 26 items or updates the status of an open order.
@@ -91,21 +91,24 @@ flowchart LR
 - A query keeps the number of state partitions its checkpoint was created with. Giving silver more cores later adds no state parallelism without a checkpoint reset. In production, choose the state partitions for the largest expected core count before the first start.
 
 ### Gold
-- Each of the four queries writes a batch in two steps:
-  1. The executors write the batch into an unlogged staging table with Spark's JDBC writer. This runs in parallel and outside the lock.
-  2. The driver runs one psycopg transaction that takes the advisory writer lock, merges, and re-resolves dependent fact keys.
-- The lock serialises all four gold queries, so the binding constraint is the sum of their transaction times per trigger interval. Spark's cores don't change it. A dimension merge also re-resolves the facts of the keys it touched, which makes dimension batches the most expensive ones.
-- The gold queries run no shuffle, so the shuffle partitions don't apply here either.
+- Each of the four queries writes a batch in three steps, all under one lock in the driver ([D44](decisions.md#d44--gold-modelled-in-spark-on-iceberg-postgresql-as-serving-copy)):
+  1. The executors compute the batch's writes with DataFrames: the stored rows of the keys it touches are read from the gold Iceberg tables, the version windows, lookups and recounts run, and each result is materialised.
+  2. The executors merge each result into its Iceberg table, one commit per table written.
+  3. The executors stage the rows into PostgreSQL with Spark's JDBC writer, and the driver runs one psycopg upsert transaction.
+- The lock serialises all four gold queries, so the binding constraint is the sum of their batch times per trigger interval. Unlike the earlier PostgreSQL merges, steps 1 and 2 run on the executors, so Spark's cores now count. A dimension batch also re-resolves the facts of the keys it touched, and a fact batch recounts the reports, which makes them the most expensive ones.
+- The work per batch grows with the keys it touches, not with the tables: only the stored rows of those keys are recomputed, and the top 3 are ranked over the small per-key report tables.
+- The version windows, joins and recounts shuffle. `spark.sql.shuffle.partitions=4` gives about two tasks per core instead of Spark's 200, which would mostly be empty tasks at this batch size.
+- Each table written adds one Iceberg snapshot and a few small data and delete files per batch (merge-on-read), so the gold tables need compaction like bronze and silver.
 
 ### Trigger interval
-- With the same 10-second trigger everywhere, all jobs start their batches on the same boundaries, so a change waits one full interval at every hop after landing: gold was about 39 seconds after the commit. Landing keeps 10 seconds, bronze and silver trigger every 2 and gold every 5, so each later hop waits at most its own short interval: gold is now about 12–15 seconds after the commit at the median ([measured](#measured-on-the-real-load)).
+- With the same 10-second trigger everywhere, all jobs start their batches on the same boundaries, so a change waits one full interval at every hop after landing: gold was about 39 seconds after the commit. Landing keeps 10 seconds, bronze and silver trigger every 2 and gold every 5, so each later hop waits at most its own short interval: gold was then about 12–15 seconds after the commit at the median ([measured](#measured-on-the-real-load), with the earlier PostgreSQL write path). With the Spark and Iceberg write path: **[pending measurement: end-to-end gold latency p50 / p95 per entity]**.
 - Each batch that has data commits one Iceberg snapshot per table it writes, and adds small files. The source changes in a burst once a minute, so a shorter trigger downstream does not add batches: bronze and silver still run about one batch per landing batch, now within a couple of seconds of it. A bronze or silver trigger shorter than its batch duration (about 1 s at p95) would only make batches start late.
-- Gold's batches take 12–20 seconds at p95 (up to 32 s at their slowest late in the day), longer than its 5-second trigger, because the PostgreSQL merge under the writer lock is the slow part, not Spark. A shorter gold trigger would not help; a longer one would only add waiting. The alert on batches over the trigger compares each job with its own trigger, so gold's long dimension batches show there when they last 5 minutes.
+- With the earlier PostgreSQL merges, gold's batches took 12–20 seconds at p95 (up to 32 s at their slowest late in the day), longer than its 5-second trigger, because the merge under PostgreSQL's advisory lock was the slow part, not Spark. With the Spark and Iceberg write path: **[pending measurement: gold batch p50 / p95 against the 5-second trigger]**. The alert on batches over the trigger compares each job with its own trigger, so long gold batches show there when they last 5 minutes.
 - Lake maintenance compacts the files every 6 hours and expires snapshots older than 24 hours, keeping the last 10, so the small files never pile up for longer than a quarter of a day.
 
 ## Measured on the real load
 
-Each change was deployed on its own to the running stack, restarting only what it needed, and measured for 20 minutes once the jobs were steady, against the run before it (#195). The load is the supplied source's own generator only: no load test, no change to the source database or its generator, as in a real deployment where the source cannot be sped up. The runs were on 2026-11-12, in the windows below (UTC); a column's change adds to every change on its left.
+Each change was deployed on its own to the running stack, restarting only what it needed, and measured for 20 minutes once the jobs were steady, against the run before it (#195). These runs predate [D44](decisions.md#d44--gold-modelled-in-spark-on-iceberg-postgresql-as-serving-copy): gold then merged its batches in PostgreSQL, so the gold rows below describe that write path. The load is the supplied source's own generator only: no load test, no change to the source database or its generator, as in a real deployment where the source cannot be sped up. The runs were on 2026-11-12, in the windows below (UTC); a column's change adds to every change on its left.
 
 | Run | What changed | Restarted |
 | --- | --- | --- |
@@ -166,7 +169,7 @@ What each change did:
 
 Two things moved for reasons these settings do not touch:
 
-- **Gold's dimension batches** took 12 seconds at p95 in the baseline and 20 seconds by the last run. Gold's executors were busy under 0.3 % of the time, so the time is the PostgreSQL merge under the writer lock, which grows with the dimensions' history. It is longer than gold's 5-second trigger, so a gold change that arrives behind a slow dimension batch waits for it (products' gold p95 reached 34 s).
+- **Gold's dimension batches** took 12 seconds at p95 in the baseline and 20 seconds by the last run. Gold's executors were busy under 0.3 % of the time, so the time was the PostgreSQL merge under the advisory lock, which grew with the dimensions' history; this is the cost the move of gold's transforms into Spark removes from PostgreSQL. It is longer than gold's 5-second trigger, so a gold change that arrives behind a slow dimension batch waits for it (products' gold p95 reached 34 s).
 - **The data quality checks** read the streams' live checkpoints. With 2-second triggers, two of four full `make data-quality` runs each failed a check that passed when run again: a bronze check, because a file source log (`sources/0/<n>.compact`) was compacted away while it was read, and a silver check, because silver had committed a batch reading a bronze snapshot newer than the snapshot list the check had loaded. The last full run (report `20261112T145005Z`) passed all 53 checks. The checks need to read the checkpoint and the tables consistently before they are reliable against fast triggers.
 
 ### What this load cannot size
@@ -179,7 +182,9 @@ The jobs never came near their limits, so the measurements say how little they u
 
 ## PostgreSQL query cost
 
-The serving side is sized by query plans, not by Spark resources. The gold indexes exist only for the current use cases: the four business-question views and `gold.open_orders`. Each index was chosen by reading that query's EXPLAIN plan (decision [D40](decisions.md#d40--gold-indexes-chosen-from-the-query-plans-of-the-current-use-cases), #142).
+The serving side is sized by query plans, not by Spark resources. Since [D44](decisions.md#d44--gold-modelled-in-spark-on-iceberg-postgresql-as-serving-copy), the four business-question views read report tables that hold one row per answer, so they cost a few milliseconds whatever the number of orders: **[pending measurement: `EXPLAIN (ANALYZE, BUFFERS)` time of each business-question view over the report tables]**.
+
+The rest of this section is the sizing of the earlier views, which computed the answers from `current_orders` and `current_order_items` at read time. The gold indexes existed only for those use cases: the four business-question views and `gold.open_orders`. Each index was chosen by reading that query's EXPLAIN plan (decision [D40](decisions.md#d40--gold-indexes-chosen-from-the-query-plans-of-the-current-use-cases), #142). The method still applies to any new query over the larger tables.
 - `current_orders` stores `is_open`.
 - Two partial indexes `WHERE is_open AND NOT _is_deleted` hold only the open orders:
   - `current_orders_open_delivery_idx (delivery_date, status_key)`;
@@ -205,14 +210,14 @@ The "Measured" column comes from the runs in [Measured on the real load](#measur
 
 | Metric | Source | Dashboard panel | Healthy when | Measured |
 | --- | --- | --- | --- | --- |
-| Batch duration vs trigger | `StreamingQueryProgress.durationMs.triggerExecution`, with `addBatch` and `walCommit`, per query | Spark streaming → Batch duration / trigger, Share of time over the trigger | Below the trigger interval; otherwise batches run back to back and lag grows | p95 1.8 s landing, 0.8 s bronze, 0.9 s silver against triggers of 10, 2 and 2 s; gold p95 20 s against 5 s, its dimension merges in PostgreSQL |
+| Batch duration vs trigger | `StreamingQueryProgress.durationMs.triggerExecution`, with `addBatch` and `walCommit`, per query | Spark streaming → Batch duration / trigger, Share of time over the trigger | Below the trigger interval; otherwise batches run back to back and lag grows | p95 1.8 s landing, 0.8 s bronze, 0.9 s silver against triggers of 10, 2 and 2 s; gold **[pending measurement: gold batch p95 against 5 s]** |
 | Input rate vs processing rate | `inputRowsPerSecond`, `processedRowsPerSecond`, `numInputRows` | Spark streaming → Input vs processing rate, Processing / input ratio | Processing rate at or above the input rate over a window | Keeps up: every batch read what had arrived, and Kafka lag stayed at 0 |
 | Kafka lag (landing) | `sources[].metrics.avgOffsetsBehindLatest` and `maxOffsetsBehindLatest` | none | Back near zero after each minute's burst | `maxOffsetsBehindLatest` 0 at the end of every batch |
 | State store size (silver) | `stateOperators[].numRowsTotal`, `memoryUsedBytes`, and RocksDB custom metrics such as `rocksdbSstFileSize` and `rocksdbCommitCheckpointLatency` | Spark streaming → State rows, State size, State growth (RocksDB metrics: none) | Grows linearly with changes, and checkpoint commits stay well below the trigger | About 300,000 rows for order_items and growing with every change; commit p50 87 ms, p95 134 ms with the changelog (213 / 368 ms before any change) |
 | Lake file sizes | The data files of each table's current snapshot, measured by the exporter through the REST catalog | Iceberg tables → Small files per table, Average data file size, Data files added or removed per hour | Small files fall back after each maintenance run | 4–8 new files a minute per layer; one maintenance run took bronze from 983 to 16 files and silver from 1,814 to 20 |
 | Iceberg commit time | Iceberg's commit reports (`totalDuration`, `attempts`) in the driver logs, and the snapshot summaries in `lake.<layer>.<table>.snapshots` (files and bytes added per commit) | none | Commits take a small share of `addBatch`, with one attempt | Not measured separately; bronze and silver batches including their commits take about 1 s at p95 |
-| PostgreSQL transaction time under the writer lock | Lock wait and transaction time per gold batch, logged by the sink; `pg_stat_activity` advisory-lock waits | none | The four queries' transaction times add up to well below the trigger interval | Not logged by the sink; gold batches are 2.3 s at p50 and 20 s at p95 while its executors are busy under 0.3 %, so nearly all of it is PostgreSQL |
-| JDBC staging time | `addBatch` minus the transaction time per gold batch | none | Small next to the transaction | Not measured separately; gold's executors ran 3–6 task-seconds in 20 minutes |
+| Gold batch phases | Per gold batch: the compute and Iceberg commits (Spark stages and Iceberg commit reports), and the PostgreSQL copy transaction; `pg_stat_activity` advisory-lock waits | none | The four queries' batch times add up to well below the trigger interval | **[pending measurement: share of a gold batch spent computing, committing to Iceberg and copying into PostgreSQL]** |
+| JDBC staging time | The JDBC write stages of each gold batch | none | Small next to the batch | Not measured separately |
 | Stage shape | Stage and task metrics from the History Server, through the stage exporter | Spark stages → Skew p95, Stages with a median task under 100 ms, Spill, Shuffle fetch wait / run time | Skew under about 3, few sub-100 ms stages, no spill | Task and data skew at most 1.0, no spill; 1 task per stage (2 in silver), most stages' median task under 100 ms |
 | Executor health | Spark UI Executors tab: GC time, peak memory, failed tasks | Spark cluster → Executor peak heap and RSS vs 1 GiB, GC share of task time, Failed tasks | Little GC time and no failed tasks | Heap peaks 160–260 MiB of 1 GiB, GC under 3 % of task time, no failed tasks |
 
@@ -228,10 +233,11 @@ The local layout mirrors a production deployment but shares one small cluster (d
 - **Parallelism.**
   - More Kafka partitions per topic are the main lever for landing and, through the files they produce, for bronze.
   - Silver's state partitions are fixed when its checkpoint is created, so they are chosen ahead of growth.
-  - Gold is bounded by the single writer lock in PostgreSQL. Spark cores don't help there. The options are:
+  - Gold is bounded by the single lock that serialises its batches. Its compute and Iceberg writes now run on the executors, so more cores shorten a batch; beyond that, the options are:
     - longer triggers with larger batches;
     - finer-grained locking once the cross-table consistency rules allow it;
-    - a store built for larger fact volumes (decision [D3](decisions.md#d3--gold-in-postgresql-not-clickhouse) names ClickHouse).
+    - ranking the top 3 over a candidate set (the current top N plus the touched keys) with a periodic full re-rank, once the per-key tables hold millions of keys;
+    - a columnar serving store for larger volumes ([the way to production](production.md#gold-serving)).
 - **Rates.** `maxOffsetsPerTrigger` caps catch-up batches, and the triggers are chosen from the latency target and the commit cost.
 - **Memory.** Executor memory is sized from the batch size and RocksDB's footprint. `spark.sql.streaming.stateStore.rocksdb.boundedMemoryUsage` bounds RocksDB's native memory per executor.
 - **Storage and catalog.**
