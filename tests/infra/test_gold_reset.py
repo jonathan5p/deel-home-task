@@ -43,6 +43,11 @@ def test_gold_reset_recreates_the_gold_schemas_empty(stack: Stack, reset: GoldRe
     assert views != "0"
 
 
+def test_gold_reset_drops_the_gold_iceberg_tables(reset: GoldReset) -> None:
+    assert "Dropped the gold tables in lake.gold" in reset.first.stdout
+    assert "Dropped the gold tables in lake.gold" in reset.second.stdout
+
+
 def test_gold_reset_deletes_only_the_gold_checkpoints(stack: Stack, reset: GoldReset) -> None:
     assert not lake_has(stack, "checkpoints", "gold")
     assert lake_has(stack, "checkpoints/silver/customers/offsets", "0")

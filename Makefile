@@ -71,9 +71,9 @@ help:
 		'               add optional services with PROFILES (e.g. PROFILES="monitoring catalog").' \
 		'down           Stop all project services, including optional profiles; keep volumes.' \
 		'clean          Delete project containers and volumes (DATA LOSS); requires CONFIRM=1.' \
-		'gold-reset     Stop the gold job, recreate the gold schemas from the rendered DDL and delete the gold checkpoints (gold DATA LOSS; the lake is kept); requires CONFIRM=1.' \
+		'gold-reset     Stop the gold job, recreate the gold schemas from the rendered DDL, drop the gold Iceberg tables and delete the gold checkpoints (gold DATA LOSS; silver is kept); requires CONFIRM=1.' \
 		'db-logins      Create or update the service logins of the analytics database (members of gold_reader) from .env; safe to repeat.' \
-		'gold-rebuild   Run gold-reset, then reload gold from the silver tables in one batch up to TO_TIME (ISO 8601 source commit time, inclusive; default: everything) and apply retention; the gold job stays stopped; requires CONFIRM=1.' \
+		'gold-rebuild   Run gold-reset, then rebuild the gold Iceberg tables from silver in one batch up to TO_TIME (ISO 8601 source commit time, inclusive; default: everything), reload PostgreSQL from them and apply retention; the gold job stays stopped; requires CONFIRM=1.' \
 		'gold-retention Drop the gold history months outside GOLD_RETENTION_MONTHS (default 36) and create the months ahead; the maintenance profile runs it every GOLD_RETENTION_INTERVAL_HOURS (default 24).' \
 		'spark-submit   Run SPARK_APP (repo path; default: UI check job) in its own driver container; options SPARK_APP_ARGS, SPARK_CONF, SPARK_UI_PORT.' \
 		'bronze-replay  Append the changes of a landing range that bronze lacks: TOPIC plus FROM_OFFSET and TO_OFFSET (optional PARTITION) or FROM_TIME and TO_TIME.' \
@@ -261,6 +261,8 @@ ifeq ($(CONFIRM),1)
 	@awk '{ print } /^BEGIN;$$/ && !dropped { print "DROP SCHEMA IF EXISTS gold, gold_internal CASCADE;"; dropped = 1 }' \
 		docker/analytics-db/initdb/02-gold-model.sql \
 		| $(COMPOSE) exec -T analytics-db sh -c 'psql -q -o /dev/null -v ON_ERROR_STOP=1 -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -f -'
+	@$(MAKE) --no-print-directory spark-submit SPARK_APP=analytics/pipelines/src/pipelines/lake/gold/reset.py \
+		SPARK_UI_PORT=$(GOLD_REBUILD_UI_PORT)
 	@$(COMPOSE) exec -T seaweedfs curl -sf -X DELETE "http://localhost:8888$(GOLD_CHECKPOINTS)?recursive=true"
 else
 	@printf '%s\n' "Refusing gold reset: this deletes all gold data and the gold checkpoints. Run make gold-reset CONFIRM=1 to confirm." >&2
