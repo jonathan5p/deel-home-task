@@ -65,14 +65,14 @@ def misplaced_scenario_users(
 PROJECT = project_name("deel-infra-tests-", REPO_ROOT.name)
 IMAGES = ("spark", "spark-app", "api-dev", "api", "iceberg-rest")
 COMPOSE_FILES = ("docker-compose.yaml", "tests/infra/compose.override.yaml")
+WORKERS = ("spark-worker-1", "spark-worker-2")
 CLUSTER_SERVICES = (
     "analytics-db",
     "seaweedfs",
     "zookeeper",
     "kafka",
     "spark-master",
-    "spark-worker-1",
-    "spark-worker-2",
+    *WORKERS,
 )
 CATALOG_SERVICE = "iceberg-rest"
 
@@ -82,6 +82,11 @@ class MasterApp(TypedDict):
     name: str
     state: str
     cores: int
+
+
+class WorkerExecutor(TypedDict):
+    appid: str
+    memory: int
 
 
 @dataclass
@@ -264,6 +269,16 @@ class Stack:
         ).stdout
         apps: list[MasterApp] = json.loads(state)["activeapps"]
         return apps
+
+    def worker_executors(self) -> dict[str, list[WorkerExecutor]]:
+        """The executors each worker runs, by worker service."""
+        executors: dict[str, list[WorkerExecutor]] = {}
+        for worker in WORKERS:
+            state = self.compose(
+                "exec", "-T", worker, "curl", "-fsS", "http://localhost:8081/json/"
+            ).stdout
+            executors[worker] = json.loads(state)["executors"]
+        return executors
 
     def driver_containers(self) -> list[str]:
         """The driver containers of the app runs, which the kept Python container is not."""

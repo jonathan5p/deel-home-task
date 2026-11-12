@@ -60,6 +60,8 @@ x-pipeline-submit: &pipeline-submit >-
   --master "$$SPARK_MASTER_URL"
   --conf spark.driver.host="$$(hostname)"
   --conf spark.cores.max=2
+  --conf spark.executor.cores=1
+  --conf spark.executor.memory=1g
   --conf spark.hadoop.fs.s3a.access.key="$$LAKE_S3_ACCESS_KEY"
   --conf spark.hadoop.fs.s3a.secret.key="$$LAKE_S3_SECRET_KEY"
   --py-files /opt/app/packages.zip
@@ -375,6 +377,8 @@ services:
             --master "$$SPARK_MASTER_URL" \
             --conf spark.driver.host="$$(hostname)" \
             --conf spark.cores.max=2 \
+            --conf spark.executor.cores=1 \
+            --conf spark.executor.memory=1g \
             --conf spark.hadoop.fs.s3a.access.key="$$LAKE_S3_ACCESS_KEY" \
             --conf spark.hadoop.fs.s3a.secret.key="$$LAKE_S3_SECRET_KEY" \
             --py-files /opt/app/packages.zip \
@@ -440,6 +444,8 @@ services:
             --master "$$SPARK_MASTER_URL" \
             --conf spark.driver.host="$$(hostname)" \
             --conf spark.cores.max=2 \
+            --conf spark.executor.cores=1 \
+            --conf spark.executor.memory=1g \
             --conf spark.hadoop.fs.s3a.access.key="$$LAKE_S3_ACCESS_KEY" \
             --conf spark.hadoop.fs.s3a.secret.key="$$LAKE_S3_SECRET_KEY" \
             --py-files /opt/app/packages.zip \

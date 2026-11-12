@@ -28,6 +28,8 @@ DRIVER_RUN = name="spark-app-run-$$(date +%s)-$$$$"; \
 	$(COMPOSE) run --rm --use-aliases $(DRIVER_BUILD) --name "$$name" -p $(SPARK_UI_PORT):4040
 DRIVER_CONF = --master "$$SPARK_MASTER_URL" \
 	--conf spark.driver.host="$$(hostname -i)" \
+	--conf spark.executor.cores=1 \
+	--conf spark.executor.memory=1g \
 	--conf spark.hadoop.fs.s3a.access.key="$$LAKE_S3_ACCESS_KEY" \
 	--conf spark.hadoop.fs.s3a.secret.key="$$LAKE_S3_SECRET_KEY" \
 	$(addprefix --conf ,$(SPARK_CONF))
