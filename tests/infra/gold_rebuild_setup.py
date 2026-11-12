@@ -21,14 +21,14 @@ STREAMED_BATCHES = ("batch-1", "batch-2", "batch-late")
 CUSTOMER_VERSIONS = """
 SELECT customer_id, _commit_sequence, customer_name, _is_folded, _is_deleted, _valid_from,
     _valid_to, _is_current
-FROM gold_internal.dim_customer_versions
+FROM gold_internal.dim_customer
 WHERE customer_id IN ({customers})
 ORDER BY 1, 2;
 """
 PRODUCT_VERSIONS = """
 SELECT product_id, _commit_sequence, unit_price, _is_folded, _is_deleted, _valid_from,
     _valid_to, _is_current
-FROM gold_internal.dim_product_versions
+FROM gold_internal.dim_product
 WHERE product_id IN ({products})
 ORDER BY 1, 2;
 """

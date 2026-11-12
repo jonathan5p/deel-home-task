@@ -31,12 +31,14 @@ def silver_schema(entity: EntityDefinition) -> StructType:
 def register_fixture_catalog(spark: SparkSession, catalog: str, warehouse: str) -> None:
     """Register a copy of the lake catalog under another name, with its own warehouse, so the
     fixture silver tables never meet the real ones. Spark resolves a catalog's settings on its
-    first use, so registering it on a running session works."""
+    first use, so registering it on a running session works; it caches no tables, as the gold
+    job's catalog does not."""
     for key, value in spark.sparkContext.getConf().getAll():
         if key.startswith(f"{LAKE_CATALOG}."):
             spark.conf.set(f"spark.sql.catalog.{catalog}{key.removeprefix(LAKE_CATALOG)}", value)
     spark.conf.set(f"spark.sql.catalog.{catalog}", "org.apache.iceberg.spark.SparkCatalog")
     spark.conf.set(f"spark.sql.catalog.{catalog}.warehouse", warehouse)
+    spark.conf.set(f"spark.sql.catalog.{catalog}.cache-enabled", "false")
 
 
 def append_versions(spark: SparkSession, catalog: str, folder: str) -> None:

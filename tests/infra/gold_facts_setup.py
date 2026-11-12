@@ -263,7 +263,8 @@ def run_fact_scenario(stack: Stack) -> FactRuns:
 
 
 def remove_fact_rows(stack: Stack) -> None:
-    """Remove the scenario's rows, the facts first because they reference the dimensions."""
+    """Remove the scenario's rows, its reports and the copy's sync state, so the next run copies
+    every table it reads again."""
     rows(
         stack,
         f"DELETE FROM gold_internal.fact_order_item_history WHERE order_item_id IN ({keys(ITEMS)});"
@@ -272,9 +273,11 @@ def remove_fact_rows(stack: Stack) -> None:
         f" DELETE FROM gold_internal.current_orders WHERE order_id IN ({keys(ORDERS)});"
         f" DELETE FROM gold_internal.dim_product WHERE product_id IN ({keys(PRODUCTS)});"
         f" DELETE FROM gold_internal.dim_customer WHERE customer_id IN ({keys(CUSTOMERS)});"
-        " TRUNCATE gold_internal.stage_fact_order_history,"
-        " gold_internal.stage_fact_order_item_history,"
-        " gold_internal.stage_dim_product, gold_internal.stage_dim_customer;",
+        " TRUNCATE gold_internal.pending_items_by_product,"
+        " gold_internal.pending_orders_by_customer,"
+        " gold_internal.open_orders_by_delivery_date_and_status,"
+        " gold_internal.top_delivery_dates_by_open_orders,"
+        " gold_internal.top_customers_by_pending_orders, gold_internal.sync_state;",
     )
 
 

@@ -5,24 +5,21 @@ import pytest
 from pipelines.schemas.definitions import POSTGRES_TYPES
 from pipelines.schemas.gold_definitions import load_gold_tables
 from tests.infra.gold_fixtures import (
+    BUSINESS_VIEWS,
     CURRENT_STATE,
-    CURRENT_STATE_INDEXES,
     DELETED_ROWS,
     FRESHNESS,
     FRESHNESS_FIXTURE,
     GOLD_DDL,
+    GOLD_QUERIES,
     INTERNAL_TABLES,
     PUBLIC_PIPELINE_ONLY_COLUMNS,
     PUBLIC_VIEWS,
     STAGING_TABLES,
-    TIES_AT_THE_TOP,
     UNDESCRIBED_COLUMNS,
     UNDESCRIBED_INDEXES,
     UNDESCRIBED_RELATIONS,
     UNDESCRIBED_SCHEMAS,
-    VERSIONS_VIEWS,
-    VIEWS_WITHOUT_TABLE,
-    answer,
     column_types,
     item_change,
     order_change,
@@ -58,14 +55,13 @@ def test_ddl_applies_again_to_an_existing_database(
         assert "ERROR" not in run.stderr
 
 
-def test_internal_schema_holds_the_model_tables_and_the_dimension_versions_views(
+def test_internal_schema_holds_only_the_stored_tables_their_staging_and_the_sync_state(
     gold: Stack,
 ) -> None:
     relations = dict(rows(gold, top_level_relations("gold_internal")))
 
-    assert set(relations) == INTERNAL_TABLES | STAGING_TABLES | VERSIONS_VIEWS
-    assert {relations[name] for name in INTERNAL_TABLES | STAGING_TABLES} <= {"r", "p"}
-    assert {relations[name] for name in VERSIONS_VIEWS} == {"v"}
+    assert set(relations) == INTERNAL_TABLES | STAGING_TABLES
+    assert set(relations.values()) <= {"r", "p"}
 
 
 def test_staging_tables_are_unlogged(gold: Stack) -> None:
@@ -92,8 +88,8 @@ def test_public_views_hide_the_pipeline_only_columns(gold: Stack) -> None:
 
 def test_public_current_views_hide_deleted_rows(gold: Stack) -> None:
     assert rows(gold, rolled_back(CURRENT_STATE, DELETED_ROWS)) == [
-        ["orders", "0", "9"],
-        ["order_items", "0", "7"],
+        ["orders", "0", "1"],
+        ["order_items", "0", "1"],
     ]
 
 
@@ -107,7 +103,7 @@ def test_every_index_outside_a_constraint_has_a_description(gold: Stack) -> None
     assert rows(gold, UNDESCRIBED_INDEXES) == []
 
 
-@pytest.mark.parametrize("view", VIEWS_WITHOUT_TABLE)
+@pytest.mark.parametrize("view", BUSINESS_VIEWS)
 def test_business_views_have_the_columns_and_types_of_their_schema(gold: Stack, view: str) -> None:
     columns = load_gold_tables()[view].columns
     types = rows(gold, type_names(POSTGRES_TYPES[column.type] for column in columns))[0]
@@ -117,86 +113,14 @@ def test_business_views_have_the_columns_and_types_of_their_schema(gold: Stack, 
     ]
 
 
-def test_current_state_tables_have_the_indexes_of_the_business_views(gold: Stack) -> None:
-    orders = "ON gold_internal.current_orders USING btree"
-    items = "ON gold_internal.current_order_items USING btree"
-    open_orders = "WHERE (is_open AND (NOT _is_deleted))"
-
-    assert rows(gold, CURRENT_STATE_INDEXES) == [
-        [
-            "current_order_items_live_order_idx",
-            "CREATE INDEX current_order_items_live_order_idx"
-            f" {items} (order_id) INCLUDE (product_id, quantity) WHERE (NOT _is_deleted)",
-        ],
-        [
-            "current_order_items_pkey",
-            f"CREATE UNIQUE INDEX current_order_items_pkey {items} (order_item_id)",
-        ],
-        [
-            "current_orders_open_customer_idx",
-            f"CREATE INDEX current_orders_open_customer_idx {orders} (customer_id) {open_orders}",
-        ],
-        [
-            "current_orders_open_delivery_idx",
-            "CREATE INDEX current_orders_open_delivery_idx"
-            f" {orders} (delivery_date, status_key) {open_orders}",
-        ],
-        [
-            "current_orders_pkey",
-            f"CREATE UNIQUE INDEX current_orders_pkey {orders} (order_id)",
-        ],
-    ]
-
-
-def test_order_statuses_are_seeded_with_their_open_flag(gold: Stack) -> None:
-    statuses = rows(gold, "SELECT status_code, is_open FROM gold.dim_order_status;")
-
-    assert dict(statuses) == {
-        "PENDING": "t",
-        "PROCESSING": "t",
-        "REPROCESSING": "t",
-        "COMPLETED": "f",
-        "UNKNOWN": "t",
-    }
-
-
-def test_status_keys_are_stable(gold: Stack) -> None:
-    keys = rows(gold, "SELECT status_key, status_code FROM gold.dim_order_status ORDER BY 1;")
-
-    assert keys == [
-        ["1", "PENDING"],
-        ["2", "PROCESSING"],
-        ["3", "REPROCESSING"],
-        ["4", "COMPLETED"],
-        ["5", "UNKNOWN"],
-    ]
-
-
-def test_dates_cover_2000_to_2099_once_each(gold: Stack) -> None:
-    summary = rows(
+def test_no_index_is_created_beyond_the_keys(gold: Stack) -> None:
+    indexes = rows(
         gold,
-        "SELECT count(*), count(DISTINCT calendar_date), min(calendar_date), max(calendar_date)"
-        " FROM gold.dim_date;",
+        "SELECT count(*) FROM pg_indexes WHERE schemaname = 'gold_internal'"
+        " AND indexname NOT LIKE '%_pkey' AND indexname NOT LIKE '%_key';",
     )
 
-    assert summary == [["36525", "36525", "2000-01-01", "2099-12-31"]]
-
-
-@pytest.mark.parametrize(
-    ("date_key", "expected"),
-    [
-        (20240229, ["2024-02-29", "2024", "1", "2", "29", "4", "f"]),
-        (20261108, ["2026-11-08", "2026", "4", "11", "8", "7", "t"]),
-    ],
-)
-def test_date_attributes(gold: Stack, date_key: int, expected: list[str]) -> None:
-    day = rows(
-        gold,
-        "SELECT calendar_date, year, quarter, month, day_of_month, day_of_week, is_weekend"
-        f" FROM gold.dim_date WHERE date_key = {date_key};",
-    )
-
-    assert day == [expected]
+    assert indexes == [["0"]]
 
 
 def test_history_rows_land_in_the_default_partition(gold: Stack) -> None:
@@ -236,99 +160,65 @@ def test_a_replayed_history_row_is_ignored_on_conflict(gold: Stack) -> None:
     assert count == [["1"]]
 
 
-def test_order_versions_are_ordered_by_commit_sequence_despite_a_late_event(
-    gold: Stack,
+@pytest.mark.parametrize(
+    ("query_file", "expected"),
+    [
+        (
+            "01_open_orders_by_delivery_date_and_status.sql",
+            [
+                ["2026-11-10", "PENDING", "2"],
+                ["2026-11-10", "UNKNOWN", "1"],
+                ["2026-11-11", "REPROCESSING", "1"],
+                ["", "PENDING", "1"],
+            ],
+        ),
+        (
+            "02_top_delivery_dates_by_open_orders.sql",
+            [["2026-11-10", "3"], ["2026-11-11", "1"], ["", "1"]],
+        ),
+        ("03_pending_items_by_product.sql", [["10", "2", "10"], ["30", "1", "8"], ["", "1", ""]]),
+        (
+            "04_top_customers_by_pending_orders.sql",
+            [["1", "Ada Lovelace", "3"], ["2", "Grace Hopper", "3"], ["4", "", "1"]],
+        ),
+    ],
+)
+def test_the_business_questions_read_the_report_tables_as_they_are(
+    gold: Stack, query_file: str, expected: list[list[str]]
 ) -> None:
-    versions = rows(
+    query = (GOLD_QUERIES / query_file).read_text()
+
+    assert rows(gold, rolled_back(CURRENT_STATE, query)) == expected
+
+
+@pytest.mark.parametrize("dimension", ["dim_customer", "dim_product"])
+def test_a_surrogate_key_collision_is_refused(gold: Stack, dimension: str) -> None:
+    key, business_key = f"{dimension[4:]}_key", f"{dimension[4:]}_id"
+    version = (
+        f"INSERT INTO gold_internal.{dimension} ({key}, {business_key}, _commit_sequence,"
+        " _content_hash, _is_deleted, _valid_from, _is_folded, _version_number, _valid_to,"
+        " _is_current) VALUES (77, {id}, {sequence}, 'h', false, now(), false, 1, NULL, true);"
+    )
+    run = psql(
+        gold,
+        rolled_back(version.format(id=1, sequence=10), version.format(id=2, sequence=20)),
+    )
+
+    assert run.returncode != 0
+    assert f"{dimension}_{key}_key" in run.stderr
+
+
+def test_a_recounted_report_key_is_unique_with_its_nulls(gold: Stack) -> None:
+    run = psql(
         gold,
         rolled_back(
-            order_change(7, 500, "timestamp '2026-11-02 10:00'", "PROCESSING"),
-            order_change(7, 610, "timestamp '2026-11-02 11:00'", "COMPLETED"),
-            order_change(7, 420, "timestamp '2026-11-02 09:00'", "PENDING"),
-            "SELECT status_key, _valid_to, _is_current"
-            " FROM gold.fact_order_history ORDER BY _changed_at;",
+            "INSERT INTO gold_internal.pending_items_by_product VALUES (NULL, 1, 1);",
+            "INSERT INTO gold_internal.pending_items_by_product VALUES (NULL, 2, 2);",
         ),
     )
 
-    assert versions == [
-        ["1", "2026-11-02 10:00:00", "f"],
-        ["2", "2026-11-02 11:00:00", "f"],
-        ["4", "", "t"],
-    ]
-
-
-def test_item_versions_are_ordered_by_commit_sequence_despite_a_late_event(
-    gold: Stack,
-) -> None:
-    versions = rows(
-        gold,
-        rolled_back(
-            item_change(3, 700, "timestamp '2026-11-03 10:00'", quantity=2),
-            item_change(3, 650, "timestamp '2026-11-03 09:00'", quantity=1),
-            "SELECT quantity, _valid_to, _is_current"
-            " FROM gold.fact_order_item_history ORDER BY _changed_at;",
-        ),
-    )
-
-    assert versions == [["1", "2026-11-03 10:00:00", "f"], ["2", "", "t"]]
-
-
-def test_open_orders_by_delivery_date_and_status(gold: Stack) -> None:
-    assert answer(gold, "01_open_orders_by_delivery_date_and_status.sql") == [
-        ["2026-11-10", "PENDING", "2"],
-        ["2026-11-10", "PROCESSING", "1"],
-        ["2026-11-10", "UNKNOWN", "1"],
-        ["2026-11-11", "PENDING", "1"],
-        ["2026-11-11", "REPROCESSING", "1"],
-        ["2026-11-12", "PENDING", "1"],
-        ["2026-11-13", "PROCESSING", "1"],
-    ]
-
-
-def test_top_delivery_dates_include_ties_for_third_place(gold: Stack) -> None:
-    assert answer(gold, "02_top_delivery_dates_by_open_orders.sql") == [
-        ["2026-11-10", "4"],
-        ["2026-11-11", "2"],
-        ["2026-11-12", "1"],
-        ["2026-11-13", "1"],
-    ]
-
-
-def test_top_delivery_dates_leave_out_the_fourth_place_after_a_tie_for_first(
-    gold: Stack,
-) -> None:
-    assert answer(gold, "02_top_delivery_dates_by_open_orders.sql", TIES_AT_THE_TOP) == [
-        ["2026-12-01", "3"],
-        ["2026-12-02", "3"],
-        ["2026-12-03", "2"],
-    ]
-
-
-def test_top_customers_leave_out_the_fourth_place_after_a_tie_for_first(gold: Stack) -> None:
-    assert answer(gold, "04_top_customers_by_pending_orders.sql", TIES_AT_THE_TOP) == [
-        ["11", "", "3"],
-        ["12", "", "3"],
-        ["13", "", "2"],
-    ]
-
-
-def test_pending_items_by_product(gold: Stack) -> None:
-    assert answer(gold, "03_pending_items_by_product.sql") == [
-        ["10", "2", "10"],
-        ["20", "1", "2"],
-        ["30", "1", "8"],
-    ]
-
-
-def test_top_customers_include_ties_and_customers_missing_from_the_dimension(
-    gold: Stack,
-) -> None:
-    assert answer(gold, "04_top_customers_by_pending_orders.sql") == [
-        ["1", "Ada Lovelace", "3"],
-        ["2", "Grace Hopper", "3"],
-        ["3", "Alan Turing", "1"],
-        ["4", "", "1"],
-    ]
+    assert run.returncode != 0
+    assert "duplicate key value violates unique constraint" in run.stderr
 
 
 def test_freshness_is_the_newest_change_per_entity(gold: Stack) -> None:

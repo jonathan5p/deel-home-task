@@ -1,17 +1,10 @@
 import json
 import subprocess
 
-from tests.infra.gold_fixtures import CURRENT_STATE, psql
+from tests.infra.gold_fixtures import CURRENT_STATE, REMOVE_CURRENT_STATE, psql
 from tests.infra.stack import REPO_ROOT, Stack
 
 ANSWERS_APP = "tests/infra/apps/api_answers.py"
-
-REMOVE_CURRENT_STATE = """
-DELETE FROM gold_internal.current_order_items WHERE order_item_id BETWEEN 1001 AND 1008;
-DELETE FROM gold_internal.current_orders WHERE order_id BETWEEN 101 AND 110;
-DELETE FROM gold_internal.dim_customer
-WHERE (customer_id, _commit_sequence) IN ((1, 100), (1, 300), (2, 110), (3, 120));
-"""
 
 
 def run_sql(stack: Stack, script: str) -> None:
