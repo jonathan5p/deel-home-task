@@ -49,13 +49,13 @@ Landing identifies the change by its topic, key and marker, and gives its `_comm
 
 ## Reading the numbers against the trigger intervals
 
-Every job runs a micro-batch every `*_TRIGGER_SECONDS` (10 by default, see [configuration](configuration.md)), and Spark starts those batches on multiples of the interval, so jobs with the same interval start their batches at the same moments. A change therefore:
+Every job runs a micro-batch every `*_TRIGGER_SECONDS` (10 by default; `.env` sets 10 for landing, 2 for bronze and silver and 5 for gold, see [configuration](configuration.md)), and Spark starts those batches on multiples of the interval, so jobs with the same interval start their batches at the same moments. A change therefore:
 
 1. reaches Kafka within about a second of its commit (`commit_to_debezium` plus `debezium_to_kafka`);
 2. waits in Kafka for landing's next batch, anywhere between 0 and `LANDING_TRIGGER_SECONDS`, then for that batch to finish (`kafka_to_landing`);
-3. waits about one full interval at each later hop, because the next job started its batch at the same moment as the job before it, before that batch committed the change, and picks it up one interval later, plus the difference between the two batches' durations.
+3. waits for the next batch of each later job. When two jobs share an interval, that is about one full interval, because the next job started its batch at the same moment as the job before it, before that batch committed the change, and picks it up one interval later, plus the difference between the two batches' durations. A shorter downstream interval cuts that wait to between 0 and the downstream job's own interval, plus its batch duration.
 
-With the default 10-second triggers, expect landing between about 1 and 12 seconds after the commit, then about 10 seconds more for each of bronze, silver and gold, so gold about 30 seconds after landing. The [latest latency results](latency-results.md) show what the last committed run measured. With different intervals, a hop waits for the next batch of the downstream job instead, anywhere between 0 and its interval. A hop well above its job's interval means a batch took longer than the interval (Spark then starts the next one late), or the job was stopped or restarting.
+With the `.env` triggers, expect landing between about 1 and 12 seconds after the commit, then about 1 to 2 seconds more for bronze, about 2 for silver and 2 to 4 for gold, so gold about 5 to 8 seconds after landing; the 5-second gold trigger matters less than gold's own batches, whose PostgreSQL merges can take longer than the trigger. With 10-second triggers everywhere, each of bronze, silver and gold adds about 10 seconds, so gold lands about 30 seconds after landing ([sizing](../architecture/sizing.md#measured-on-the-real-load) has both runs). The [latest latency results](latency-results.md) show what the last committed run measured. With different intervals, a hop waits for the next batch of the downstream job instead, anywhere between 0 and its interval. A hop well above its job's interval means a batch took longer than the interval (Spark then starts the next one late), or the job was stopped or restarting.
 
 ## Output and exit codes
 

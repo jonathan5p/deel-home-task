@@ -197,7 +197,7 @@ The gold model, its rules and the business-question views are described in [the 
 
 ## One micro-batch, end to end
 
-Each hop is its own streaming query with its own checkpoint. A restart resumes from the checkpoint and neither skips nor repeats data. The table and file sinks are exactly once, and the gold merge is idempotent. The default trigger of every query is 10 seconds (`*_TRIGGER_SECONDS`).
+Each hop is its own streaming query with its own checkpoint. A restart resumes from the checkpoint and neither skips nor repeats data. The table and file sinks are exactly once, and the gold merge is idempotent. The default trigger of every query is 10 seconds (`*_TRIGGER_SECONDS`); `.env` keeps 10 for landing and sets 2 for bronze and silver and 5 for gold ([sizing](sizing.md#trigger-interval)).
 
 ```mermaid
 sequenceDiagram
