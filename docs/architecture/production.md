@@ -47,7 +47,7 @@ Two things make the move cheaper than it looks:
 - Managed Kafka, such as Amazon MSK or Confluent Cloud, with a replication factor of three and enough partitions per topic for the read parallelism the sizing needs.
 - A schema registry, with Avro or Protobuf messages and compatibility rules, so a source change is checked before it reaches the pipeline. Landing keeps the raw bytes, so it stays valid when the format changes ([D18](decisions.md#d18--landing-as-raw-avro-files-one-folder-per-topic)).
 - Debezium on a managed Kafka Connect cluster, with the source-side recommendations applied: `decimal.handling.mode=string` and a publication limited to the four tables (#84).
-- For the source owners: the data generator should attach the items to the order it just inserted (`INSERT ... RETURNING order_id`) instead of looking the order up by customer and date, so open orders get their items ([what this changes](../lakehouse/gold/model.md#things-to-know-about-the-source-data)).
+- A recommendation for the data generator: attaching each new order's items to the order it has just inserted (`INSERT ... RETURNING order_id`), rather than looking the order up by customer and date, would give open orders their items, so "pending items by product" would show data. The supplied generator is kept as it is; [why there are no pending items today](../lakehouse/gold/model.md#things-to-know-about-the-source-data).
 
 ## Authentication, TLS and secrets
 
