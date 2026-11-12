@@ -1,21 +1,21 @@
 {
   "run": {
-    "started_at": "2026-11-11T22:33:45.647Z",
-    "finished_at": "2026-11-11T22:36:01.201Z",
+    "started_at": "2026-11-12T14:38:46.395Z",
+    "finished_at": "2026-11-12T14:43:01.127Z",
     "entities": [
       "customers",
       "order_items",
       "orders",
       "products"
     ],
-    "probes": 3,
+    "probes": 10,
     "poll_seconds": 1.0,
     "timeout_seconds": 300.0,
     "trigger_seconds": {
       "landing": 10,
-      "bronze": 10,
-      "silver": 10,
-      "gold": 10
+      "bronze": 2,
+      "silver": 2,
+      "gold": 5
     },
     "max_latency_seconds": {},
     "marker_column": "updated_by",
@@ -28,346 +28,346 @@
   },
   "summary": {
     "passed": true,
-    "probes": 3,
+    "probes": 10,
     "timeouts": [],
     "breaches": [],
     "latency_seconds": {
       "customers": {
         "landing": {
-          "count": 3,
-          "min": 4.014,
-          "p50": 10.019,
+          "count": 10,
+          "min": 3.005,
+          "p50": 9.018,
           "p90": 11.021,
-          "p95": 11.021,
-          "max": 11.021
+          "p95": 12.002,
+          "max": 12.002
         },
         "bronze": {
-          "count": 3,
-          "min": 13.023,
-          "p50": 20.029,
-          "p90": 21.021,
-          "p95": 21.021,
-          "max": 21.021
+          "count": 10,
+          "min": 4.005,
+          "p50": 10.019,
+          "p90": 13.002,
+          "p95": 13.02,
+          "max": 13.02
         },
         "silver": {
-          "count": 3,
-          "min": 23.033,
-          "p50": 30.033,
-          "p90": 31.021,
-          "p95": 31.021,
-          "max": 31.021
+          "count": 10,
+          "min": 6.005,
+          "p50": 12.021,
+          "p90": 15.002,
+          "p95": 15.022,
+          "max": 15.022
         },
         "gold": {
-          "count": 3,
-          "min": 33.044,
-          "p50": 39.038,
-          "p90": 41.03,
-          "p95": 41.03,
-          "max": 41.03
+          "count": 10,
+          "min": 9.018,
+          "p50": 15.002,
+          "p90": 30.002,
+          "p95": 40.049,
+          "max": 40.049
         }
       },
       "order_items": {
         "landing": {
-          "count": 3,
-          "min": 3.013,
-          "p50": 10.019,
-          "p90": 11.021,
-          "p95": 11.021,
-          "max": 11.021
+          "count": 10,
+          "min": 2.005,
+          "p50": 9.018,
+          "p90": 11.002,
+          "p95": 11.018,
+          "max": 11.018
         },
         "bronze": {
-          "count": 3,
-          "min": 13.023,
-          "p50": 19.028,
-          "p90": 21.021,
-          "p95": 21.021,
-          "max": 21.021
+          "count": 10,
+          "min": 5.005,
+          "p50": 11.002,
+          "p90": 12.022,
+          "p95": 13.002,
+          "max": 13.002
         },
         "silver": {
-          "count": 3,
-          "min": 23.033,
-          "p50": 30.033,
-          "p90": 31.021,
-          "p95": 31.021,
-          "max": 31.021
+          "count": 10,
+          "min": 6.005,
+          "p50": 12.021,
+          "p90": 15.002,
+          "p95": 15.022,
+          "max": 15.022
         },
         "gold": {
-          "count": 3,
-          "min": 33.044,
-          "p50": 40.039,
-          "p90": 41.03,
-          "p95": 41.03,
-          "max": 41.03
+          "count": 10,
+          "min": 7.005,
+          "p50": 15.022,
+          "p90": 25.002,
+          "p95": 41.051,
+          "max": 41.051
         }
       },
       "orders": {
         "landing": {
-          "count": 3,
-          "min": 3.013,
-          "p50": 10.019,
-          "p90": 11.021,
-          "p95": 11.021,
-          "max": 11.021
+          "count": 10,
+          "min": 3.005,
+          "p50": 9.016,
+          "p90": 12.002,
+          "p95": 12.019,
+          "max": 12.019
         },
         "bronze": {
-          "count": 3,
-          "min": 13.023,
-          "p50": 20.029,
-          "p90": 21.021,
-          "p95": 21.021,
-          "max": 21.021
+          "count": 10,
+          "min": 4.005,
+          "p50": 10.019,
+          "p90": 12.022,
+          "p95": 13.002,
+          "max": 13.002
         },
         "silver": {
-          "count": 3,
-          "min": 23.033,
-          "p50": 31.021,
-          "p90": 31.034,
-          "p95": 31.034,
-          "max": 31.034
+          "count": 10,
+          "min": 6.005,
+          "p50": 12.021,
+          "p90": 15.002,
+          "p95": 15.022,
+          "max": 15.022
         },
         "gold": {
-          "count": 3,
-          "min": 33.044,
-          "p50": 39.038,
-          "p90": 41.03,
-          "p95": 41.03,
-          "max": 41.03
+          "count": 10,
+          "min": 7.005,
+          "p50": 18.027,
+          "p90": 25.002,
+          "p95": 39.048,
+          "max": 39.048
         }
       },
       "products": {
         "landing": {
-          "count": 3,
-          "min": 3.013,
-          "p50": 10.019,
-          "p90": 11.021,
-          "p95": 11.021,
-          "max": 11.021
+          "count": 10,
+          "min": 2.005,
+          "p50": 9.002,
+          "p90": 11.002,
+          "p95": 11.018,
+          "max": 11.018
         },
         "bronze": {
-          "count": 3,
-          "min": 13.023,
-          "p50": 20.029,
-          "p90": 21.021,
-          "p95": 21.021,
-          "max": 21.021
+          "count": 10,
+          "min": 4.005,
+          "p50": 10.019,
+          "p90": 13.002,
+          "p95": 13.02,
+          "max": 13.02
         },
         "silver": {
-          "count": 3,
-          "min": 23.033,
-          "p50": 30.033,
-          "p90": 31.021,
-          "p95": 31.021,
-          "max": 31.021
+          "count": 10,
+          "min": 6.005,
+          "p50": 12.021,
+          "p90": 15.002,
+          "p95": 15.022,
+          "max": 15.022
         },
         "gold": {
-          "count": 3,
-          "min": 33.044,
-          "p50": 40.039,
-          "p90": 41.03,
-          "p95": 41.03,
-          "max": 41.03
+          "count": 10,
+          "min": 12.006,
+          "p50": 18.027,
+          "p90": 29.002,
+          "p95": 39.048,
+          "max": 39.048
         }
       }
     },
     "hop_seconds": {
       "customers": {
         "commit_to_debezium": {
-          "count": 3,
-          "min": 0.146,
-          "p50": 0.214,
-          "p90": 0.323,
-          "p95": 0.323,
-          "max": 0.323
+          "count": 10,
+          "min": 0.01,
+          "p50": 0.322,
+          "p90": 0.485,
+          "p95": 0.497,
+          "max": 0.497
         },
         "debezium_to_kafka": {
-          "count": 3,
-          "min": 0.088,
-          "p50": 0.118,
-          "p90": 0.485,
-          "p95": 0.485,
-          "max": 0.485
+          "count": 10,
+          "min": 0.081,
+          "p50": 0.281,
+          "p90": 0.447,
+          "p95": 0.461,
+          "max": 0.461
         },
         "kafka_to_landing": {
-          "count": 3,
-          "min": 3.206,
-          "p50": 9.687,
-          "p90": 10.787,
-          "p95": 10.787,
-          "max": 10.787
+          "count": 10,
+          "min": 2.449,
+          "p50": 8.585,
+          "p90": 10.367,
+          "p95": 11.599,
+          "max": 11.599
         },
         "landing_to_bronze": {
-          "count": 3,
-          "min": 9.009,
-          "p50": 10.0,
-          "p90": 10.01,
-          "p95": 10.01,
-          "max": 10.01
+          "count": 10,
+          "min": 1.0,
+          "p50": 1.001,
+          "p90": 2.002,
+          "p95": 2.002,
+          "max": 2.002
         },
         "bronze_to_silver": {
-          "count": 3,
-          "min": 10.0,
-          "p50": 10.004,
-          "p90": 10.01,
-          "p95": 10.01,
-          "max": 10.01
+          "count": 10,
+          "min": 2.0,
+          "p50": 2.002,
+          "p90": 2.002,
+          "p95": 2.002,
+          "max": 2.002
         },
         "silver_to_gold": {
-          "count": 3,
-          "min": 9.005,
-          "p50": 10.009,
-          "p90": 10.011,
-          "p95": 10.011,
-          "max": 10.011
+          "count": 10,
+          "min": 1.001,
+          "p50": 2.0,
+          "p90": 15.0,
+          "p95": 28.028,
+          "max": 28.028
         }
       },
       "order_items": {
         "commit_to_debezium": {
-          "count": 3,
-          "min": 0.146,
-          "p50": 0.214,
-          "p90": 0.324,
-          "p95": 0.324,
-          "max": 0.324
+          "count": 10,
+          "min": 0.015,
+          "p50": 0.322,
+          "p90": 0.485,
+          "p95": 0.497,
+          "max": 0.497
         },
         "debezium_to_kafka": {
-          "count": 3,
-          "min": 0.088,
-          "p50": 0.118,
-          "p90": 0.484,
-          "p95": 0.484,
-          "max": 0.484
+          "count": 10,
+          "min": 0.081,
+          "p50": 0.28,
+          "p90": 0.447,
+          "p95": 0.456,
+          "max": 0.456
         },
         "kafka_to_landing": {
-          "count": 3,
-          "min": 2.205,
-          "p50": 9.687,
-          "p90": 10.787,
-          "p95": 10.787,
-          "max": 10.787
+          "count": 10,
+          "min": 1.449,
+          "p50": 8.074,
+          "p90": 10.367,
+          "p95": 10.599,
+          "max": 10.599
         },
         "landing_to_bronze": {
-          "count": 3,
-          "min": 9.009,
-          "p50": 10.0,
-          "p90": 10.01,
-          "p95": 10.01,
-          "max": 10.01
+          "count": 10,
+          "min": 1.0,
+          "p50": 1.001,
+          "p90": 2.002,
+          "p95": 3.0,
+          "max": 3.0
         },
         "bronze_to_silver": {
-          "count": 3,
-          "min": 10.0,
-          "p50": 10.01,
-          "p90": 11.005,
-          "p95": 11.005,
-          "max": 11.005
+          "count": 10,
+          "min": 1.0,
+          "p50": 2.002,
+          "p90": 2.002,
+          "p95": 3.003,
+          "max": 3.003
         },
         "silver_to_gold": {
-          "count": 3,
-          "min": 10.006,
-          "p50": 10.009,
-          "p90": 10.011,
-          "p95": 10.011,
-          "max": 10.011
+          "count": 10,
+          "min": 0.0,
+          "p50": 1.001,
+          "p90": 10.0,
+          "p95": 29.03,
+          "max": 29.03
         }
       },
       "orders": {
         "commit_to_debezium": {
-          "count": 3,
-          "min": 0.146,
-          "p50": 0.214,
-          "p90": 0.328,
-          "p95": 0.328,
-          "max": 0.328
+          "count": 10,
+          "min": 0.015,
+          "p50": 0.322,
+          "p90": 0.485,
+          "p95": 0.497,
+          "max": 0.497
         },
         "debezium_to_kafka": {
-          "count": 3,
-          "min": 0.088,
-          "p50": 0.118,
-          "p90": 0.48,
-          "p95": 0.48,
-          "max": 0.48
+          "count": 10,
+          "min": 0.081,
+          "p50": 0.28,
+          "p90": 0.447,
+          "p95": 0.456,
+          "max": 0.456
         },
         "kafka_to_landing": {
-          "count": 3,
-          "min": 2.205,
-          "p50": 9.687,
-          "p90": 10.787,
-          "p95": 10.787,
-          "max": 10.787
+          "count": 10,
+          "min": 2.449,
+          "p50": 8.531,
+          "p90": 11.368,
+          "p95": 11.599,
+          "max": 11.599
         },
         "landing_to_bronze": {
-          "count": 3,
-          "min": 10.0,
-          "p50": 10.01,
-          "p90": 10.01,
-          "p95": 10.01,
-          "max": 10.01
+          "count": 10,
+          "min": 0.0,
+          "p50": 1.001,
+          "p90": 1.001,
+          "p95": 2.0,
+          "max": 2.0
         },
         "bronze_to_silver": {
-          "count": 3,
-          "min": 10.0,
-          "p50": 10.01,
-          "p90": 11.005,
-          "p95": 11.005,
-          "max": 11.005
+          "count": 10,
+          "min": 1.001,
+          "p50": 2.002,
+          "p90": 2.002,
+          "p95": 3.003,
+          "max": 3.003
         },
         "silver_to_gold": {
-          "count": 3,
-          "min": 8.004,
-          "p50": 10.009,
-          "p90": 10.011,
-          "p95": 10.011,
-          "max": 10.011
+          "count": 10,
+          "min": 1.0,
+          "p50": 5.005,
+          "p90": 10.0,
+          "p95": 27.027,
+          "max": 27.027
         }
       },
       "products": {
         "commit_to_debezium": {
-          "count": 3,
-          "min": 0.146,
-          "p50": 0.214,
-          "p90": 0.328,
-          "p95": 0.328,
-          "max": 0.328
+          "count": 10,
+          "min": 0.015,
+          "p50": 0.322,
+          "p90": 0.485,
+          "p95": 0.497,
+          "max": 0.497
         },
         "debezium_to_kafka": {
-          "count": 3,
-          "min": 0.088,
-          "p50": 0.118,
-          "p90": 0.48,
-          "p95": 0.48,
-          "max": 0.48
+          "count": 10,
+          "min": 0.081,
+          "p50": 0.28,
+          "p90": 0.447,
+          "p95": 0.456,
+          "max": 0.456
         },
         "kafka_to_landing": {
-          "count": 3,
-          "min": 2.205,
-          "p50": 9.687,
-          "p90": 10.787,
-          "p95": 10.787,
-          "max": 10.787
+          "count": 10,
+          "min": 1.449,
+          "p50": 8.074,
+          "p90": 10.367,
+          "p95": 10.599,
+          "max": 10.599
         },
         "landing_to_bronze": {
-          "count": 3,
-          "min": 10.0,
-          "p50": 10.01,
-          "p90": 10.01,
-          "p95": 10.01,
-          "max": 10.01
+          "count": 10,
+          "min": 1.001,
+          "p50": 2.0,
+          "p90": 2.002,
+          "p95": 2.002,
+          "max": 2.002
         },
         "bronze_to_silver": {
-          "count": 3,
-          "min": 10.0,
-          "p50": 10.004,
-          "p90": 10.01,
-          "p95": 10.01,
-          "max": 10.01
+          "count": 10,
+          "min": 1.001,
+          "p50": 2.002,
+          "p90": 2.002,
+          "p95": 2.002,
+          "max": 2.002
         },
         "silver_to_gold": {
-          "count": 3,
-          "min": 10.006,
-          "p50": 10.009,
-          "p90": 10.011,
-          "p95": 10.011,
-          "max": 10.011
+          "count": 10,
+          "min": 5.005,
+          "p50": 6.001,
+          "p90": 14.0,
+          "p95": 27.027,
+          "max": 27.027
         }
       }
     }
@@ -375,119 +375,119 @@
   "probes": [
     {
       "probe": 1,
-      "marker": -1794436431422,
-      "waited_seconds": 5.695,
-      "committed_at": "2026-11-11T22:33:51.432Z",
+      "marker": -1794494332093,
+      "waited_seconds": 5.618,
+      "committed_at": "2026-11-12T14:38:52.104Z",
       "entities": {
         "customers": {
           "key": 1,
-          "commit_sequence": 59550328,
-          "changed_at": "2026-11-11T22:33:51.423Z",
-          "captured_at": "2026-11-11T22:33:51.637Z",
-          "published_at": "2026-11-11T22:33:51.755Z",
+          "commit_sequence": 126707400,
+          "changed_at": "2026-11-12T14:38:52.095Z",
+          "captured_at": "2026-11-12T14:38:52.592Z",
+          "published_at": "2026-11-12T14:38:53.039Z",
           "observed_at": {
-            "landing": "2026-11-11T22:34:01.442Z",
-            "bronze": "2026-11-11T22:34:11.452Z",
-            "silver": "2026-11-11T22:34:21.456Z",
-            "gold": "2026-11-11T22:34:30.461Z"
+            "landing": "2026-11-12T14:39:02.114Z",
+            "bronze": "2026-11-12T14:39:03.115Z",
+            "silver": "2026-11-12T14:39:05.117Z",
+            "gold": "2026-11-12T14:39:06.118Z"
           },
           "latency_seconds": {
             "landing": 10.019,
-            "bronze": 20.029,
-            "silver": 30.033,
-            "gold": 39.038
+            "bronze": 11.02,
+            "silver": 13.022,
+            "gold": 14.023
           },
           "hop_seconds": {
-            "commit_to_debezium": 0.214,
-            "debezium_to_kafka": 0.118,
-            "kafka_to_landing": 9.687,
-            "landing_to_bronze": 10.01,
-            "bronze_to_silver": 10.004,
-            "silver_to_gold": 9.005
+            "commit_to_debezium": 0.497,
+            "debezium_to_kafka": 0.447,
+            "kafka_to_landing": 9.075,
+            "landing_to_bronze": 1.001,
+            "bronze_to_silver": 2.002,
+            "silver_to_gold": 1.001
           },
           "last_layer": "gold"
         },
         "order_items": {
           "key": 1,
-          "commit_sequence": 59562536,
-          "changed_at": "2026-11-11T22:33:51.423Z",
-          "captured_at": "2026-11-11T22:33:51.637Z",
-          "published_at": "2026-11-11T22:33:51.755Z",
+          "commit_sequence": 126707664,
+          "changed_at": "2026-11-12T14:38:52.095Z",
+          "captured_at": "2026-11-12T14:38:52.592Z",
+          "published_at": "2026-11-12T14:38:53.039Z",
           "observed_at": {
-            "landing": "2026-11-11T22:34:01.442Z",
-            "bronze": "2026-11-11T22:34:10.451Z",
-            "silver": "2026-11-11T22:34:21.456Z",
-            "gold": "2026-11-11T22:34:31.462Z"
+            "landing": "2026-11-12T14:39:01.113Z",
+            "bronze": "2026-11-12T14:39:03.115Z",
+            "silver": "2026-11-12T14:39:05.117Z",
+            "gold": "2026-11-12T14:39:10.122Z"
           },
           "latency_seconds": {
-            "landing": 10.019,
-            "bronze": 19.028,
-            "silver": 30.033,
-            "gold": 40.039
+            "landing": 9.018,
+            "bronze": 11.02,
+            "silver": 13.022,
+            "gold": 18.027
           },
           "hop_seconds": {
-            "commit_to_debezium": 0.214,
-            "debezium_to_kafka": 0.118,
-            "kafka_to_landing": 9.687,
-            "landing_to_bronze": 9.009,
-            "bronze_to_silver": 11.005,
-            "silver_to_gold": 10.006
+            "commit_to_debezium": 0.497,
+            "debezium_to_kafka": 0.447,
+            "kafka_to_landing": 8.074,
+            "landing_to_bronze": 2.002,
+            "bronze_to_silver": 2.002,
+            "silver_to_gold": 5.005
           },
           "last_layer": "gold"
         },
         "orders": {
           "key": 1,
-          "commit_sequence": 59570304,
-          "changed_at": "2026-11-11T22:33:51.423Z",
-          "captured_at": "2026-11-11T22:33:51.637Z",
-          "published_at": "2026-11-11T22:33:51.755Z",
+          "commit_sequence": 126707864,
+          "changed_at": "2026-11-12T14:38:52.095Z",
+          "captured_at": "2026-11-12T14:38:52.592Z",
+          "published_at": "2026-11-12T14:38:53.039Z",
           "observed_at": {
-            "landing": "2026-11-11T22:34:01.442Z",
-            "bronze": "2026-11-11T22:34:11.452Z",
-            "silver": "2026-11-11T22:34:22.457Z",
-            "gold": "2026-11-11T22:34:30.461Z"
+            "landing": "2026-11-12T14:39:02.114Z",
+            "bronze": "2026-11-12T14:39:03.115Z",
+            "silver": "2026-11-12T14:39:05.117Z",
+            "gold": "2026-11-12T14:39:10.122Z"
           },
           "latency_seconds": {
             "landing": 10.019,
-            "bronze": 20.029,
-            "silver": 31.034,
-            "gold": 39.038
+            "bronze": 11.02,
+            "silver": 13.022,
+            "gold": 18.027
           },
           "hop_seconds": {
-            "commit_to_debezium": 0.214,
-            "debezium_to_kafka": 0.118,
-            "kafka_to_landing": 9.687,
-            "landing_to_bronze": 10.01,
-            "bronze_to_silver": 11.005,
-            "silver_to_gold": 8.004
+            "commit_to_debezium": 0.497,
+            "debezium_to_kafka": 0.447,
+            "kafka_to_landing": 9.075,
+            "landing_to_bronze": 1.001,
+            "bronze_to_silver": 2.002,
+            "silver_to_gold": 5.005
           },
           "last_layer": "gold"
         },
         "products": {
           "key": 1,
-          "commit_sequence": 59578696,
-          "changed_at": "2026-11-11T22:33:51.423Z",
-          "captured_at": "2026-11-11T22:33:51.637Z",
-          "published_at": "2026-11-11T22:33:51.755Z",
+          "commit_sequence": 126716248,
+          "changed_at": "2026-11-12T14:38:52.095Z",
+          "captured_at": "2026-11-12T14:38:52.592Z",
+          "published_at": "2026-11-12T14:38:53.039Z",
           "observed_at": {
-            "landing": "2026-11-11T22:34:01.442Z",
-            "bronze": "2026-11-11T22:34:11.452Z",
-            "silver": "2026-11-11T22:34:21.456Z",
-            "gold": "2026-11-11T22:34:31.462Z"
+            "landing": "2026-11-12T14:39:01.113Z",
+            "bronze": "2026-11-12T14:39:03.115Z",
+            "silver": "2026-11-12T14:39:05.117Z",
+            "gold": "2026-11-12T14:39:10.122Z"
           },
           "latency_seconds": {
-            "landing": 10.019,
-            "bronze": 20.029,
-            "silver": 30.033,
-            "gold": 40.039
+            "landing": 9.018,
+            "bronze": 11.02,
+            "silver": 13.022,
+            "gold": 18.027
           },
           "hop_seconds": {
-            "commit_to_debezium": 0.214,
-            "debezium_to_kafka": 0.118,
-            "kafka_to_landing": 9.687,
-            "landing_to_bronze": 10.01,
-            "bronze_to_silver": 10.004,
-            "silver_to_gold": 10.006
+            "commit_to_debezium": 0.497,
+            "debezium_to_kafka": 0.447,
+            "kafka_to_landing": 8.074,
+            "landing_to_bronze": 2.002,
+            "bronze_to_silver": 2.002,
+            "silver_to_gold": 5.005
           },
           "last_layer": "gold"
         }
@@ -495,119 +495,119 @@
     },
     {
       "probe": 2,
-      "marker": -1794436480120,
-      "waited_seconds": 8.601,
-      "committed_at": "2026-11-11T22:34:40.143Z",
+      "marker": -1794494350884,
+      "waited_seconds": 0.732,
+      "committed_at": "2026-11-12T14:39:10.895Z",
       "entities": {
         "customers": {
           "key": 1,
-          "commit_sequence": 59744168,
-          "changed_at": "2026-11-11T22:34:40.123Z",
-          "captured_at": "2026-11-11T22:34:40.269Z",
-          "published_at": "2026-11-11T22:34:40.357Z",
+          "commit_sequence": 126879880,
+          "changed_at": "2026-11-12T14:39:10.885Z",
+          "captured_at": "2026-11-12T14:39:11.341Z",
+          "published_at": "2026-11-12T14:39:11.580Z",
           "observed_at": {
-            "landing": "2026-11-11T22:34:51.144Z",
-            "bronze": "2026-11-11T22:35:01.144Z",
-            "silver": "2026-11-11T22:35:11.144Z",
-            "gold": "2026-11-11T22:35:21.153Z"
+            "landing": "2026-11-12T14:39:21.906Z",
+            "bronze": "2026-11-12T14:39:22.907Z",
+            "silver": "2026-11-12T14:39:24.909Z",
+            "gold": "2026-11-12T14:39:30.915Z"
           },
           "latency_seconds": {
             "landing": 11.021,
-            "bronze": 21.021,
-            "silver": 31.021,
-            "gold": 41.03
+            "bronze": 12.022,
+            "silver": 14.024,
+            "gold": 20.03
           },
           "hop_seconds": {
-            "commit_to_debezium": 0.146,
-            "debezium_to_kafka": 0.088,
-            "kafka_to_landing": 10.787,
-            "landing_to_bronze": 10.0,
-            "bronze_to_silver": 10.0,
-            "silver_to_gold": 10.009
+            "commit_to_debezium": 0.456,
+            "debezium_to_kafka": 0.239,
+            "kafka_to_landing": 10.326,
+            "landing_to_bronze": 1.001,
+            "bronze_to_silver": 2.002,
+            "silver_to_gold": 6.006
           },
           "last_layer": "gold"
         },
         "order_items": {
           "key": 1,
-          "commit_sequence": 59744624,
-          "changed_at": "2026-11-11T22:34:40.123Z",
-          "captured_at": "2026-11-11T22:34:40.269Z",
-          "published_at": "2026-11-11T22:34:40.357Z",
+          "commit_sequence": 126880208,
+          "changed_at": "2026-11-12T14:39:10.885Z",
+          "captured_at": "2026-11-12T14:39:11.341Z",
+          "published_at": "2026-11-12T14:39:11.580Z",
           "observed_at": {
-            "landing": "2026-11-11T22:34:51.144Z",
-            "bronze": "2026-11-11T22:35:01.144Z",
-            "silver": "2026-11-11T22:35:11.144Z",
-            "gold": "2026-11-11T22:35:21.153Z"
+            "landing": "2026-11-12T14:39:20.905Z",
+            "bronze": "2026-11-12T14:39:22.907Z",
+            "silver": "2026-11-12T14:39:24.909Z",
+            "gold": "2026-11-12T14:39:25.910Z"
           },
           "latency_seconds": {
-            "landing": 11.021,
-            "bronze": 21.021,
-            "silver": 31.021,
-            "gold": 41.03
+            "landing": 10.02,
+            "bronze": 12.022,
+            "silver": 14.024,
+            "gold": 15.025
           },
           "hop_seconds": {
-            "commit_to_debezium": 0.146,
-            "debezium_to_kafka": 0.088,
-            "kafka_to_landing": 10.787,
-            "landing_to_bronze": 10.0,
-            "bronze_to_silver": 10.0,
-            "silver_to_gold": 10.009
+            "commit_to_debezium": 0.456,
+            "debezium_to_kafka": 0.239,
+            "kafka_to_landing": 9.325,
+            "landing_to_bronze": 2.002,
+            "bronze_to_silver": 2.002,
+            "silver_to_gold": 1.001
           },
           "last_layer": "gold"
         },
         "orders": {
           "key": 1,
-          "commit_sequence": 59744896,
-          "changed_at": "2026-11-11T22:34:40.123Z",
-          "captured_at": "2026-11-11T22:34:40.269Z",
-          "published_at": "2026-11-11T22:34:40.357Z",
+          "commit_sequence": 126880408,
+          "changed_at": "2026-11-12T14:39:10.885Z",
+          "captured_at": "2026-11-12T14:39:11.341Z",
+          "published_at": "2026-11-12T14:39:11.580Z",
           "observed_at": {
-            "landing": "2026-11-11T22:34:51.144Z",
-            "bronze": "2026-11-11T22:35:01.144Z",
-            "silver": "2026-11-11T22:35:11.144Z",
-            "gold": "2026-11-11T22:35:21.153Z"
+            "landing": "2026-11-12T14:39:21.906Z",
+            "bronze": "2026-11-12T14:39:22.907Z",
+            "silver": "2026-11-12T14:39:24.909Z",
+            "gold": "2026-11-12T14:39:30.915Z"
           },
           "latency_seconds": {
             "landing": 11.021,
-            "bronze": 21.021,
-            "silver": 31.021,
-            "gold": 41.03
+            "bronze": 12.022,
+            "silver": 14.024,
+            "gold": 20.03
           },
           "hop_seconds": {
-            "commit_to_debezium": 0.146,
-            "debezium_to_kafka": 0.088,
-            "kafka_to_landing": 10.787,
-            "landing_to_bronze": 10.0,
-            "bronze_to_silver": 10.0,
-            "silver_to_gold": 10.009
+            "commit_to_debezium": 0.456,
+            "debezium_to_kafka": 0.239,
+            "kafka_to_landing": 10.326,
+            "landing_to_bronze": 1.001,
+            "bronze_to_silver": 2.002,
+            "silver_to_gold": 6.006
           },
           "last_layer": "gold"
         },
         "products": {
           "key": 1,
-          "commit_sequence": 59745112,
-          "changed_at": "2026-11-11T22:34:40.123Z",
-          "captured_at": "2026-11-11T22:34:40.269Z",
-          "published_at": "2026-11-11T22:34:40.357Z",
+          "commit_sequence": 126880624,
+          "changed_at": "2026-11-12T14:39:10.885Z",
+          "captured_at": "2026-11-12T14:39:11.341Z",
+          "published_at": "2026-11-12T14:39:11.580Z",
           "observed_at": {
-            "landing": "2026-11-11T22:34:51.144Z",
-            "bronze": "2026-11-11T22:35:01.144Z",
-            "silver": "2026-11-11T22:35:11.144Z",
-            "gold": "2026-11-11T22:35:21.153Z"
+            "landing": "2026-11-12T14:39:20.905Z",
+            "bronze": "2026-11-12T14:39:22.907Z",
+            "silver": "2026-11-12T14:39:24.909Z",
+            "gold": "2026-11-12T14:39:29.914Z"
           },
           "latency_seconds": {
-            "landing": 11.021,
-            "bronze": 21.021,
-            "silver": 31.021,
-            "gold": 41.03
+            "landing": 10.02,
+            "bronze": 12.022,
+            "silver": 14.024,
+            "gold": 19.029
           },
           "hop_seconds": {
-            "commit_to_debezium": 0.146,
-            "debezium_to_kafka": 0.088,
-            "kafka_to_landing": 10.787,
-            "landing_to_bronze": 10.0,
-            "bronze_to_silver": 10.0,
-            "silver_to_gold": 10.009
+            "commit_to_debezium": 0.456,
+            "debezium_to_kafka": 0.239,
+            "kafka_to_landing": 9.325,
+            "landing_to_bronze": 2.002,
+            "bronze_to_silver": 2.002,
+            "silver_to_gold": 5.005
           },
           "last_layer": "gold"
         }
@@ -615,119 +615,959 @@
     },
     {
       "probe": 3,
-      "marker": -1794436528149,
-      "waited_seconds": 6.969,
-      "committed_at": "2026-11-11T22:35:28.161Z",
+      "marker": -1794494374508,
+      "waited_seconds": 3.567,
+      "committed_at": "2026-11-12T14:39:34.523Z",
       "entities": {
         "customers": {
           "key": 1,
-          "commit_sequence": 59982824,
-          "changed_at": "2026-11-11T22:35:28.151Z",
-          "captured_at": "2026-11-11T22:35:28.474Z",
-          "published_at": "2026-11-11T22:35:28.959Z",
+          "commit_sequence": 126880960,
+          "changed_at": "2026-11-12T14:39:34.510Z",
+          "captured_at": "2026-11-12T14:39:34.847Z",
+          "published_at": "2026-11-12T14:39:35.128Z",
           "observed_at": {
-            "landing": "2026-11-11T22:35:32.165Z",
-            "bronze": "2026-11-11T22:35:41.174Z",
-            "silver": "2026-11-11T22:35:51.184Z",
-            "gold": "2026-11-11T22:36:01.195Z"
+            "landing": "2026-11-12T14:39:41.530Z",
+            "bronze": "2026-11-12T14:39:42.531Z",
+            "silver": "2026-11-12T14:39:44.533Z",
+            "gold": "2026-11-12T14:39:50.539Z"
           },
           "latency_seconds": {
-            "landing": 4.014,
-            "bronze": 13.023,
-            "silver": 23.033,
-            "gold": 33.044
+            "landing": 7.02,
+            "bronze": 8.021,
+            "silver": 10.023,
+            "gold": 16.029
           },
           "hop_seconds": {
-            "commit_to_debezium": 0.323,
-            "debezium_to_kafka": 0.485,
-            "kafka_to_landing": 3.206,
-            "landing_to_bronze": 9.009,
-            "bronze_to_silver": 10.01,
-            "silver_to_gold": 10.011
+            "commit_to_debezium": 0.337,
+            "debezium_to_kafka": 0.281,
+            "kafka_to_landing": 6.402,
+            "landing_to_bronze": 1.001,
+            "bronze_to_silver": 2.002,
+            "silver_to_gold": 6.006
           },
           "last_layer": "gold"
         },
         "order_items": {
           "key": 1,
-          "commit_sequence": 59983200,
-          "changed_at": "2026-11-11T22:35:28.151Z",
-          "captured_at": "2026-11-11T22:35:28.475Z",
-          "published_at": "2026-11-11T22:35:28.959Z",
+          "commit_sequence": 126881288,
+          "changed_at": "2026-11-12T14:39:34.510Z",
+          "captured_at": "2026-11-12T14:39:34.848Z",
+          "published_at": "2026-11-12T14:39:35.128Z",
           "observed_at": {
-            "landing": "2026-11-11T22:35:31.164Z",
-            "bronze": "2026-11-11T22:35:41.174Z",
-            "silver": "2026-11-11T22:35:51.184Z",
-            "gold": "2026-11-11T22:36:01.195Z"
+            "landing": "2026-11-12T14:39:41.530Z",
+            "bronze": "2026-11-12T14:39:42.531Z",
+            "silver": "2026-11-12T14:39:44.533Z",
+            "gold": "2026-11-12T14:39:45.534Z"
           },
           "latency_seconds": {
-            "landing": 3.013,
-            "bronze": 13.023,
-            "silver": 23.033,
-            "gold": 33.044
+            "landing": 7.02,
+            "bronze": 8.021,
+            "silver": 10.023,
+            "gold": 11.024
           },
           "hop_seconds": {
-            "commit_to_debezium": 0.324,
-            "debezium_to_kafka": 0.484,
-            "kafka_to_landing": 2.205,
-            "landing_to_bronze": 10.01,
-            "bronze_to_silver": 10.01,
-            "silver_to_gold": 10.011
+            "commit_to_debezium": 0.338,
+            "debezium_to_kafka": 0.28,
+            "kafka_to_landing": 6.402,
+            "landing_to_bronze": 1.001,
+            "bronze_to_silver": 2.002,
+            "silver_to_gold": 1.001
           },
           "last_layer": "gold"
         },
         "orders": {
           "key": 1,
-          "commit_sequence": 59983472,
-          "changed_at": "2026-11-11T22:35:28.151Z",
-          "captured_at": "2026-11-11T22:35:28.479Z",
-          "published_at": "2026-11-11T22:35:28.959Z",
+          "commit_sequence": 126881552,
+          "changed_at": "2026-11-12T14:39:34.510Z",
+          "captured_at": "2026-11-12T14:39:34.848Z",
+          "published_at": "2026-11-12T14:39:35.128Z",
           "observed_at": {
-            "landing": "2026-11-11T22:35:31.164Z",
-            "bronze": "2026-11-11T22:35:41.174Z",
-            "silver": "2026-11-11T22:35:51.184Z",
-            "gold": "2026-11-11T22:36:01.195Z"
+            "landing": "2026-11-12T14:39:42.531Z",
+            "bronze": "2026-11-12T14:39:43.532Z",
+            "silver": "2026-11-12T14:39:44.533Z",
+            "gold": "2026-11-12T14:39:50.539Z"
           },
           "latency_seconds": {
-            "landing": 3.013,
-            "bronze": 13.023,
-            "silver": 23.033,
-            "gold": 33.044
+            "landing": 8.021,
+            "bronze": 9.022,
+            "silver": 10.023,
+            "gold": 16.029
           },
           "hop_seconds": {
-            "commit_to_debezium": 0.328,
-            "debezium_to_kafka": 0.48,
-            "kafka_to_landing": 2.205,
-            "landing_to_bronze": 10.01,
-            "bronze_to_silver": 10.01,
-            "silver_to_gold": 10.011
+            "commit_to_debezium": 0.338,
+            "debezium_to_kafka": 0.28,
+            "kafka_to_landing": 7.403,
+            "landing_to_bronze": 1.001,
+            "bronze_to_silver": 1.001,
+            "silver_to_gold": 6.006
           },
           "last_layer": "gold"
         },
         "products": {
           "key": 1,
-          "commit_sequence": 59983688,
-          "changed_at": "2026-11-11T22:35:28.151Z",
-          "captured_at": "2026-11-11T22:35:28.479Z",
-          "published_at": "2026-11-11T22:35:28.959Z",
+          "commit_sequence": 126881768,
+          "changed_at": "2026-11-12T14:39:34.510Z",
+          "captured_at": "2026-11-12T14:39:34.848Z",
+          "published_at": "2026-11-12T14:39:35.128Z",
           "observed_at": {
-            "landing": "2026-11-11T22:35:31.164Z",
-            "bronze": "2026-11-11T22:35:41.174Z",
-            "silver": "2026-11-11T22:35:51.184Z",
-            "gold": "2026-11-11T22:36:01.195Z"
+            "landing": "2026-11-12T14:39:41.530Z",
+            "bronze": "2026-11-12T14:39:42.531Z",
+            "silver": "2026-11-12T14:39:44.533Z",
+            "gold": "2026-11-12T14:39:50.539Z"
           },
           "latency_seconds": {
-            "landing": 3.013,
-            "bronze": 13.023,
-            "silver": 23.033,
-            "gold": 33.044
+            "landing": 7.02,
+            "bronze": 8.021,
+            "silver": 10.023,
+            "gold": 16.029
           },
           "hop_seconds": {
-            "commit_to_debezium": 0.328,
-            "debezium_to_kafka": 0.48,
-            "kafka_to_landing": 2.205,
-            "landing_to_bronze": 10.01,
-            "bronze_to_silver": 10.01,
-            "silver_to_gold": 10.011
+            "commit_to_debezium": 0.338,
+            "debezium_to_kafka": 0.28,
+            "kafka_to_landing": 6.402,
+            "landing_to_bronze": 1.001,
+            "bronze_to_silver": 2.002,
+            "silver_to_gold": 6.006
+          },
+          "last_layer": "gold"
+        }
+      }
+    },
+    {
+      "probe": 4,
+      "marker": -1794494393272,
+      "waited_seconds": 2.702,
+      "committed_at": "2026-11-12T14:39:53.280Z",
+      "entities": {
+        "customers": {
+          "key": 1,
+          "commit_sequence": 126882104,
+          "changed_at": "2026-11-12T14:39:53.273Z",
+          "captured_at": "2026-11-12T14:39:53.758Z",
+          "published_at": "2026-11-12T14:39:54.166Z",
+          "observed_at": {
+            "landing": "2026-11-12T14:40:01.288Z",
+            "bronze": "2026-11-12T14:40:03.290Z",
+            "silver": "2026-11-12T14:40:05.292Z",
+            "gold": "2026-11-12T14:40:06.293Z"
+          },
+          "latency_seconds": {
+            "landing": 8.015,
+            "bronze": 10.017,
+            "silver": 12.019,
+            "gold": 13.02
+          },
+          "hop_seconds": {
+            "commit_to_debezium": 0.485,
+            "debezium_to_kafka": 0.408,
+            "kafka_to_landing": 7.122,
+            "landing_to_bronze": 2.002,
+            "bronze_to_silver": 2.002,
+            "silver_to_gold": 1.001
+          },
+          "last_layer": "gold"
+        },
+        "order_items": {
+          "key": 1,
+          "commit_sequence": 126882432,
+          "changed_at": "2026-11-12T14:39:53.273Z",
+          "captured_at": "2026-11-12T14:39:53.758Z",
+          "published_at": "2026-11-12T14:39:54.166Z",
+          "observed_at": {
+            "landing": "2026-11-12T14:40:01.288Z",
+            "bronze": "2026-11-12T14:40:03.290Z",
+            "silver": "2026-11-12T14:40:05.292Z",
+            "gold": "2026-11-12T14:40:06.293Z"
+          },
+          "latency_seconds": {
+            "landing": 8.015,
+            "bronze": 10.017,
+            "silver": 12.019,
+            "gold": 13.02
+          },
+          "hop_seconds": {
+            "commit_to_debezium": 0.485,
+            "debezium_to_kafka": 0.408,
+            "kafka_to_landing": 7.122,
+            "landing_to_bronze": 2.002,
+            "bronze_to_silver": 2.002,
+            "silver_to_gold": 1.001
+          },
+          "last_layer": "gold"
+        },
+        "orders": {
+          "key": 1,
+          "commit_sequence": 126882696,
+          "changed_at": "2026-11-12T14:39:53.273Z",
+          "captured_at": "2026-11-12T14:39:53.758Z",
+          "published_at": "2026-11-12T14:39:54.166Z",
+          "observed_at": {
+            "landing": "2026-11-12T14:40:02.289Z",
+            "bronze": "2026-11-12T14:40:03.290Z",
+            "silver": "2026-11-12T14:40:05.292Z",
+            "gold": "2026-11-12T14:40:06.293Z"
+          },
+          "latency_seconds": {
+            "landing": 9.016,
+            "bronze": 10.017,
+            "silver": 12.019,
+            "gold": 13.02
+          },
+          "hop_seconds": {
+            "commit_to_debezium": 0.485,
+            "debezium_to_kafka": 0.408,
+            "kafka_to_landing": 8.123,
+            "landing_to_bronze": 1.001,
+            "bronze_to_silver": 2.002,
+            "silver_to_gold": 1.001
+          },
+          "last_layer": "gold"
+        },
+        "products": {
+          "key": 1,
+          "commit_sequence": 126882912,
+          "changed_at": "2026-11-12T14:39:53.273Z",
+          "captured_at": "2026-11-12T14:39:53.758Z",
+          "published_at": "2026-11-12T14:39:54.166Z",
+          "observed_at": {
+            "landing": "2026-11-12T14:40:01.288Z",
+            "bronze": "2026-11-12T14:40:03.290Z",
+            "silver": "2026-11-12T14:40:04.291Z",
+            "gold": "2026-11-12T14:40:11.298Z"
+          },
+          "latency_seconds": {
+            "landing": 8.015,
+            "bronze": 10.017,
+            "silver": 11.018,
+            "gold": 18.025
+          },
+          "hop_seconds": {
+            "commit_to_debezium": 0.485,
+            "debezium_to_kafka": 0.408,
+            "kafka_to_landing": 7.122,
+            "landing_to_bronze": 2.002,
+            "bronze_to_silver": 1.001,
+            "silver_to_gold": 7.007
+          },
+          "last_layer": "gold"
+        }
+      }
+    },
+    {
+      "probe": 5,
+      "marker": -1794494419818,
+      "waited_seconds": 8.479,
+      "committed_at": "2026-11-12T14:40:19.821Z",
+      "entities": {
+        "customers": {
+          "key": 1,
+          "commit_sequence": 127077776,
+          "changed_at": "2026-11-12T14:40:19.819Z",
+          "captured_at": "2026-11-12T14:40:20.141Z",
+          "published_at": "2026-11-12T14:40:20.222Z",
+          "observed_at": {
+            "landing": "2026-11-12T14:40:31.821Z",
+            "bronze": "2026-11-12T14:40:32.821Z",
+            "silver": "2026-11-12T14:40:34.821Z",
+            "gold": "2026-11-12T14:40:49.821Z"
+          },
+          "latency_seconds": {
+            "landing": 12.002,
+            "bronze": 13.002,
+            "silver": 15.002,
+            "gold": 30.002
+          },
+          "hop_seconds": {
+            "commit_to_debezium": 0.322,
+            "debezium_to_kafka": 0.081,
+            "kafka_to_landing": 11.599,
+            "landing_to_bronze": 1.0,
+            "bronze_to_silver": 2.0,
+            "silver_to_gold": 15.0
+          },
+          "last_layer": "gold"
+        },
+        "order_items": {
+          "key": 1,
+          "commit_sequence": 127078104,
+          "changed_at": "2026-11-12T14:40:19.819Z",
+          "captured_at": "2026-11-12T14:40:20.141Z",
+          "published_at": "2026-11-12T14:40:20.222Z",
+          "observed_at": {
+            "landing": "2026-11-12T14:40:30.821Z",
+            "bronze": "2026-11-12T14:40:32.821Z",
+            "silver": "2026-11-12T14:40:34.821Z",
+            "gold": "2026-11-12T14:40:44.821Z"
+          },
+          "latency_seconds": {
+            "landing": 11.002,
+            "bronze": 13.002,
+            "silver": 15.002,
+            "gold": 25.002
+          },
+          "hop_seconds": {
+            "commit_to_debezium": 0.322,
+            "debezium_to_kafka": 0.081,
+            "kafka_to_landing": 10.599,
+            "landing_to_bronze": 2.0,
+            "bronze_to_silver": 2.0,
+            "silver_to_gold": 10.0
+          },
+          "last_layer": "gold"
+        },
+        "orders": {
+          "key": 1,
+          "commit_sequence": 127078304,
+          "changed_at": "2026-11-12T14:40:19.819Z",
+          "captured_at": "2026-11-12T14:40:20.141Z",
+          "published_at": "2026-11-12T14:40:20.222Z",
+          "observed_at": {
+            "landing": "2026-11-12T14:40:31.821Z",
+            "bronze": "2026-11-12T14:40:32.821Z",
+            "silver": "2026-11-12T14:40:34.821Z",
+            "gold": "2026-11-12T14:40:44.821Z"
+          },
+          "latency_seconds": {
+            "landing": 12.002,
+            "bronze": 13.002,
+            "silver": 15.002,
+            "gold": 25.002
+          },
+          "hop_seconds": {
+            "commit_to_debezium": 0.322,
+            "debezium_to_kafka": 0.081,
+            "kafka_to_landing": 11.599,
+            "landing_to_bronze": 1.0,
+            "bronze_to_silver": 2.0,
+            "silver_to_gold": 10.0
+          },
+          "last_layer": "gold"
+        },
+        "products": {
+          "key": 1,
+          "commit_sequence": 127078520,
+          "changed_at": "2026-11-12T14:40:19.819Z",
+          "captured_at": "2026-11-12T14:40:20.141Z",
+          "published_at": "2026-11-12T14:40:20.222Z",
+          "observed_at": {
+            "landing": "2026-11-12T14:40:30.821Z",
+            "bronze": "2026-11-12T14:40:32.821Z",
+            "silver": "2026-11-12T14:40:34.821Z",
+            "gold": "2026-11-12T14:40:48.821Z"
+          },
+          "latency_seconds": {
+            "landing": 11.002,
+            "bronze": 13.002,
+            "silver": 15.002,
+            "gold": 29.002
+          },
+          "hop_seconds": {
+            "commit_to_debezium": 0.322,
+            "debezium_to_kafka": 0.081,
+            "kafka_to_landing": 10.599,
+            "landing_to_bronze": 2.0,
+            "bronze_to_silver": 2.0,
+            "silver_to_gold": 14.0
+          },
+          "last_layer": "gold"
+        }
+      }
+    },
+    {
+      "probe": 6,
+      "marker": -1794494451814,
+      "waited_seconds": 1.968,
+      "committed_at": "2026-11-12T14:40:51.817Z",
+      "entities": {
+        "customers": {
+          "key": 1,
+          "commit_sequence": 127136648,
+          "changed_at": "2026-11-12T14:40:51.815Z",
+          "captured_at": "2026-11-12T14:40:51.825Z",
+          "published_at": "2026-11-12T14:40:52.286Z",
+          "observed_at": {
+            "landing": "2026-11-12T14:41:01.817Z",
+            "bronze": "2026-11-12T14:41:02.817Z",
+            "silver": "2026-11-12T14:41:04.817Z",
+            "gold": "2026-11-12T14:41:06.817Z"
+          },
+          "latency_seconds": {
+            "landing": 10.002,
+            "bronze": 11.002,
+            "silver": 13.002,
+            "gold": 15.002
+          },
+          "hop_seconds": {
+            "commit_to_debezium": 0.01,
+            "debezium_to_kafka": 0.461,
+            "kafka_to_landing": 9.531,
+            "landing_to_bronze": 1.0,
+            "bronze_to_silver": 2.0,
+            "silver_to_gold": 2.0
+          },
+          "last_layer": "gold"
+        },
+        "order_items": {
+          "key": 1,
+          "commit_sequence": 127136912,
+          "changed_at": "2026-11-12T14:40:51.815Z",
+          "captured_at": "2026-11-12T14:40:51.830Z",
+          "published_at": "2026-11-12T14:40:52.286Z",
+          "observed_at": {
+            "landing": "2026-11-12T14:41:01.817Z",
+            "bronze": "2026-11-12T14:41:02.817Z",
+            "silver": "2026-11-12T14:41:04.817Z",
+            "gold": "2026-11-12T14:41:10.817Z"
+          },
+          "latency_seconds": {
+            "landing": 10.002,
+            "bronze": 11.002,
+            "silver": 13.002,
+            "gold": 19.002
+          },
+          "hop_seconds": {
+            "commit_to_debezium": 0.015,
+            "debezium_to_kafka": 0.456,
+            "kafka_to_landing": 9.531,
+            "landing_to_bronze": 1.0,
+            "bronze_to_silver": 2.0,
+            "silver_to_gold": 6.0
+          },
+          "last_layer": "gold"
+        },
+        "orders": {
+          "key": 1,
+          "commit_sequence": 127137176,
+          "changed_at": "2026-11-12T14:40:51.815Z",
+          "captured_at": "2026-11-12T14:40:51.830Z",
+          "published_at": "2026-11-12T14:40:52.286Z",
+          "observed_at": {
+            "landing": "2026-11-12T14:41:00.817Z",
+            "bronze": "2026-11-12T14:41:02.817Z",
+            "silver": "2026-11-12T14:41:04.817Z",
+            "gold": "2026-11-12T14:41:10.817Z"
+          },
+          "latency_seconds": {
+            "landing": 9.002,
+            "bronze": 11.002,
+            "silver": 13.002,
+            "gold": 19.002
+          },
+          "hop_seconds": {
+            "commit_to_debezium": 0.015,
+            "debezium_to_kafka": 0.456,
+            "kafka_to_landing": 8.531,
+            "landing_to_bronze": 2.0,
+            "bronze_to_silver": 2.0,
+            "silver_to_gold": 6.0
+          },
+          "last_layer": "gold"
+        },
+        "products": {
+          "key": 1,
+          "commit_sequence": 127137392,
+          "changed_at": "2026-11-12T14:40:51.815Z",
+          "captured_at": "2026-11-12T14:40:51.830Z",
+          "published_at": "2026-11-12T14:40:52.286Z",
+          "observed_at": {
+            "landing": "2026-11-12T14:41:00.817Z",
+            "bronze": "2026-11-12T14:41:02.817Z",
+            "silver": "2026-11-12T14:41:04.817Z",
+            "gold": "2026-11-12T14:41:10.817Z"
+          },
+          "latency_seconds": {
+            "landing": 9.002,
+            "bronze": 11.002,
+            "silver": 13.002,
+            "gold": 19.002
+          },
+          "hop_seconds": {
+            "commit_to_debezium": 0.015,
+            "debezium_to_kafka": 0.456,
+            "kafka_to_landing": 8.531,
+            "landing_to_bronze": 2.0,
+            "bronze_to_silver": 2.0,
+            "silver_to_gold": 6.0
+          },
+          "last_layer": "gold"
+        }
+      }
+    },
+    {
+      "probe": 7,
+      "marker": -1794494478789,
+      "waited_seconds": 7.935,
+      "committed_at": "2026-11-12T14:41:18.795Z",
+      "entities": {
+        "customers": {
+          "key": 1,
+          "commit_sequence": 127321752,
+          "changed_at": "2026-11-12T14:41:18.790Z",
+          "captured_at": "2026-11-12T14:41:19.102Z",
+          "published_at": "2026-11-12T14:41:19.346Z",
+          "observed_at": {
+            "landing": "2026-11-12T14:41:21.795Z",
+            "bronze": "2026-11-12T14:41:22.795Z",
+            "silver": "2026-11-12T14:41:24.795Z",
+            "gold": "2026-11-12T14:41:30.796Z"
+          },
+          "latency_seconds": {
+            "landing": 3.005,
+            "bronze": 4.005,
+            "silver": 6.005,
+            "gold": 12.006
+          },
+          "hop_seconds": {
+            "commit_to_debezium": 0.312,
+            "debezium_to_kafka": 0.244,
+            "kafka_to_landing": 2.449,
+            "landing_to_bronze": 1.0,
+            "bronze_to_silver": 2.0,
+            "silver_to_gold": 6.001
+          },
+          "last_layer": "gold"
+        },
+        "order_items": {
+          "key": 1,
+          "commit_sequence": 127336608,
+          "changed_at": "2026-11-12T14:41:18.790Z",
+          "captured_at": "2026-11-12T14:41:19.102Z",
+          "published_at": "2026-11-12T14:41:19.346Z",
+          "observed_at": {
+            "landing": "2026-11-12T14:41:20.795Z",
+            "bronze": "2026-11-12T14:41:23.795Z",
+            "silver": "2026-11-12T14:41:24.795Z",
+            "gold": "2026-11-12T14:41:25.795Z"
+          },
+          "latency_seconds": {
+            "landing": 2.005,
+            "bronze": 5.005,
+            "silver": 6.005,
+            "gold": 7.005
+          },
+          "hop_seconds": {
+            "commit_to_debezium": 0.312,
+            "debezium_to_kafka": 0.244,
+            "kafka_to_landing": 1.449,
+            "landing_to_bronze": 3.0,
+            "bronze_to_silver": 1.0,
+            "silver_to_gold": 1.0
+          },
+          "last_layer": "gold"
+        },
+        "orders": {
+          "key": 1,
+          "commit_sequence": 127336808,
+          "changed_at": "2026-11-12T14:41:18.790Z",
+          "captured_at": "2026-11-12T14:41:19.102Z",
+          "published_at": "2026-11-12T14:41:19.346Z",
+          "observed_at": {
+            "landing": "2026-11-12T14:41:21.795Z",
+            "bronze": "2026-11-12T14:41:22.795Z",
+            "silver": "2026-11-12T14:41:24.795Z",
+            "gold": "2026-11-12T14:41:25.795Z"
+          },
+          "latency_seconds": {
+            "landing": 3.005,
+            "bronze": 4.005,
+            "silver": 6.005,
+            "gold": 7.005
+          },
+          "hop_seconds": {
+            "commit_to_debezium": 0.312,
+            "debezium_to_kafka": 0.244,
+            "kafka_to_landing": 2.449,
+            "landing_to_bronze": 1.0,
+            "bronze_to_silver": 2.0,
+            "silver_to_gold": 1.0
+          },
+          "last_layer": "gold"
+        },
+        "products": {
+          "key": 1,
+          "commit_sequence": 127345192,
+          "changed_at": "2026-11-12T14:41:18.790Z",
+          "captured_at": "2026-11-12T14:41:19.102Z",
+          "published_at": "2026-11-12T14:41:19.346Z",
+          "observed_at": {
+            "landing": "2026-11-12T14:41:20.795Z",
+            "bronze": "2026-11-12T14:41:22.795Z",
+            "silver": "2026-11-12T14:41:24.795Z",
+            "gold": "2026-11-12T14:41:30.796Z"
+          },
+          "latency_seconds": {
+            "landing": 2.005,
+            "bronze": 4.005,
+            "silver": 6.005,
+            "gold": 12.006
+          },
+          "hop_seconds": {
+            "commit_to_debezium": 0.312,
+            "debezium_to_kafka": 0.244,
+            "kafka_to_landing": 1.449,
+            "landing_to_bronze": 2.0,
+            "bronze_to_silver": 2.0,
+            "silver_to_gold": 6.001
+          },
+          "last_layer": "gold"
+        }
+      }
+    },
+    {
+      "probe": 8,
+      "marker": -1794494500237,
+      "waited_seconds": 9.415,
+      "committed_at": "2026-11-12T14:41:40.248Z",
+      "entities": {
+        "customers": {
+          "key": 1,
+          "commit_sequence": 127391496,
+          "changed_at": "2026-11-12T14:41:40.239Z",
+          "captured_at": "2026-11-12T14:41:40.564Z",
+          "published_at": "2026-11-12T14:41:40.890Z",
+          "observed_at": {
+            "landing": "2026-11-12T14:41:51.257Z",
+            "bronze": "2026-11-12T14:41:53.259Z",
+            "silver": "2026-11-12T14:41:55.261Z",
+            "gold": "2026-11-12T14:41:56.262Z"
+          },
+          "latency_seconds": {
+            "landing": 11.018,
+            "bronze": 13.02,
+            "silver": 15.022,
+            "gold": 16.023
+          },
+          "hop_seconds": {
+            "commit_to_debezium": 0.325,
+            "debezium_to_kafka": 0.326,
+            "kafka_to_landing": 10.367,
+            "landing_to_bronze": 2.002,
+            "bronze_to_silver": 2.002,
+            "silver_to_gold": 1.001
+          },
+          "last_layer": "gold"
+        },
+        "order_items": {
+          "key": 1,
+          "commit_sequence": 127391824,
+          "changed_at": "2026-11-12T14:41:40.239Z",
+          "captured_at": "2026-11-12T14:41:40.564Z",
+          "published_at": "2026-11-12T14:41:40.890Z",
+          "observed_at": {
+            "landing": "2026-11-12T14:41:51.257Z",
+            "bronze": "2026-11-12T14:41:52.258Z",
+            "silver": "2026-11-12T14:41:55.261Z",
+            "gold": "2026-11-12T14:41:55.261Z"
+          },
+          "latency_seconds": {
+            "landing": 11.018,
+            "bronze": 12.019,
+            "silver": 15.022,
+            "gold": 15.022
+          },
+          "hop_seconds": {
+            "commit_to_debezium": 0.325,
+            "debezium_to_kafka": 0.326,
+            "kafka_to_landing": 10.367,
+            "landing_to_bronze": 1.001,
+            "bronze_to_silver": 3.003,
+            "silver_to_gold": 0.0
+          },
+          "last_layer": "gold"
+        },
+        "orders": {
+          "key": 1,
+          "commit_sequence": 127392088,
+          "changed_at": "2026-11-12T14:41:40.239Z",
+          "captured_at": "2026-11-12T14:41:40.569Z",
+          "published_at": "2026-11-12T14:41:40.890Z",
+          "observed_at": {
+            "landing": "2026-11-12T14:41:52.258Z",
+            "bronze": "2026-11-12T14:41:52.258Z",
+            "silver": "2026-11-12T14:41:55.261Z",
+            "gold": "2026-11-12T14:42:00.266Z"
+          },
+          "latency_seconds": {
+            "landing": 12.019,
+            "bronze": 12.019,
+            "silver": 15.022,
+            "gold": 20.027
+          },
+          "hop_seconds": {
+            "commit_to_debezium": 0.33,
+            "debezium_to_kafka": 0.321,
+            "kafka_to_landing": 11.368,
+            "landing_to_bronze": 0.0,
+            "bronze_to_silver": 3.003,
+            "silver_to_gold": 5.005
+          },
+          "last_layer": "gold"
+        },
+        "products": {
+          "key": 1,
+          "commit_sequence": 127392304,
+          "changed_at": "2026-11-12T14:41:40.239Z",
+          "captured_at": "2026-11-12T14:41:40.569Z",
+          "published_at": "2026-11-12T14:41:40.890Z",
+          "observed_at": {
+            "landing": "2026-11-12T14:41:51.257Z",
+            "bronze": "2026-11-12T14:41:53.259Z",
+            "silver": "2026-11-12T14:41:55.261Z",
+            "gold": "2026-11-12T14:42:00.266Z"
+          },
+          "latency_seconds": {
+            "landing": 11.018,
+            "bronze": 13.02,
+            "silver": 15.022,
+            "gold": 20.027
+          },
+          "hop_seconds": {
+            "commit_to_debezium": 0.33,
+            "debezium_to_kafka": 0.321,
+            "kafka_to_landing": 10.367,
+            "landing_to_bronze": 2.002,
+            "bronze_to_silver": 2.002,
+            "silver_to_gold": 5.005
+          },
+          "last_layer": "gold"
+        }
+      }
+    },
+    {
+      "probe": 9,
+      "marker": -1794494522505,
+      "waited_seconds": 2.212,
+      "committed_at": "2026-11-12T14:42:02.515Z",
+      "entities": {
+        "customers": {
+          "key": 1,
+          "commit_sequence": 127623416,
+          "changed_at": "2026-11-12T14:42:02.506Z",
+          "captured_at": "2026-11-12T14:42:02.782Z",
+          "published_at": "2026-11-12T14:42:02.939Z",
+          "observed_at": {
+            "landing": "2026-11-12T14:42:11.524Z",
+            "bronze": "2026-11-12T14:42:12.525Z",
+            "silver": "2026-11-12T14:42:14.527Z",
+            "gold": "2026-11-12T14:42:42.555Z"
+          },
+          "latency_seconds": {
+            "landing": 9.018,
+            "bronze": 10.019,
+            "silver": 12.021,
+            "gold": 40.049
+          },
+          "hop_seconds": {
+            "commit_to_debezium": 0.276,
+            "debezium_to_kafka": 0.157,
+            "kafka_to_landing": 8.585,
+            "landing_to_bronze": 1.001,
+            "bronze_to_silver": 2.002,
+            "silver_to_gold": 28.028
+          },
+          "last_layer": "gold"
+        },
+        "order_items": {
+          "key": 1,
+          "commit_sequence": 127623744,
+          "changed_at": "2026-11-12T14:42:02.506Z",
+          "captured_at": "2026-11-12T14:42:02.782Z",
+          "published_at": "2026-11-12T14:42:02.939Z",
+          "observed_at": {
+            "landing": "2026-11-12T14:42:12.525Z",
+            "bronze": "2026-11-12T14:42:13.526Z",
+            "silver": "2026-11-12T14:42:14.527Z",
+            "gold": "2026-11-12T14:42:43.557Z"
+          },
+          "latency_seconds": {
+            "landing": 10.019,
+            "bronze": 11.02,
+            "silver": 12.021,
+            "gold": 41.051
+          },
+          "hop_seconds": {
+            "commit_to_debezium": 0.276,
+            "debezium_to_kafka": 0.157,
+            "kafka_to_landing": 9.586,
+            "landing_to_bronze": 1.001,
+            "bronze_to_silver": 1.001,
+            "silver_to_gold": 29.03
+          },
+          "last_layer": "gold"
+        },
+        "orders": {
+          "key": 1,
+          "commit_sequence": 127623944,
+          "changed_at": "2026-11-12T14:42:02.506Z",
+          "captured_at": "2026-11-12T14:42:02.783Z",
+          "published_at": "2026-11-12T14:42:02.939Z",
+          "observed_at": {
+            "landing": "2026-11-12T14:42:11.524Z",
+            "bronze": "2026-11-12T14:42:12.525Z",
+            "silver": "2026-11-12T14:42:14.527Z",
+            "gold": "2026-11-12T14:42:41.554Z"
+          },
+          "latency_seconds": {
+            "landing": 9.018,
+            "bronze": 10.019,
+            "silver": 12.021,
+            "gold": 39.048
+          },
+          "hop_seconds": {
+            "commit_to_debezium": 0.277,
+            "debezium_to_kafka": 0.156,
+            "kafka_to_landing": 8.585,
+            "landing_to_bronze": 1.001,
+            "bronze_to_silver": 2.002,
+            "silver_to_gold": 27.027
+          },
+          "last_layer": "gold"
+        },
+        "products": {
+          "key": 1,
+          "commit_sequence": 127624160,
+          "changed_at": "2026-11-12T14:42:02.506Z",
+          "captured_at": "2026-11-12T14:42:02.783Z",
+          "published_at": "2026-11-12T14:42:02.939Z",
+          "observed_at": {
+            "landing": "2026-11-12T14:42:11.524Z",
+            "bronze": "2026-11-12T14:42:12.525Z",
+            "silver": "2026-11-12T14:42:14.527Z",
+            "gold": "2026-11-12T14:42:41.554Z"
+          },
+          "latency_seconds": {
+            "landing": 9.018,
+            "bronze": 10.019,
+            "silver": 12.021,
+            "gold": 39.048
+          },
+          "hop_seconds": {
+            "commit_to_debezium": 0.277,
+            "debezium_to_kafka": 0.156,
+            "kafka_to_landing": 8.585,
+            "landing_to_bronze": 1.001,
+            "bronze_to_silver": 2.002,
+            "silver_to_gold": 27.027
+          },
+          "last_layer": "gold"
+        }
+      }
+    },
+    {
+      "probe": 10,
+      "marker": -1794494567100,
+      "waited_seconds": 3.519,
+      "committed_at": "2026-11-12T14:42:47.111Z",
+      "entities": {
+        "customers": {
+          "key": 1,
+          "commit_sequence": 127632728,
+          "changed_at": "2026-11-12T14:42:47.102Z",
+          "captured_at": "2026-11-12T14:42:47.240Z",
+          "published_at": "2026-11-12T14:42:47.529Z",
+          "observed_at": {
+            "landing": "2026-11-12T14:42:51.115Z",
+            "bronze": "2026-11-12T14:42:53.117Z",
+            "silver": "2026-11-12T14:42:55.119Z",
+            "gold": "2026-11-12T14:42:56.120Z"
+          },
+          "latency_seconds": {
+            "landing": 4.013,
+            "bronze": 6.015,
+            "silver": 8.017,
+            "gold": 9.018
+          },
+          "hop_seconds": {
+            "commit_to_debezium": 0.138,
+            "debezium_to_kafka": 0.289,
+            "kafka_to_landing": 3.586,
+            "landing_to_bronze": 2.002,
+            "bronze_to_silver": 2.002,
+            "silver_to_gold": 1.001
+          },
+          "last_layer": "gold"
+        },
+        "order_items": {
+          "key": 1,
+          "commit_sequence": 127633056,
+          "changed_at": "2026-11-12T14:42:47.102Z",
+          "captured_at": "2026-11-12T14:42:47.240Z",
+          "published_at": "2026-11-12T14:42:47.529Z",
+          "observed_at": {
+            "landing": "2026-11-12T14:42:52.116Z",
+            "bronze": "2026-11-12T14:42:53.117Z",
+            "silver": "2026-11-12T14:42:55.119Z",
+            "gold": "2026-11-12T14:42:56.120Z"
+          },
+          "latency_seconds": {
+            "landing": 5.014,
+            "bronze": 6.015,
+            "silver": 8.017,
+            "gold": 9.018
+          },
+          "hop_seconds": {
+            "commit_to_debezium": 0.138,
+            "debezium_to_kafka": 0.289,
+            "kafka_to_landing": 4.587,
+            "landing_to_bronze": 1.001,
+            "bronze_to_silver": 2.002,
+            "silver_to_gold": 1.001
+          },
+          "last_layer": "gold"
+        },
+        "orders": {
+          "key": 1,
+          "commit_sequence": 127633320,
+          "changed_at": "2026-11-12T14:42:47.102Z",
+          "captured_at": "2026-11-12T14:42:47.240Z",
+          "published_at": "2026-11-12T14:42:47.529Z",
+          "observed_at": {
+            "landing": "2026-11-12T14:42:52.116Z",
+            "bronze": "2026-11-12T14:42:53.117Z",
+            "silver": "2026-11-12T14:42:55.119Z",
+            "gold": "2026-11-12T14:42:56.120Z"
+          },
+          "latency_seconds": {
+            "landing": 5.014,
+            "bronze": 6.015,
+            "silver": 8.017,
+            "gold": 9.018
+          },
+          "hop_seconds": {
+            "commit_to_debezium": 0.138,
+            "debezium_to_kafka": 0.289,
+            "kafka_to_landing": 4.587,
+            "landing_to_bronze": 1.001,
+            "bronze_to_silver": 2.002,
+            "silver_to_gold": 1.001
+          },
+          "last_layer": "gold"
+        },
+        "products": {
+          "key": 1,
+          "commit_sequence": 127633536,
+          "changed_at": "2026-11-12T14:42:47.102Z",
+          "captured_at": "2026-11-12T14:42:47.240Z",
+          "published_at": "2026-11-12T14:42:47.529Z",
+          "observed_at": {
+            "landing": "2026-11-12T14:42:51.115Z",
+            "bronze": "2026-11-12T14:42:53.117Z",
+            "silver": "2026-11-12T14:42:55.119Z",
+            "gold": "2026-11-12T14:43:01.125Z"
+          },
+          "latency_seconds": {
+            "landing": 4.013,
+            "bronze": 6.015,
+            "silver": 8.017,
+            "gold": 14.023
+          },
+          "hop_seconds": {
+            "commit_to_debezium": 0.138,
+            "debezium_to_kafka": 0.289,
+            "kafka_to_landing": 3.586,
+            "landing_to_bronze": 2.002,
+            "bronze_to_silver": 2.002,
+            "silver_to_gold": 6.006
           },
           "last_layer": "gold"
         }
