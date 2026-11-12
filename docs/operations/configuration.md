@@ -33,11 +33,11 @@ The code holds no deployment details: anything that depends on where it runs (br
 | `GOLD_RETENTION_INTERVAL_HOURS` | `gold-retention-job` service | `24` | not set | Hours between two runs of the scheduled gold retention service |
 | `LANDING_CHECK_LAST_OFFSETS` | `pipelines.settings.LandingQualitySettings` | all landed offsets | not set | Limit the landing data quality checks to the latest offsets of each partition (a positive integer) |
 | `MAINTENANCE_NAMESPACES` | `pipelines.settings.MaintenanceSettings` | `bronze,silver` | not set | Comma-separated Iceberg namespaces whose tables lake maintenance covers; a namespace that does not exist yet is skipped |
-| `MAINTENANCE_SNAPSHOT_RETENTION_HOURS` | `pipelines.settings.MaintenanceSettings` | `168` (7 days) | not set | Snapshots older than this are expired (a positive integer) |
+| `MAINTENANCE_SNAPSHOT_RETENTION_HOURS` | `pipelines.settings.MaintenanceSettings` | `168` (7 days) | `24` | Snapshots older than this are expired (a positive integer) |
 | `MAINTENANCE_RETAIN_LAST` | `pipelines.settings.MaintenanceSettings` | `10` | not set | The newest snapshots kept whatever their age (a positive integer) |
 | `MAINTENANCE_ORPHAN_AGE_HOURS` | `pipelines.settings.MaintenanceSettings` | `72` (3 days) | not set | Unreferenced files younger than this are kept (at least 24, Iceberg's own floor) |
 | `MAINTENANCE_DOWNSTREAM_CHECKPOINTS` | `pipelines.settings.MaintenanceSettings` | `bronze.<entity>=<CHECKPOINT_ROOT>/silver/<entity>` for each source entity, and `silver.<entity>=<CHECKPOINT_ROOT>/gold/<gold table>` for each gold stream | not set | Checkpoints of the streams reading each table, as `<namespace>.<table>=<checkpoint>[\|<checkpoint>...]` entries separated by commas; replaces the default when set |
-| `MAINTENANCE_INTERVAL_HOURS` | `maintenance-job` service | `24` | not set | Hours between two runs of the scheduled maintenance service |
+| `MAINTENANCE_INTERVAL_HOURS` | `maintenance-job` service | `24` | `6` | Hours between two runs of the scheduled maintenance service |
 | `DATA_QUALITY_INTERVAL_HOURS` | `data-quality-job` service | `24` | not set | Hours between two runs of the scheduled data quality service |
 | `HISTORY_SERVER_URL` | `pipelines.settings.StageExporterSettings` | required | `http://spark-history:18080` | Spark History Server whose REST API the stage exporter reads |
 | `STAGE_EXPORTER_PORT` | `pipelines.settings.StageExporterSettings` | required | `9101` (set in `docker-compose.yaml`) | Port the stage exporter serves its Prometheus metrics on |

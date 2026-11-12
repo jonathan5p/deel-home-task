@@ -2,6 +2,15 @@
 
 `make pipeline` runs the streaming jobs as long-running Compose services (profile `pipeline`), one driver container per job. Name the job with `PIPELINE`, or use `all` for every job:
 
+To run the whole pipeline as it is meant to run, with its metrics, the REST catalog and the scheduled lake maintenance:
+
+```sh
+make up PROFILES="metrics catalog maintenance"   # the stack, Prometheus, the REST catalog, and maintenance every 6 hours
+make pipeline PIPELINE=all PROFILES=catalog       # the four streaming jobs and the lake views
+```
+
+The `maintenance` profile starts `maintenance-job`, which compacts the bronze and silver tables and expires their old snapshots every `MAINTENANCE_INTERVAL_HOURS` (6 in `.env`), and `gold-retention-job` ([Maintenance and recovery](maintenance-and-recovery.md#lake-maintenance)). Without it the streams still run, but every table keeps every small file and snapshot it ever committed.
+
 ```sh
 make pipeline PIPELINE=landing        # start the stack, the History Server and the landing job
 make pipeline PIPELINE=gold           # the same with the gold job
