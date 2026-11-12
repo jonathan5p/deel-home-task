@@ -14,15 +14,15 @@ ACME Delivery Services wants its logistics leaders to monitor orders with low la
 flowchart LR
     source[("finance_db<br/>PostgreSQL")] -->|Debezium| kafka[Kafka]
     kafka --> landing[/"Landing<br/>raw Avro"/] --> bronze[("Bronze<br/>typed change log")] --> silver[("Silver<br/>version history")]
-    silver --> gold[("Gold<br/>analytics PostgreSQL")]
-    silver -.-> lakegold["Gold in the lake<br/>Iceberg views"]
+    silver --> lakegold[("Gold<br/>Iceberg tables")]
+    lakegold -->|copied every micro-batch| gold[("Gold serving copy<br/>analytics PostgreSQL")]
     gold --> api[Analytics API]
     gold --> grafana[Grafana]
 ```
 
 - **Capture.** The supplied database and Debezium connector, used exactly as provided, stream every change of customers, products, orders and order items to Kafka.
 - **Lake.** Four Spark streaming jobs keep an Apache Iceberg lake on an S3-compatible store (SeaweedFS): **landing** keeps every Kafka record unchanged, **bronze** types and validates each change, **silver** keeps the deduplicated version history of every entity.
-- **Gold.** A fifth job keeps a star schema in a separate PostgreSQL up to date: SCD2 customer and product dimensions, history facts for orders and order items, and current-state tables, each micro-batch applied in one transaction. The same model is also defined in the lake as Iceberg views over silver.
+- **Gold.** A fifth job computes a star schema with Spark every micro-batch: SCD2 customer and product dimensions, history facts for orders and order items, current-state tables and the report tables behind the four questions. It writes them as Iceberg tables in the lake, with the full history, and copies each batch into a separate PostgreSQL in one transaction, for serving.
 - **Serving.** The four business questions are views in the `gold` schema, served by an HTTP API (FastAPI), a Grafana dashboard, `psql`, Spark SQL and DuckDB.
 - **Operations.** Replay of a landing range into bronze, a rebuild of gold from silver, gold retention, scheduled lake maintenance and a chain of data quality checks from Kafka to gold.
 - **Engineering.** Typed Python in a uv workspace, unit tests with at least 90% branch coverage in CI, infra tests on isolated copies of the stack, and this site built in strict mode with a table reference rendered from the schemas.
@@ -31,9 +31,9 @@ flowchart LR
 
 | The assignment asks for | How it is met | Read more |
 | --- | --- | --- |
-| Processing the Debezium topics and joining them with historical data for consistent results | Gold applies a version only if it is newer than the stored one, and writes each micro-batch in one PostgreSQL transaction, so late or replayed events never overwrite newer state | [Gold writer](lakehouse/gold/writer.md#writing-gold), [D31](architecture/decisions.md#d31--late-arrivals-are-history-deduplication-happens-in-silver) |
+| Processing the Debezium topics and joining them with historical data for consistent results | Gold recomputes the versions of the keys each micro-batch touches together with their stored history, applies a version to current state only if it is newer than the stored one, and serves each micro-batch from one PostgreSQL transaction, so late or replayed events never overwrite newer state | [Gold writer](lakehouse/gold/writer.md#writing-gold), [D31](architecture/decisions.md#d31--late-arrivals-are-history-deduplication-happens-in-silver) |
 | History together with the current state (must have) | Silver keeps every version; gold keeps SCD2 dimensions, history facts and current-state tables | [Silver](lakehouse/silver.md), [the gold model](lakehouse/gold/model.md) |
-| A dimensional model that answers the business questions (must have) | A star schema in PostgreSQL with one view per question | [The four business questions](lakehouse/gold/model.md#the-four-business-questions) |
+| A dimensional model that answers the business questions (must have) | A star schema computed by Spark, stored in Iceberg and served from PostgreSQL, with one view per question | [The four business questions](lakehouse/gold/model.md#the-four-business-questions) |
 | Data ready as soon as possible (must have) | Every hop is a streaming query, triggered every 10 seconds at landing and every 2 to 5 seconds after it; a freshness view and endpoint report the lag per entity | [One micro-batch, end to end](architecture/overview.md#one-micro-batch-end-to-end), [analytics API](serving/api.md) |
 | An architecture diagram with every component | Diagrams of the services, the containers and their connections, the data flow and the operations | [Architecture overview](architecture/overview.md) |
 | The Spark sizing strategy, its variables and the key metrics | The variables, how cores and memory are shared, and the metrics that show whether the sizing holds | [Spark sizing strategy](architecture/sizing.md) |
@@ -68,7 +68,7 @@ A recording of the stack running on my machine: the Kafka topics with the Debezi
 
 - **The data adds up, layer by layer.** `make data-quality` checks that every Kafka offset is landed once, every landed record reaches bronze or its quarantine exactly once, every bronze change reaches silver once, and every gold view equals the same view computed from silver. Each run writes a JSON report to the lake and exits with code 1 if a check fails ([data quality checks](lakehouse/data-quality.md)).
 - **Streaming, replay and rebuild agree.** Infra tests show that rebuilding gold from silver gives the same result as streaming the same changes, that a replayed landing range adds only the changes bronze lacks, and that replaying a micro-batch changes nothing ([testing](development/testing.md#infra-tests)).
-- **The business questions are cheap to answer.** The gold indexes were chosen from the query plans of the four questions. On a test database with 1M orders and 3M items, pending items by product went from 344–380 ms to 37–46 ms ([decision D40](architecture/decisions.md#d40--gold-indexes-chosen-from-the-query-plans-of-the-current-use-cases)).
+- **The business questions are cheap to answer.** Every micro-batch recounts the answers for the keys it touched, so each question reads a small report table: **[pending measurement: query time of the four business-question views on the running stack]** ([decision D44](architecture/decisions.md#d44--gold-modelled-in-spark-on-iceberg-postgresql-as-serving-copy)). The earlier views computed the answers at read time, with indexes chosen from their query plans ([D40](architecture/decisions.md#d40--gold-indexes-chosen-from-the-query-plans-of-the-current-use-cases)).
 - **The Spark metrics to watch.** The sizing strategy names the streaming metrics that show whether the cluster keeps up, where to read each one, and what a healthy value looks like ([key metrics](architecture/sizing.md#key-metrics)).
 - **What is left for production.** The platform is simplified for one machine; [the way to production](architecture/production.md) lists what is left to take it to a real production environment.
 - **The code is checked on every pull request.** Lint, type checks and unit tests with a 90% branch-coverage floor run in CI; this site is built in strict mode, so a broken link fails it ([testing and CI](development/testing.md)).
@@ -87,6 +87,6 @@ A recording of the stack running on my machine: the Kafka topics with the Debezi
 
 ### Serving
 
-The four business questions can be read in three ways: over HTTP from the [analytics API](serving/api.md), on the [Grafana](serving/grafana.md) dashboard, or from a terminal with `psql` on the `gold` views, Spark SQL or DuckDB on the lake ([querying the lake](serving/lake-access.md)).
+The four business questions can be read in three ways: over HTTP from the [analytics API](serving/api.md), on the [Grafana](serving/grafana.md) dashboard, or from a terminal with `psql` on the `gold` views, Spark SQL or DuckDB on the gold Iceberg tables ([querying the lake](serving/lake-access.md)).
 
 Use the search box to find a table or a column. Every diagram has a full-screen button; hold Alt (Option on a Mac) while scrolling or dragging to zoom and pan it.

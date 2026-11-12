@@ -19,13 +19,14 @@
 ![ty](https://img.shields.io/badge/ty-0.0.98-261230)
 ![MkDocs Material](https://img.shields.io/badge/MkDocs%20Material-9.8.1-526CFE?logo=materialformkdocs&logoColor=white)
 
-A change data capture pipeline for Deel's data engineering take-home. Debezium streams every change of the supplied `finance_db` PostgreSQL database to Kafka. Spark Structured Streaming lands the changes in an Iceberg lake on SeaweedFS (landing, bronze, silver) and keeps a dimensional model up to date in a separate PostgreSQL (gold). The four business questions are answered by gold views, served over an HTTP API and a Grafana dashboard. Everything runs locally in Docker Compose.
+A change data capture pipeline for Deel's data engineering take-home. Debezium streams every change of the supplied `finance_db` PostgreSQL database to Kafka. Spark Structured Streaming lands the changes in an Iceberg lake on SeaweedFS (landing, bronze, silver), computes a dimensional model from them (gold, also Iceberg tables in the lake) and copies it into a separate PostgreSQL for serving. The four business questions are answered by gold views, served over an HTTP API and a Grafana dashboard. Everything runs locally in Docker Compose.
 
 ```mermaid
 flowchart LR
     source[("finance_db<br/>PostgreSQL")] -->|Debezium| kafka[Kafka]
     kafka --> landing[/"Landing<br/>raw Avro"/] --> bronze[("Bronze<br/>typed change log")] --> silver[("Silver<br/>version history")]
-    silver --> gold[("Gold<br/>analytics PostgreSQL")]
+    silver --> lakegold[("Gold<br/>Iceberg tables")]
+    lakegold -->|copied every micro-batch| gold[("Gold serving copy<br/>analytics PostgreSQL")]
     gold --> api[Analytics API]
     gold --> grafana[Grafana]
 ```
