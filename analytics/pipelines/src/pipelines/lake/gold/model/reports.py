@@ -55,7 +55,7 @@ def recount(
         .agg(*totals, F.lit(True).alias("__found"))
     )
     total_names = sums.columns[len(keys) : -1]
-    return touched_keys.join(sums, matching, "left").select(
+    return touched_keys.join(F.broadcast(sums), matching, "left").select(
         *(F.col(f"__touched_{key}").alias(key) for key in keys),
         *total_names,
         F.col("__found").isNull().alias(IS_REMOVED),
