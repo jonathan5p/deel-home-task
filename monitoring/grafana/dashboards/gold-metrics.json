@@ -170,7 +170,7 @@
       "id": 4,
       "type": "table",
       "title": "Pending items by product",
-      "description": "Items of open orders per product: the number of items and their total quantity.",
+      "description": "Items of open orders per product: the number of items and their total quantity. Empty with the supplied data generator, which attaches every new item to the customer's first order of the day, usually completed; see the gold model docs, Things to know about the source data.",
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "gold"
