@@ -1,7 +1,7 @@
 import pytest
 from jinja2 import UndefinedError
 
-from pipelines.lake.gold.sql import prefix_columns, render_sql
+from pipelines.lake.gold.templates import prefix_columns, render_sql
 
 
 def test_a_template_is_rendered_without_a_trailing_newline() -> None:

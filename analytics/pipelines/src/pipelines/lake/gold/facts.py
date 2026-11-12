@@ -11,7 +11,7 @@ from pipelines.lake.gold.scd2 import (
     postgres_string,
     silver_column,
 )
-from pipelines.lake.gold.sql import render_sql
+from pipelines.lake.gold.templates import render_sql
 from pipelines.schemas.definitions import ColumnDefinition, EntityDefinition
 from pipelines.schemas.gold_definitions import GoldTable
 

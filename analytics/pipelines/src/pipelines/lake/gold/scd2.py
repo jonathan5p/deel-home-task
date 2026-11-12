@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import NoReturn
 
-from pipelines.lake.gold.sql import render_sql
+from pipelines.lake.gold.templates import render_sql
 from pipelines.lake.shared.columns import MetadataColumn
 from pipelines.schemas.definitions import ColumnDefinition, EntityDefinition
 from pipelines.schemas.gold_definitions import GoldTable
