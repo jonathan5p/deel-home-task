@@ -5,11 +5,11 @@ The optional `metrics` profile scrapes every Spark driver, the master and the wo
 ## Start it
 
 ```sh
-make up PROFILES=metrics       # Prometheus on http://localhost:9090, the Spark History Server and the stage exporter
+make up PROFILES=metrics       # Prometheus on http://localhost:9090, the Spark History Server, the REST catalog and the exporter
 make pipeline PIPELINE=all     # Then the streaming jobs, if they are not running yet
 ```
 
-Then open Grafana at <http://localhost:3000>: the **Spark and lake** folder holds the **Spark cluster**, **Spark streaming** and **Spark stages** dashboards, and the links bar at the top of each one moves between them. The **Gold metrics** dashboard stays in the **Gold** folder.
+Then open Grafana at <http://localhost:3000>: the **Spark and lake** folder holds the **Spark cluster**, **Spark streaming**, **Spark stages** and **Iceberg tables** dashboards, and the links bar at the top of each one moves between them. The **Gold metrics** dashboard stays in the **Gold** folder.
 
 Prometheus scrapes every 10 seconds and keeps 30 days of samples, or 2 GB, whichever comes first, in the `prometheus-data` volume, so the history survives `make down`, a restart of Prometheus and restarts of the drivers. `make clean CONFIRM=1` deletes it. Without the profile, Grafana's Prometheus datasource reports an error and the Spark dashboards stay empty; the Gold dashboard is not affected.
 
@@ -24,7 +24,7 @@ Spark's own [`PrometheusServlet`](https://spark.apache.org/docs/latest/monitorin
 | `spark-master` | `spark-master:8080` | `/metrics/master/prometheus` | Alive workers, running and waiting applications |
 | `spark-applications` | `spark-master:8080` | `/metrics/applications/prometheus` | Cores granted to each application |
 | `spark-workers` | `spark-worker-1:8081`, `spark-worker-2:8081` | `/metrics/prometheus` | Cores and memory used and free per worker |
-| `spark-stages` | `spark-stage-exporter:9101` | `/metrics` | Completed stages of every application, from the History Server (see [Stage history](#stage-history)) |
+| `spark-stages` | `spark-stage-exporter:9101` | `/metrics` | Completed stages of every application, from the History Server (see [Stage history](#stage-history)), and the lake's Iceberg table statistics (see [Iceberg tables](#iceberg-tables)) |
 
 Drivers are found by their Compose service name. Docker's DNS resolves `landing-job`, `bronze-job`, `silver-job`, `gold-job`, `lake-views`, `maintenance-job`, `data-quality-job` and `spark-app` to the containers running them, and Prometheus asks again every 10 seconds, so a driver is scraped from its first 10 seconds until it ends; the `service` label names it. The drivers started by `make spark-submit`, `make spark-sql` and the targets built on them join the network with the `spark-app` alias (`docker compose run --use-aliases`), so they are scraped too, under `service="spark-app"`.
 
@@ -61,6 +61,23 @@ Every series is labelled with the application name (`app`) and the streaming que
 
 The **Spark stages** dashboard charts them; the questions it answers are in the table below.
 
+## Iceberg tables
+
+The same exporter process (`python -m pipelines.observability.exporter`) also measures the lake's Iceberg tables with [PyIceberg](https://py.iceberg.apache.org/), through the read-only REST catalog (`iceberg-rest`, which the `metrics` profile starts too) and the S3 files it points at:
+
+- every 5 minutes (`TABLE_STATS_INTERVAL_SECONDS`), for every table of the namespaces in `TABLE_STATS_NAMESPACES` (default `bronze,silver`), the data files of its current snapshot: how many, their bytes and records, their average size and how many are below `SMALL_FILE_BYTES` (default 32 MiB);
+- every hour (`PARTITION_STATS_INTERVAL_SECONDS`), the same tables per partition, keeping only the partitions that hold small files.
+
+| Metric | Labels | Holds |
+| --- | --- | --- |
+| `iceberg_table_data_files` | `namespace`, `table` | Data files in the current snapshot |
+| `iceberg_table_data_bytes`, `iceberg_table_records` | `namespace`, `table` | Their bytes and records |
+| `iceberg_table_average_file_bytes` | `namespace`, `table` | Their average size |
+| `iceberg_table_small_files` | `namespace`, `table` | Those below `SMALL_FILE_BYTES` |
+| `iceberg_partition_small_files` | `namespace`, `table`, `partition` | Small files per partition that has any; a partition compaction fixed disappears |
+
+Every micro-batch adds files, and [lake maintenance](maintenance-and-recovery.md#lake-maintenance) merges them, so the **Iceberg tables** dashboard shows the data files per table as a saw-tooth and the hourly change in files (`delta(iceberg_table_data_files[1h])`, a gauge) dropping at each compaction. A line that only climbs means maintenance is not running.
+
 ## Alerts
 
 `monitoring/prometheus/rules/spark.yml` defines two alert rules, each firing after 5 minutes:
@@ -85,6 +102,7 @@ They show in Prometheus at <http://localhost:9090/alerts>. No Alertmanager runs,
 | Are the partitions the right size? | Spark stages → Tasks per stage, Stages with a median task under 100 ms, Stage duration p50 and p95 | Many stages with sub-100 ms median tasks mean fewer partitions (`spark.sql.shuffle.partitions`) would do |
 | Is the work even across tasks? | Spark stages → Skew p95 | Skews above about 3 mean a hot key or uneven input files |
 | Is memory or the shuffle the bottleneck? | Spark stages → GC time / run time, Spill, Shuffle fetch wait / run time | Any spill, GC above 10 % or a growing fetch wait share |
+| Does compaction keep up? | Iceberg tables → Data files per table, Data files added or removed per hour, Small files per table, Partitions with the most small files | Files dropping at each maintenance run; small files and their partitions shrinking back |
 | How much data does each job move? | Spark stages → Bytes read and written, Records read and written, Bytes per record read | The volumes to project the cluster size from |
 
 Use a time range that covers a burst of source changes and the quiet after it: the rates and durations are those of the last micro-batch, sampled every 10 seconds.

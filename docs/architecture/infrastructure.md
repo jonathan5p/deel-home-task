@@ -14,7 +14,7 @@ make spark-submit   # Submit a job to the Spark cluster (defaults to a one-minut
 make help           # Show lifecycle commands
 ```
 
-Optional services are grouped in Compose profiles and are not started by a plain `make up`: `monitoring` (Conduktor, see [Optional Kafka monitoring](../operations/debugging.md#optional-kafka-monitoring)), `history` (Spark History Server, see [Spark History Server](#spark-history-server-optional)), `maintenance` (scheduled lake maintenance and gold retention, see [Lake maintenance](../operations/maintenance-and-recovery.md#lake-maintenance) and [Gold retention](../operations/maintenance-and-recovery.md#gold-retention)), `data-quality` (scheduled data quality checks, see [Data quality checks](../lakehouse/data-quality.md)), `catalog` (the read-only Iceberg REST catalog, see [Iceberg REST catalog](#iceberg-rest-catalog)) and `metrics` (Prometheus, the Spark History Server and the stage exporter, see [Metrics](#metrics)). Pass them with `PROFILES`, separated by spaces.
+Optional services are grouped in Compose profiles and are not started by a plain `make up`: `monitoring` (Conduktor, see [Optional Kafka monitoring](../operations/debugging.md#optional-kafka-monitoring)), `history` (Spark History Server, see [Spark History Server](#spark-history-server-optional)), `maintenance` (scheduled lake maintenance and gold retention, see [Lake maintenance](../operations/maintenance-and-recovery.md#lake-maintenance) and [Gold retention](../operations/maintenance-and-recovery.md#gold-retention)), `data-quality` (scheduled data quality checks, see [Data quality checks](../lakehouse/data-quality.md)), `catalog` (the read-only Iceberg REST catalog, see [Iceberg REST catalog](#iceberg-rest-catalog)) and `metrics` (Prometheus, the Spark History Server, the REST catalog and the exporter, see [Metrics](#metrics)). Pass them with `PROFILES`, separated by spaces.
 
 ## Analytics database
 
@@ -101,7 +101,7 @@ The credentials are local development defaults in `.env` (`LAKE_S3_ACCESS_KEY`, 
 | `spark-worker-2` | <http://localhost:8082> | 5 cores, 5 GiB executor memory |
 | `spark-history` (optional) | <http://localhost:18080> | History server for finished, crashed and running applications; started with `make spark-history` or the `metrics` profile |
 | `prometheus` (optional) | <http://localhost:9090> | Scrapes the drivers, the master and the workers every 10 seconds; started with `make up PROFILES=metrics` (see [Metrics](#metrics)) |
-| `spark-stage-exporter` (optional) | none (port 9101 inside the network) | Turns the completed stages the History Server lists into Prometheus metrics; started with the `metrics` profile |
+| `spark-stage-exporter` (optional) | none (port 9101 inside the network) | Turns the completed stages the History Server lists, and the data files of the lake's Iceberg tables, into Prometheus metrics; started with the `metrics` profile |
 | `spark-app` (one container per run) | <http://localhost:4040> | Driver of an application started by `make spark-submit`; its UI is only available while it runs |
 | `landing-job` (optional) | <http://localhost:4040> | Driver of the landing job, a long-running service started by `make pipeline` (see [Running the pipeline](../operations/running-the-pipeline.md)) |
 | `bronze-job` (optional) | <http://localhost:4041> | Driver of the bronze job, started the same way |
@@ -133,7 +133,7 @@ The optional `catalog` profile serves the same catalog through the [Iceberg REST
 make up PROFILES=catalog   # REST catalog on http://localhost:8181
 ```
 
-With the `catalog` profile, `make up` also runs `make db-logins` once `analytics-db` is healthy, then restarts `iceberg-rest` and waits for it, so the catalog starts on a volume created before its login existed too. `make up` recreates `analytics-db` when its settings in `.env` changed, so the login gets the current credentials. [Querying the lake](../serving/lake-access.md) shows how to attach it from DuckDB.
+The `metrics` profile starts it too, for the exporter's [Iceberg table statistics](../operations/monitoring.md#iceberg-tables). With the `catalog` or `metrics` profile, `make up` also runs `make db-logins` once `analytics-db` is healthy, then restarts `iceberg-rest` and waits for it, so the catalog starts on a volume created before its login existed too. `make up` recreates `analytics-db` when its settings in `.env` changed, so the login gets the current credentials. [Querying the lake](../serving/lake-access.md) shows how to attach it from DuckDB.
 
 ### Kafka, Avro and plain files in the lake
 
@@ -228,7 +228,7 @@ The optional `metrics` profile starts [Prometheus](https://prometheus.io/) (`pro
 make up PROFILES=metrics   # Prometheus on http://localhost:9090
 ```
 
-Prometheus reads `monitoring/prometheus/prometheus.yml` and the alert rules in `monitoring/prometheus/rules/`, scrapes every 10 seconds, and keeps its samples for 30 days or up to 2 GB in the `prometheus-data` volume. It finds the drivers through Docker's DNS by their Compose service names, `spark-app` included: `make spark-submit` and `make spark-sql` start their drivers with `docker compose run --use-aliases`, so they answer to the service name too. The stage and task details that these endpoints lack (stage durations, task skew, shuffle, spill) come from the `spark-stage-exporter` service, which reads them from the History Server's REST API ([Stage history](../operations/monitoring.md#stage-history)). Grafana charts the metrics ([Grafana](../serving/grafana.md#spark-dashboards)), and [Monitoring Spark](../operations/monitoring.md) explains what is collected and how to read it.
+Prometheus reads `monitoring/prometheus/prometheus.yml` and the alert rules in `monitoring/prometheus/rules/`, scrapes every 10 seconds, and keeps its samples for 30 days or up to 2 GB in the `prometheus-data` volume. It finds the drivers through Docker's DNS by their Compose service names, `spark-app` included: `make spark-submit` and `make spark-sql` start their drivers with `docker compose run --use-aliases`, so they answer to the service name too. The stage and task details that these endpoints lack (stage durations, task skew, shuffle, spill) come from the `spark-stage-exporter` service, which reads them from the History Server's REST API ([Stage history](../operations/monitoring.md#stage-history)); the same service measures the lake's Iceberg tables through the REST catalog ([Iceberg tables](../operations/monitoring.md#iceberg-tables)). Grafana charts the metrics ([Grafana](../serving/grafana.md#spark-dashboards)), and [Monitoring Spark](../operations/monitoring.md) explains what is collected and how to read it.
 
 ### Checking the application UI
 

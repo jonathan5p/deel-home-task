@@ -79,6 +79,19 @@ The **Spark and lake** folder holds three Spark dashboards over the Prometheus d
 | Shuffle and network | Shuffle fetch wait / run time | Share of task time spent waiting for shuffle blocks |
 | Data volume | Bytes read and written, Records read and written, Bytes per record read | Source and sink volumes per application |
 
+## Iceberg tables dashboard
+
+The **Spark and lake** folder also holds **Iceberg tables** (http://localhost:3000/d/iceberg-tables), the last 24 hours, filtered by `namespace` and `table`, over the exporter's [Iceberg table statistics](../operations/monitoring.md#iceberg-tables):
+
+| Row | Panel | Shows |
+| --- | --- | --- |
+| Files | Data files per table | Data files in each table's current snapshot |
+| Files | Data files added or removed per hour | Change in data files over the last hour; drops at each compaction |
+| Files | Small files per table | Data files below `SMALL_FILE_BYTES` |
+| Files | Average data file size | Average size of the data files |
+| Volume | Table size, Records | Bytes and records of the current snapshot |
+| Partitions | Partitions with the most small files | The 20 partitions holding the most small files |
+
 ## Editing the dashboards
 
-The dashboards are plain JSON, edited by hand or in Grafana and exported back (Share → Export → JSON, then replace the file). The tests in `tests/grafana/` (run by `make test`) check every dashboard's stable uid, read-only flag, refresh interval and unique panel ids, that each provider loads its folder's dashboards and every dashboard is loaded exactly once, and that every Spark and lake dashboard has the links bar and the Gold dashboard none. For the Gold dashboard they also check that it keeps one panel per question plus freshness, that every query uses the Gold datasource and reads only `gold` views, and that each question panel's query equals its file. For the Spark dashboards they check that every query uses the Prometheus datasource and `$__rate_interval`, and reads only metric names that Prometheus stores: the names the scrape configuration produces from real Spark 4.1.4 pages captured in `tests/prometheus/scrapes/`, and those the stage exporter serves after recording real History Server responses.
+The dashboards are plain JSON, edited by hand or in Grafana and exported back (Share → Export → JSON, then replace the file). The tests in `tests/grafana/` (run by `make test`) check every dashboard's stable uid, read-only flag, refresh interval and unique panel ids, that each provider loads its folder's dashboards and every dashboard is loaded exactly once, and that every Spark and lake dashboard has the links bar and the Gold dashboard none. For the Gold dashboard they also check that it keeps one panel per question plus freshness, that every query uses the Gold datasource and reads only `gold` views, and that each question panel's query equals its file. For the Spark dashboards they check that every query uses the Prometheus datasource and `$__rate_interval`, and reads only metric names that Prometheus stores: the names the scrape configuration produces from real Spark 4.1.4 pages captured in `tests/prometheus/scrapes/`, and those the exporter serves after recording real History Server responses and measuring a table.

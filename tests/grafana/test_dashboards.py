@@ -20,8 +20,8 @@ def test_the_gold_dashboard_is_alone_in_the_gold_folder() -> None:
     assert folder_dashboards(GOLD_FOLDER) == [GOLD]
 
 
-def test_the_spark_dashboards_share_the_spark_and_lake_folder() -> None:
-    assert SPARK_AND_LAKE == ["spark-cluster", "spark-stages", "spark-streaming"]
+def test_the_spark_and_iceberg_dashboards_share_the_spark_and_lake_folder() -> None:
+    assert SPARK_AND_LAKE == ["iceberg-tables", "spark-cluster", "spark-stages", "spark-streaming"]
 
 
 def test_every_dashboard_is_provisioned_exactly_once() -> None:

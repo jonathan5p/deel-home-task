@@ -1,23 +1,11 @@
 import json
-import logging
-import os
-import time
 import urllib.request
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
-from prometheus_client import (
-    CollectorRegistry,
-    Counter,
-    Histogram,
-    disable_created_metrics,
-    start_http_server,
-)
-
-from pipelines.observability.schedule import Task, run_tasks
-from pipelines.settings import StageExporterSettings
+from prometheus_client import CollectorRegistry, Counter, Histogram
 
 # The History Server's REST API answers with untyped JSON.
 type Json = Any
@@ -276,19 +264,3 @@ def http_fetch(base_url: str, timeout: float = 30) -> FetchJson:
             return json.load(response)
 
     return fetch
-
-
-def main(env: Mapping[str, str]) -> None:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    disable_created_metrics()
-    settings = StageExporterSettings.from_env(env)
-    registry = CollectorRegistry()
-    exporter = StageExporter(
-        http_fetch(settings.history_server_url), StageMetrics(registry), time.time()
-    )
-    start_http_server(settings.port, registry=registry)
-    run_tasks([Task("completed stages recorded", settings.poll_seconds, exporter.poll)])
-
-
-if __name__ == "__main__":
-    main(os.environ)

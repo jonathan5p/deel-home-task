@@ -7,6 +7,7 @@ dev = [
     "fastavro>=1.12",
     "httpx2>=2.16",
     "pre-commit>=4.3",
+    "pyiceberg[sql-sqlite]>=0.12",
     "pytest>=9.2",
     "pytest-cov>=7.0",
     "pytest-xdist>=3.8",

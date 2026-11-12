@@ -20,6 +20,8 @@ make up PROFILES=maintenance                 # or keep it running on a schedule
 docker compose logs -f maintenance-job       # one summary line per table and run
 ```
 
+With the `metrics` profile, the **Iceberg tables** dashboard shows each run's effect: the data files and small files of every table drop when it compacts them ([Iceberg tables](monitoring.md#iceberg-tables)).
+
 **Schedule.** The `maintenance-job` service, in its own `maintenance` profile, loops forever: it runs the job with a fresh `spark-submit` (`spark.cores.max=2`, Spark UI on `localhost:4044`), then sleeps `MAINTENANCE_INTERVAL_HOURS` (default 24). Each run is a new application, so the cluster's cores are free between runs, and a failed run is logged and retried at the next interval instead of stopping the loop. `make lake-maintenance` stays available for one-off runs.
 
 **Streams that fall behind.** A stream resumes from the snapshot of its last committed batch, so that snapshot must still exist when it restarts. If a stream (silver reading bronze, gold reading silver) is stopped, or lags, for longer than the snapshot retention, expiring its snapshot would make it fail with `Cannot load current offset at snapshot …` until its checkpoint is reset. `retain_last` protects very little here: with one snapshot per micro-batch, ten snapshots are only minutes of history. So before expiring a table's snapshots, the job reads the checkpoint of every stream that reads the table (`MAINTENANCE_DOWNSTREAM_CHECKPOINTS`; by default each silver stream, `<CHECKPOINT_ROOT>/silver/<entity>`, for its `bronze.<entity>` table, and each gold stream, `<CHECKPOINT_ROOT>/gold/<gold table>`, for the `silver.<entity>` table it reads):

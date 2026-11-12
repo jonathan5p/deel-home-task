@@ -126,10 +126,11 @@ def test_relabelling_keeps_only_matching_series_with_keep() -> None:
     assert relabel({"__name__": "ab"}, [rule]) == {"__name__": "ab"}
 
 
-def test_the_stage_exporter_series_carry_only_the_app_and_query_labels() -> None:
-    kept = scraped("spark-stages")
+def test_the_exporter_series_carry_only_their_own_labels() -> None:
+    labels = {frozenset(series) - {"__name__", "le"} for series in scraped("spark-stages")}
 
-    assert kept
-    assert {frozenset(series) - {"__name__", "le"} for series in kept} == {
-        frozenset({"app", "query"})
+    assert labels == {
+        frozenset({"app", "query"}),
+        frozenset({"namespace", "table"}),
+        frozenset({"namespace", "table", "partition"}),
     }
