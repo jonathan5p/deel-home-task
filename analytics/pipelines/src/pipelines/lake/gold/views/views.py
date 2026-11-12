@@ -34,7 +34,9 @@ COMMIT_SEQUENCE = str(Scd2Column.COMMIT_SEQUENCE)
 
 
 def _render(template: str, **values: object) -> str:
-    text = (files("pipelines.lake.gold.views") / f"{template}.sql.j2").read_text(encoding="utf-8")
+    text = (files("pipelines.lake.gold.views") / "sql" / f"{template}.sql.j2").read_text(
+        encoding="utf-8"
+    )
     return SQL.from_string(text).render(**values).rstrip("\n")
 
 

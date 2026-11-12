@@ -24,7 +24,9 @@ class MissingSilverTablesError(LookupError):
 
 
 def _render(template: str, **values: object) -> str:
-    text = (files("pipelines.lake.silver") / f"{template}.sql.j2").read_text(encoding="utf-8")
+    text = (files("pipelines.lake.silver") / "sql" / f"{template}.sql.j2").read_text(
+        encoding="utf-8"
+    )
     return SQL.from_string(text).render(**values)
 
 

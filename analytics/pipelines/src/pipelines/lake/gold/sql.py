@@ -16,7 +16,7 @@ SQL.filters["prefix_columns"] = prefix_columns
 @cache
 def _template(name: str) -> Template:
     return SQL.from_string(
-        (files("pipelines.lake.gold") / f"{name}.sql.j2").read_text(encoding="utf-8")
+        (files("pipelines.lake.gold") / "sql" / f"{name}.sql.j2").read_text(encoding="utf-8")
     )
 
 

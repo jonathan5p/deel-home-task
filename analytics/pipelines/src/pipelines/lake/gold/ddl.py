@@ -17,7 +17,7 @@ from pipelines.schemas.definitions import (
 )
 from pipelines.schemas.gold_definitions import GoldTable, load_gold_tables
 
-TEMPLATE: Traversable = files("pipelines.lake.gold") / "ddl.sql.j2"
+TEMPLATE: Traversable = files("pipelines.lake.gold") / "sql" / "ddl.sql.j2"
 PUBLIC_SCHEMA = "gold"
 PIPELINE_ONLY_COLUMNS = frozenset(
     {"_commit_sequence", "_content_hash", "_is_deleted", "_is_folded"}
