@@ -6,7 +6,9 @@ SPARK_UI_PORT ?= 4040
 SPARK_SQL_FILE ?=
 SPARK_SQL_VARS ?=
 LANDING_ROOT ?= s3a://lake/landing
+DEFAULT_PROFILES ?= metrics
 PROFILES ?=
+UP_PROFILES = $(sort $(DEFAULT_PROFILES) $(PROFILES))
 PIPELINE ?=
 CHECK ?= all
 PIPELINES = landing bronze silver gold
@@ -65,7 +67,8 @@ CHECK_PIPELINE = $(if $(and $(PIPELINE_JOBS),$(filter 1,$(words $(PIPELINE)))),,
 
 help:
 	@printf '%s\n' \
-		'up             Render the gold DDL, build changed local images and start the default stack; add optional services with PROFILES (e.g. PROFILES="monitoring history").' \
+		'up             Render the gold DDL, build changed local images and start the default stack with DEFAULT_PROFILES (default metrics; DEFAULT_PROFILES= leaves them out);' \
+		'               add optional services with PROFILES (e.g. PROFILES="monitoring catalog").' \
 		'down           Stop all project services, including optional profiles; keep volumes.' \
 		'clean          Delete project containers and volumes (DATA LOSS); requires CONFIRM=1.' \
 		'gold-reset     Stop the gold job, recreate the gold schemas from the rendered DDL and delete the gold checkpoints (gold DATA LOSS; the lake is kept); requires CONFIRM=1.' \
@@ -101,16 +104,16 @@ help:
 		'               RESULTS picks latency or quality (default both); fails if seaweedfs is not running or a report is missing.' \
 		'test-infra     Run the infra tests in INFRA_WORKERS parallel workers (default 2), each against its own isolated copy of the stack (local only, a few minutes; every worker needs the Docker memory of a full stack; 0 runs serially).' \
 		'hooks          Install the pre-commit hooks in this clone (once).' \
-		'Optional profiles: monitoring (Conduktor), history (Spark History Server), maintenance (lake maintenance and gold retention every 24 hours), data-quality (every data quality check every 24 hours), catalog (read-only Iceberg REST catalog on localhost:8181), metrics (Prometheus on localhost:9090 scraping every Spark driver, the master, the workers and the exporter of completed stages and Iceberg table statistics, plus the History Server and the REST catalog). See README.md.'
+		'Optional profiles: monitoring (Conduktor), history (Spark History Server), maintenance (lake maintenance and gold retention every 24 hours), data-quality (every data quality check every 24 hours), catalog (read-only Iceberg REST catalog on localhost:8181), metrics (started by make up unless DEFAULT_PROFILES is emptied: Prometheus on localhost:9090 scraping every Spark driver, the master, the workers and the exporter of completed stages and Iceberg table statistics, plus the History Server and the REST catalog). See README.md.'
 
 up:
 	@$(RENDER_GOLD_DDL)
-ifneq ($(filter metrics,$(PROFILES)),)
+ifneq ($(filter metrics,$(UP_PROFILES)),)
 	@$(COMPOSE) --profile app build spark-app
 endif
-	@$(COMPOSE) $(addprefix --profile ,$(PROFILES)) up -d --build
+	@$(COMPOSE) $(addprefix --profile ,$(UP_PROFILES)) up -d --build
 	@$(COMPOSE) up -d --wait analytics-db
-ifneq ($(filter catalog metrics,$(PROFILES)),)
+ifneq ($(filter catalog metrics,$(UP_PROFILES)),)
 	@$(MAKE) --no-print-directory db-logins
 	@$(COMPOSE) --profile catalog restart iceberg-rest
 	@$(COMPOSE) --profile catalog up -d --wait iceberg-rest
@@ -161,7 +164,7 @@ LATENCY_ARGS = $(if $(ENTITIES),--entities $(ENTITIES)) $(if $(PROBES),--probes 
 latency-probe:
 	@for service in $(LATENCY_SERVICES); do \
 		if [ -z "$$($(COMPOSE) --profile pipeline --profile catalog ps -q --status running $$service)" ]; then \
-			printf '%s\n' "$$service is not running; start it with: make up PROFILES=catalog && make pipeline PIPELINE=all" >&2; \
+			printf '%s\n' "$$service is not running; start it with: make up && make pipeline PIPELINE=all" >&2; \
 			exit 2; \
 		fi; \
 	done
