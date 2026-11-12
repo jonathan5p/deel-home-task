@@ -37,7 +37,7 @@ flowchart LR
 | Data ready as soon as possible (must have) | Every hop is a streaming query, triggered every 10 seconds at landing and every 2 to 5 seconds after it; a freshness view and endpoint report the lag per entity | [One micro-batch, end to end](architecture/overview.md#one-micro-batch-end-to-end), [analytics API](serving/api.md) |
 | An architecture diagram with every component | Diagrams of the services, the containers and their connections, the data flow and the operations | [Architecture overview](architecture/overview.md) |
 | The Spark sizing strategy, its variables and the key metrics | The variables, how cores and memory are shared, and the metrics that show whether the sizing holds | [Spark sizing strategy](architecture/sizing.md) |
-| Evidence of the application running | Data quality reports from the running stack, query plans and timings, infra tests | [Key results and evidence](#key-results-and-evidence) |
+| Evidence of the application running | A recording of the stack running, data quality reports from the running stack, query plans and timings, infra tests | [Key results and evidence](#key-results-and-evidence) |
 | Access for stakeholders: API, dashboards or CLI | All three | [Serving](#serving) |
 | A Dockerized application with a detailed README | One Docker Compose stack, driven by `make` | [Repository README](https://github.com/jonathan5p/deel-home-task#readme) |
 
@@ -55,6 +55,16 @@ curl -s localhost:8000/freshness
 Then open the **Gold metrics** dashboard at <http://localhost:3000/d/gold-metrics>. `make down` stops everything and keeps the data.
 
 ## Key results and evidence
+
+### The stack running
+
+A recording of the stack running on my machine: the Kafka topics with the Debezium changes in Conduktor, the analytics API, the Spark streaming queries in the History Server, the Grafana dashboards and the stack started with `make`.
+
+<video controls preload="metadata" width="100%" src="assets/app-running.mp4">
+  <a href="assets/app-running.mp4">Download the recording (MP4)</a>
+</video>
+
+### What the checks show
 
 - **The data adds up, layer by layer.** `make data-quality` checks that every Kafka offset is landed once, every landed record reaches bronze or its quarantine exactly once, every bronze change reaches silver once, and every gold view equals the same view computed from silver. Each run writes a JSON report to the lake and exits with code 1 if a check fails ([data quality checks](lakehouse/data-quality.md)).
 - **Streaming, replay and rebuild agree.** Infra tests show that rebuilding gold from silver gives the same result as streaming the same changes, that a replayed landing range adds only the changes bronze lacks, and that replaying a micro-batch changes nothing ([testing](development/testing.md#infra-tests)).
