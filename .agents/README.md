@@ -51,6 +51,17 @@ Skills live in `.agents/skills/<name>/SKILL.md`; `.claude/skills` links here so 
 | [pre-push-checks](skills/pre-push-checks/SKILL.md) | Choosing and running checks before a commit, push or report |
 | [git-commit](skills/git-commit/SKILL.md) | Global commit skill; [git and PRs](rules/git-and-prs.md) overrides it |
 
+The Grafana skills below come from Grafana's `gcx` CLI (Apache-2.0), installed with `gcx agent skills install <names> --dir .agents` and refreshed with `gcx agent skills update --dir .agents`. They target Grafana Cloud as well; here only the self-managed parts apply. Point gcx at the local Grafana with a context of its own (`gcx config set stacks.local.grafana.server http://localhost:3000`, org id 1, the local admin login from `.env`, `contexts.local.datasources.prometheus prometheus`), then check it with `gcx config check`.
+
+| Skill | Use it for |
+| --- | --- |
+| [gcx](skills/gcx/SKILL.md) | Any gcx command: datasources, PromQL queries, dashboards, alerts |
+| [setup-gcx](skills/setup-gcx/SKILL.md) | Connecting gcx to a Grafana instance and fixing auth or connection errors |
+| [manage-dashboards](skills/manage-dashboards/SKILL.md) | Listing, auditing, pulling or snapshotting existing dashboards |
+| [create-dashboard](skills/create-dashboard/SKILL.md) | Designing new dashboards or panels with snapshot feedback |
+| [debug-with-grafana](skills/debug-with-grafana/SKILL.md) | Investigating slow or failing jobs from metrics |
+| [investigate-alert](skills/investigate-alert/SKILL.md) | Understanding why an alert rule fires |
+
 ## Planning and GitHub work
 
 Follow [the issue-planning workflow](workflows/issue-planning.md) before refining work or preparing milestones, issues and tasks. Milestones express user-story outcomes; issues carry objectives and acceptance criteria; tasks are native GitHub sub-issues of their issue. Do not add epics by default. Draft for review before publishing, and verify every remote write.
