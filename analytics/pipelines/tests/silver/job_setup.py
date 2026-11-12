@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Protocol
 from urllib.parse import urlparse
@@ -16,7 +17,7 @@ from pipelines.lake.columns import MetadataColumn
 from pipelines.lake.streams import await_queries
 from pipelines.lake.tables import described_schema, ensure_table, table_definition
 from pipelines.settings import SilverSettings
-from pipelines.silver.job import BronzeReader, run
+from pipelines.silver.job import SESSION_CONF, BronzeReader, run
 
 
 class SilverSettingsFactory(Protocol):
@@ -43,8 +44,10 @@ def write_bronze(
     bronze_frame(spark, entity, changes).writeTo(table).append()
 
 
-def run_until_caught_up(spark: SparkSession, settings: SilverSettings) -> list[StreamingQuery]:
-    queries = run(spark, settings, available_now=True)
+def run_until_caught_up(
+    spark: SparkSession, settings: SilverSettings, session_conf: Mapping[str, str] = SESSION_CONF
+) -> list[StreamingQuery]:
+    queries = run(spark, settings, available_now=True, session_conf=session_conf)
     await_queries(spark.streams, queries, available_now=True)
     return queries
 
@@ -66,3 +69,8 @@ def no_bronze_rows(entity: Entity) -> BronzeReader:
         return bronze_frame(spark, entity, [])
 
     return read
+
+
+def state_changelogs(settings: SilverSettings, entity: Entity) -> list[Path]:
+    """The RocksDB changelog files in the entity's state checkpoint."""
+    return sorted((local(settings.checkpoint_path(entity.name)) / "state").rglob("*.changelog"))

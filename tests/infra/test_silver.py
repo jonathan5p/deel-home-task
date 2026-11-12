@@ -84,12 +84,12 @@ def test_a_change_bronze_holds_twice_becomes_one_version_row(
 
 
 @pytest.mark.parametrize("entity", ENTITIES)
-def test_the_job_keeps_its_deduplication_state_in_rocksdb(
+def test_the_job_commits_its_deduplication_state_as_a_rocksdb_changelog(
     stack: Stack, silver_runs: SilverRuns, entity: str
 ) -> None:
     files = state_store_files(stack, entity)
 
-    assert any(name.endswith(".zip") for name in files)
+    assert any(name.endswith(".changelog") for name in files)
     assert not any(name.endswith(".delta") for name in files)
 
 

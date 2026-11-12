@@ -1,6 +1,6 @@
 import os
 import sys
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.streaming import StreamingQuery
@@ -23,8 +23,16 @@ from pipelines.silver.versions import versions
 STATE_STORE_PROVIDER = "spark.sql.streaming.stateStore.providerClass"
 ROCKSDB_STATE_STORE = "org.apache.spark.sql.execution.streaming.state.RocksDBStateStoreProvider"
 SHUFFLE_PARTITIONS = "spark.sql.shuffle.partitions"
+CHANGELOG_CHECKPOINTING = "spark.sql.streaming.stateStore.rocksdb.changelogCheckpointing.enabled"
 STATE_PARTITIONS = 2
-JOB_SESSION_CONF = (STATE_STORE_PROVIDER, SHUFFLE_PARTITIONS)
+# The changelog commits only each batch's state changes instead of a RocksDB snapshot per batch.
+# Spark switches an existing checkpoint to it, and back, on the next start.
+SESSION_CONF: Mapping[str, str] = {
+    STATE_STORE_PROVIDER: ROCKSDB_STATE_STORE,
+    SHUFFLE_PARTITIONS: str(STATE_PARTITIONS),
+    CHANGELOG_CHECKPOINTING: "true",
+}
+JOB_SESSION_CONF = tuple(SESSION_CONF)
 
 type BronzeReader = Callable[[SparkSession, str], DataFrame]
 
@@ -53,9 +61,10 @@ def run(
     create: TableCreator = ensure_table,
     sink: TableSink = append_to_iceberg,
     available_now: bool = False,
+    session_conf: Mapping[str, str] = SESSION_CONF,
 ) -> list[StreamingQuery]:
-    spark.conf.set(STATE_STORE_PROVIDER, ROCKSDB_STATE_STORE)
-    spark.conf.set(SHUFFLE_PARTITIONS, STATE_PARTITIONS)
+    for name, value in session_conf.items():
+        spark.conf.set(name, value)
     streams = [entity_stream(spark, settings, topic, read) for topic in settings.topics]
     return start_streams(
         spark, streams, settings, create=create, sink=sink, available_now=available_now
