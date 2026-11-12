@@ -36,11 +36,18 @@ def catalog(warehouse: Path) -> InMemoryCatalog:
     return local
 
 
+def commit_no_rows(local: InMemoryCatalog, identifier: str) -> None:
+    """Create `identifier` and commit an append with no rows, as a streaming batch that
+    quarantined nothing does: the table's current snapshot then has no manifests."""
+    local.create_table(identifier, schema=SCHEMA).append(pa.Table.from_pylist([], schema=ROWS))
+
+
 @dataclass
 class FakeTables:
     """A table source with fixed data files that counts how often each table is read."""
 
     by_table: dict[tuple[str, str], list[DataFile]]
+    unreadable: set[tuple[str, str]] = field(default_factory=set)
     reads: list[tuple[str, str]] = field(default_factory=list)
 
     def tables(self, namespaces: Iterable[str]) -> list[tuple[str, str]]:
@@ -49,4 +56,6 @@ class FakeTables:
 
     def data_files(self, namespace: str, table: str) -> list[DataFile]:
         self.reads.append((namespace, table))
+        if (namespace, table) in self.unreadable:
+            raise OSError(f"{namespace}.{table} is unreadable")
         return self.by_table[(namespace, table)]
