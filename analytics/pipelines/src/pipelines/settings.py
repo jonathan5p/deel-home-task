@@ -11,7 +11,7 @@ from common.settings import (
     require,
     split_list,
 )
-from pipelines.gold.dimensions import DIMENSIONS, FACTS
+from pipelines.lake.gold.dimensions import DIMENSIONS, FACTS
 from pipelines.schemas.definitions import load_entities
 
 DEFAULT_LANDING_TRIGGER_SECONDS = 10

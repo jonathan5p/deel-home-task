@@ -12,7 +12,7 @@ from analytics.pipelines.tests.schemas.reference_setup import (
     THINGS_RELATION,
 )
 from analytics.pipelines.tests.schemas.render_setup import SILVER, SILVER_ARCHIVE, THINGS
-from pipelines.lake.types import SPARK_TYPES
+from pipelines.lake.shared.types import SPARK_TYPES
 from pipelines.schemas.definitions import ColumnType, load_entities
 from pipelines.schemas.gold_definitions import load_gold_tables
 from pipelines.schemas.reference import (

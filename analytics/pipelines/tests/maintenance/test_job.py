@@ -4,12 +4,12 @@ from pathlib import Path
 import pytest
 from pyspark.sql import SparkSession
 
-from analytics.pipelines.tests.lake.checkpoints_setup import (
+from analytics.pipelines.tests.lake.shared.checkpoints_setup import (
     FakeCheckpoints,
     offsets,
     snapshot_offset,
 )
-from analytics.pipelines.tests.lake.tables_setup import stored_description
+from analytics.pipelines.tests.lake.shared.tables_setup import stored_description
 from analytics.pipelines.tests.maintenance.job_setup import (
     FakeSql,
     data_files,
@@ -24,10 +24,11 @@ from analytics.pipelines.tests.maintenance.job_setup import (
     stream_into,
     table_rows,
 )
-from pipelines.bronze.entities import CUSTOMERS
-from pipelines.gold.lake.views import refresh_gold_views
-from pipelines.lake.checkpoints import HadoopCheckpointFiles
-from pipelines.lake.tables import TABLE_TEMPLATES
+from pipelines.lake.bronze.entities import CUSTOMERS
+from pipelines.lake.gold.views.views import refresh_gold_views
+from pipelines.lake.shared.checkpoints import HadoopCheckpointFiles
+from pipelines.lake.shared.tables import TABLE_TEMPLATES
+from pipelines.lake.silver.views import MissingSilverTablesError, refresh_views
 from pipelines.maintenance.job import (
     GOLD_VIEWS,
     SILVER_VIEWS,
@@ -38,7 +39,6 @@ from pipelines.maintenance.job import (
     sql_timestamp,
     tables,
 )
-from pipelines.silver.views import MissingSilverTablesError, refresh_views
 
 ORDERS = "bronze.orders"
 NO_STREAMS = FakeCheckpoints()

@@ -1,6 +1,6 @@
 import pytest
 
-from pipelines.lake.columns import ChangeOp, MetadataColumn
+from pipelines.lake.shared.columns import ChangeOp, MetadataColumn
 from pipelines.schemas.definitions import load_entity, load_table_templates
 from tests.infra.bronze_setup import (
     AUDIT_BRONZE,

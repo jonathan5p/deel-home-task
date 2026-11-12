@@ -47,7 +47,7 @@ PYTEST_WORKERS ?= 4
 CODE_MOUNTS = -v "$(CURDIR)/analytics:/opt/app/analytics" -v "$(CURDIR)/tests:/opt/app/tests" \
 	-v "$(CURDIR)/monitoring:/opt/app/monitoring:ro" -v "$(CURDIR)/.env:/opt/app/.env:ro"
 MKDOCS = uv run --frozen --group docs mkdocs
-RENDER_GOLD_DDL = uv run --frozen python -m pipelines.gold.ddl docker/analytics-db/initdb/02-gold-model.sql
+RENDER_GOLD_DDL = uv run --frozen python -m pipelines.lake.gold.ddl docker/analytics-db/initdb/02-gold-model.sql
 
 SPARK_TESTS = analytics/common/tests analytics/pipelines/tests tests/grafana tests/prometheus
 API_TESTS = analytics/api/tests analytics/common/tests
@@ -134,7 +134,7 @@ REPLAY_ARGS = --topic "$(TOPIC)" $(if $(PARTITION),--partition $(PARTITION)) \
 	$(if $(FROM_TIME),--from-time $(FROM_TIME)) $(if $(TO_TIME),--to-time $(TO_TIME))
 
 bronze-replay:
-	@$(MAKE) --no-print-directory spark-submit SPARK_APP=analytics/pipelines/src/pipelines/bronze/replay.py \
+	@$(MAKE) --no-print-directory spark-submit SPARK_APP=analytics/pipelines/src/pipelines/lake/bronze/replay.py \
 		SPARK_UI_PORT=$(REPLAY_UI_PORT) SPARK_CONF="spark.cores.max=2 $(SPARK_CONF)" SPARK_APP_ARGS='$(strip $(REPLAY_ARGS))'
 
 spark-sql:
@@ -270,7 +270,7 @@ endif
 gold-rebuild:
 ifeq ($(CONFIRM),1)
 	@$(MAKE) --no-print-directory gold-reset CONFIRM=1
-	@$(MAKE) --no-print-directory spark-submit SPARK_APP=analytics/pipelines/src/pipelines/gold/rebuild.py \
+	@$(MAKE) --no-print-directory spark-submit SPARK_APP=analytics/pipelines/src/pipelines/lake/gold/rebuild.py \
 		SPARK_UI_PORT=$(GOLD_REBUILD_UI_PORT) SPARK_CONF="spark.cores.max=2 $(SPARK_CONF)" \
 		SPARK_APP_ARGS='$(if $(TO_TIME),--to-time $(TO_TIME))'
 	@printf '%s\n' "The gold job stays stopped; make pipeline PIPELINE=gold resumes streaming from silver."
@@ -280,7 +280,7 @@ else
 endif
 
 gold-retention:
-	@$(COMPOSE) run --rm --build --no-deps spark-app python -m pipelines.gold.retention
+	@$(COMPOSE) run --rm --build --no-deps spark-app python -m pipelines.lake.gold.retention
 
 db-logins:
 	@$(COMPOSE) exec -T analytics-db sh /docker-entrypoint-initdb.d/03-service-logins.sh

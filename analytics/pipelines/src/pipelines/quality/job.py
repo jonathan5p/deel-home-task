@@ -6,9 +6,10 @@ from collections.abc import Callable, Mapping, Sequence
 
 from pyspark.sql import SparkSession
 
-from pipelines.bronze import quality as bronze
-from pipelines.gold import quality as gold
-from pipelines.landing import quality as landing
+from pipelines.lake.bronze import quality as bronze
+from pipelines.lake.gold import quality as gold
+from pipelines.lake.landing import quality as landing
+from pipelines.lake.silver import quality as silver
 from pipelines.quality.checks import Check, CheckResult, all_passed, report_lines, summary_object
 from pipelines.quality.report import Results, write_report
 from pipelines.settings import (
@@ -18,7 +19,6 @@ from pipelines.settings import (
     LandingQualitySettings,
     SilverSettings,
 )
-from pipelines.silver import quality as silver
 
 ALL = "all"
 SUMMARY_PREFIX = "DATA QUALITY"

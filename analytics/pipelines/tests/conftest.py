@@ -44,7 +44,7 @@ def iceberg_catalog(spark: SparkSession, tmp_path: Path) -> str:
 
 @pytest.fixture
 def iceberg_view_catalog(spark: SparkSession, tmp_path: Path) -> str:
-    from analytics.pipelines.tests.lake.views_setup import register_view_catalog
+    from analytics.pipelines.tests.lake.shared.views_setup import register_view_catalog
 
     return register_view_catalog(spark, tmp_path)
 

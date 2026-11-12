@@ -316,21 +316,21 @@ services:
   landing-job:
     <<: *pipeline-job
     hostname: landing-job
-    command: [sh, -c, *pipeline-submit, spark-submit, /opt/app/analytics/pipelines/src/pipelines/landing/job.py]
+    command: [sh, -c, *pipeline-submit, spark-submit, /opt/app/analytics/pipelines/src/pipelines/lake/landing/job.py]
     ports:
       - "4040:4040"
 
   bronze-job:
     <<: *pipeline-job
     hostname: bronze-job
-    command: [sh, -c, *pipeline-submit, spark-submit, --conf, spark.cores.max=1, /opt/app/analytics/pipelines/src/pipelines/bronze/job.py]
+    command: [sh, -c, *pipeline-submit, spark-submit, --conf, spark.cores.max=1, /opt/app/analytics/pipelines/src/pipelines/lake/bronze/job.py]
     ports:
       - "4041:4040"
 
   silver-job:
     <<: *pipeline-job
     hostname: silver-job
-    command: [sh, -c, *pipeline-submit, spark-submit, /opt/app/analytics/pipelines/src/pipelines/silver/job.py]
+    command: [sh, -c, *pipeline-submit, spark-submit, /opt/app/analytics/pipelines/src/pipelines/lake/silver/job.py]
     ports:
       - "4042:4040"
 
@@ -338,12 +338,12 @@ services:
     <<: *pipeline-job
     hostname: lake-views
     restart: on-failure
-    command: [sh, -c, *pipeline-submit, spark-submit, /opt/app/analytics/pipelines/src/pipelines/silver/views_job.py]
+    command: [sh, -c, *pipeline-submit, spark-submit, /opt/app/analytics/pipelines/src/pipelines/lake/silver/views_job.py]
 
   gold-job:
     <<: *pipeline-job
     hostname: gold-job
-    command: [sh, -c, *pipeline-submit, spark-submit, /opt/app/analytics/pipelines/src/pipelines/gold/job.py]
+    command: [sh, -c, *pipeline-submit, spark-submit, /opt/app/analytics/pipelines/src/pipelines/lake/gold/job.py]
     ports:
       - "4045:4040"
 
@@ -407,7 +407,7 @@ services:
           ''|*[!0-9]*|0) echo "GOLD_RETENTION_INTERVAL_HOURS=$$hours is not a positive integer" >&2; exit 1 ;;
         esac
         while true; do
-          python -m pipelines.gold.retention \
+          python -m pipelines.lake.gold.retention \
             || echo "Gold retention failed; the next run starts in $$hours hours" >&2
           sleep "$$((hours * 3600))"
         done

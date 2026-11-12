@@ -18,8 +18,8 @@ from tests.infra.stack import Stack
 
 LAKE_KEY = "test-fixtures/bronze-replay"
 STAGING_KEY = f"{LAKE_KEY}/staging"
-BRONZE_APP = "analytics/pipelines/src/pipelines/bronze/job.py"
-REPLAY_APP = "analytics/pipelines/src/pipelines/bronze/replay.py"
+BRONZE_APP = "analytics/pipelines/src/pipelines/lake/bronze/job.py"
+REPLAY_APP = "analytics/pipelines/src/pipelines/lake/bronze/replay.py"
 ENTITY = "customers"
 TOPIC = TOPICS[ENTITY]
 

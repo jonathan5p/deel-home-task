@@ -14,7 +14,7 @@ from analytics.pipelines.tests.latency.latency_setup import (
     FakeLookup,
     FakeSource,
 )
-from pipelines.bronze.entities import CUSTOMERS, Entity
+from pipelines.lake.bronze.entities import CUSTOMERS, Entity
 from pipelines.latency.layers import LAYERS, Layer
 from pipelines.latency.probe import (
     Probe,

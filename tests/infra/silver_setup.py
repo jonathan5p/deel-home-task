@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from pipelines.lake.columns import MetadataColumn
+from pipelines.lake.shared.columns import MetadataColumn
 from tests.infra.bronze_setup import (
     ENTITIES,
     ENV,
@@ -21,8 +21,8 @@ from tests.infra.stack import Stack
 VIEWS = ("history", "current")
 type SqlResults = dict[str, list[list[str]]]
 
-SILVER_APP = "analytics/pipelines/src/pipelines/silver/job.py"
-VIEWS_APP = "analytics/pipelines/src/pipelines/silver/views_job.py"
+SILVER_APP = "analytics/pipelines/src/pipelines/lake/silver/job.py"
+VIEWS_APP = "analytics/pipelines/src/pipelines/lake/silver/views_job.py"
 SILVER_TABLES = [f"lake.silver.{entity}" for entity in ENTITIES]
 SILVER_VIEWS = [f"lake.silver.{entity}_{view}" for entity in ENTITIES for view in VIEWS]
 GOLD_VIEWS = [

@@ -1,10 +1,10 @@
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
-from pipelines.gold.dimensions import DIMENSIONS, FACTS
-from pipelines.gold.facts import ChangeFact
-from pipelines.gold.scd2 import Scd2Dimension
-from pipelines.lake.columns import MetadataColumn
+from pipelines.lake.gold.dimensions import DIMENSIONS, FACTS
+from pipelines.lake.gold.facts import ChangeFact
+from pipelines.lake.gold.scd2 import Scd2Dimension
+from pipelines.lake.shared.columns import MetadataColumn
 from pipelines.latency.probe import Change, ProbeSetupError, ProbeTarget
 from pipelines.latency.sql import Row, identifier, relation, single_integer
 

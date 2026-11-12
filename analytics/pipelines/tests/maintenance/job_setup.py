@@ -6,15 +6,15 @@ from pathlib import Path
 
 from pyspark.sql import Row, SparkSession
 
-from analytics.pipelines.tests.gold.lake.views_setup import GoldLake
-from analytics.pipelines.tests.lake.views_setup import register_view_catalog
-from analytics.pipelines.tests.silver.views_setup import append_versions, version
-from pipelines.bronze.entities import CUSTOMERS
-from pipelines.lake.columns import ChangeOp
-from pipelines.lake.views import ensure_view
+from analytics.pipelines.tests.lake.gold.views.views_setup import GoldLake
+from analytics.pipelines.tests.lake.shared.views_setup import register_view_catalog
+from analytics.pipelines.tests.lake.silver.views_setup import append_versions, version
+from pipelines.lake.bronze.entities import CUSTOMERS
+from pipelines.lake.shared.columns import ChangeOp
+from pipelines.lake.shared.views import ensure_view
+from pipelines.lake.silver.views import refresh_views, silver_views
 from pipelines.maintenance.job import Clock
 from pipelines.settings import MaintenanceSettings, SilverSettings
-from pipelines.silver.views import refresh_views, silver_views
 
 ROWS_SCHEMA = "id INT, state STRING"
 

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TypedDict
 
-from pipelines.lake.columns import MetadataColumn
+from pipelines.lake.shared.columns import MetadataColumn
 from tests.infra.lake_reader import ROWS_PREFIX, catalog_descriptions, duckdb_rows, dumps
 from tests.infra.landing_avro import landing_avro
 from tests.infra.stack import Stack
@@ -12,7 +12,7 @@ from tests.infra.stack import Stack
 LAKE_KEY = "test-fixtures/bronze"
 STAGING_KEY = f"{LAKE_KEY}/staging"
 LAND_APP = "tests/infra/apps/land_staged.py"
-BRONZE_APP = "analytics/pipelines/src/pipelines/bronze/job.py"
+BRONZE_APP = "analytics/pipelines/src/pipelines/lake/bronze/job.py"
 SPARK_ROWS_APP = "tests/infra/apps/table_rows.py"
 
 ENTITIES = ("customers", "products", "orders", "order_items")

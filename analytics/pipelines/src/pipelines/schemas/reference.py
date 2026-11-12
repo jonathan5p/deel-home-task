@@ -17,7 +17,7 @@ from pipelines.schemas.gold_definitions import GoldTable, load_gold_tables
 REFERENCE = "reference"
 
 # Spark SQL type names, spelled out because the docs site is built on the host, where PySpark is
-# not installed; a unit test checks them against pipelines.lake.types.SPARK_TYPES.
+# not installed; a unit test checks them against pipelines.lake.shared.types.SPARK_TYPES.
 LAKE_TYPES: Mapping[ColumnType, str] = {
     ColumnType.LONG: "bigint",
     ColumnType.INT: "int",
