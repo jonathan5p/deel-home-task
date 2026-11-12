@@ -15,6 +15,8 @@ MAINTENANCE_UI_PORT ?= 4044
 GOLD_REBUILD_UI_PORT ?= 4045
 DRIVER_BUILD ?= --build
 INFRA_WORKERS ?= 2
+LAKE_FILER_URL ?= http://localhost:8888/buckets/lake
+RESULTS ?=
 LATENCY_SERVICES = landing-job bronze-job silver-job gold-job iceberg-rest
 LATENCY_ENV = LAKE_CATALOG_URI LAKE_S3_ENDPOINT LAKE_S3_REGION SOURCE_DB_URL SOURCE_DB_USER SOURCE_DB_PASSWORD
 .DEFAULT_GOAL := help
@@ -57,7 +59,7 @@ PIPELINE_JOBS = $(addsuffix -job,$(if $(filter all,$(PIPELINE)),$(PIPELINES),$(f
 PIPELINE_SERVICES = $(PIPELINE_JOBS) $(if $(filter silver all,$(PIPELINE)),lake-views)
 CHECK_PIPELINE = $(if $(and $(PIPELINE_JOBS),$(filter 1,$(words $(PIPELINE)))),,$(error Set PIPELINE to one of: $(PIPELINES) all (got "$(PIPELINE)"), e.g. make $@ PIPELINE=landing))
 
-.PHONY: help up down clean cdc-pause cdc-resume cdc-status gold-reset db-logins gold-rebuild gold-retention spark-submit bronze-replay spark-sql spark-history data-quality latency-probe lake-maintenance pipeline pipeline-logs pipeline-stop lake-views test lint format typecheck schemas docs docs-serve test-infra hooks
+.PHONY: help up down clean cdc-pause cdc-resume cdc-status gold-reset db-logins gold-rebuild gold-retention spark-submit bronze-replay spark-sql spark-history data-quality latency-probe lake-maintenance pipeline pipeline-logs pipeline-stop lake-views test lint format typecheck schemas docs docs-serve docs-results test-infra hooks
 
 help:
 	@printf '%s\n' \
@@ -93,6 +95,8 @@ help:
 		'               Build output: git-ignored, regenerated each run; edit analytics/pipelines/src/pipelines/schemas/ instead.' \
 		'docs           Build the docs site (docs/ plus the table reference rendered from the schemas) into the git-ignored target/site/; warnings fail.' \
 		'docs-serve     Serve the docs site on http://localhost:8001, rebuilding on every change.' \
+		'docs-results   Copy the newest latency report (JSON and HTML) and data quality report from the lake into docs/results/, for the latest results pages;' \
+		'               RESULTS picks latency or quality (default both); fails if seaweedfs is not running or a report is missing.' \
 		'test-infra     Run the infra tests in INFRA_WORKERS parallel workers (default 2), each against its own isolated copy of the stack (local only, a few minutes; every worker needs the Docker memory of a full stack; 0 runs serially).' \
 		'hooks          Install the pre-commit hooks in this clone (once).' \
 		'Optional profiles: monitoring (Conduktor), history (Spark History Server), maintenance (lake maintenance and gold retention every 24 hours), data-quality (every data quality check every 24 hours), catalog (read-only Iceberg REST catalog on localhost:8181), metrics (Prometheus on localhost:9090 scraping every Spark driver, the master, the workers and the exporter of completed stages and Iceberg table statistics, plus the History Server and the REST catalog). See README.md.'
@@ -229,6 +233,13 @@ docs:
 
 docs-serve:
 	@$(MKDOCS) serve
+
+docs-results:
+	@if [ -z "$$($(COMPOSE) ps -q --status running seaweedfs)" ]; then \
+		printf '%s\n' "seaweedfs is not running; start it with: make up (or docker compose up -d seaweedfs)" >&2; \
+		exit 2; \
+	fi
+	@uv run --frozen python -m pipelines.reports.latest --filer-url $(LAKE_FILER_URL) --out docs/results $(RESULTS)
 
 test-infra:
 	@$(RENDER_GOLD_DDL)

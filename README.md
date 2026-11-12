@@ -156,6 +156,7 @@ make lint       # ruff lint and format check
 make format     # format the code and apply safe lint fixes
 make typecheck  # check types with ty
 make docs       # build the docs site; warnings fail
+make docs-results # copy the newest latency and data quality reports from the lake into docs/results/
 make test-infra # infra tests against isolated copies of the stack, 2 workers by default (local only)
 ```
 

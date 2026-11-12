@@ -30,6 +30,7 @@ nav:
           - lakehouse/gold/model.md
           - lakehouse/gold/writer.md
       - lakehouse/data-quality.md
+      - lakehouse/data-quality-results.md
   - Serving:
       - serving/api.md
       - serving/grafana.md
@@ -39,6 +40,7 @@ nav:
       - operations/maintenance-and-recovery.md
       - operations/debugging.md
       - operations/latency.md
+      - operations/latency-results.md
       - operations/monitoring.md
       - operations/configuration.md
   - Development:
@@ -85,6 +87,7 @@ plugins:
   - gen-files:
       scripts:
         - tools/docs/reference_pages.py
+        - tools/docs/results_pages.py
 
 markdown_extensions:
   - admonition

@@ -40,7 +40,7 @@ flowchart LR
 ## How the checks run
 
 - **Output:** each check prints one JSON line per result, prefixed with `<CHECK> QUALITY` (`LANDING QUALITY`, `BRONZE QUALITY`, `SILVER QUALITY`, `GOLD QUALITY`), then a summary line of its own, and the run ends with a `DATA QUALITY` summary of every check that names the run's report. The job exits with code 1 if any check fails. A check that raises an error instead of returning results, for example the landing check on a topic Kafka does not host yet, fails as one `check_completed` result with the error's type and message in its `details`, and the run still runs the other checks and writes its report.
-- **Report:** every run also writes one JSON file, `<LAKE_ROOT>/quality/reports/<UTC time>.json` (locally `s3a://lake/quality/reports/20261110T151803Z.json`), with each check's results and summary and the run's summary, so the results persist and can be inspected later (`curl http://localhost:8888/buckets/lake/quality/reports/` lists them).
+- **Report:** every run also writes one JSON file, `<LAKE_ROOT>/quality/reports/<UTC time>.json` (locally `s3a://lake/quality/reports/20261110T151803Z.json`), with each check's results and summary and the run's summary, so the results persist and can be inspected later (`curl http://localhost:8888/buckets/lake/quality/reports/` lists them). The newest complete run is shown in the docs as the [latest data quality results](#latest-results).
 - **Schedule:** the `data-quality-job` service is optional and off by default: it is in its own `data-quality` profile, which neither `make up` nor `make pipeline` starts, so it runs only when requested (`make up PROFILES=data-quality`). It runs every check (`CHECK=all`) right away and then every `DATA_QUALITY_INTERVAL_HOURS` hours (default 24), each time with a fresh `spark-submit` (`spark.cores.max=2`). A failed run, a failing check included, is logged (`docker compose logs data-quality-job`) and the next run starts on schedule. Every run writes its report, so `quality/reports/` keeps the history of the scheduled runs. Next to the four streaming jobs, it shares the 2 free cores with lake maintenance, so when both profiles start together one waits for the other.
 - **Bounded by what the downstream layer committed:** a check reads the upstream position the downstream stream's checkpoint committed (`pipelines/lake/checkpoints.py`), and the downstream table as of the newest snapshot that holds no later batch of that stream (`pipelines/lake/snapshots.py`; Iceberg's streaming sink records the query and batch, `spark.sql.streaming.queryId` and `spark.sql.streaming.epochId`, in each append's snapshot summary). A batch whose rows are in the table but whose checkpoint commit is not written yet does not count, so the result does not depend on pipeline lag.
 
@@ -90,3 +90,14 @@ The `gold` check compares every PostgreSQL `gold` view with the [gold view in th
 - **Retention window:** the history facts are compared from the first month PostgreSQL still holds, with the lake's history computed over silver from that month; current state, dimensions, seeds and the business views in full.
 - **Up to date:** a stored lake view whose query or descriptions differ from its definition fails (`stale`).
 - **Output:** the metrics count the rows of each side and the rows only one side has (`lake_rows`, `postgres_rows`, `lake_only`, `postgres_only`, `stale`); the details hold the snapshots compared at, up to 10 sample rows of each side and the history start. Before every gold stream has committed a batch, each view is reported as not checked and fails.
+
+## Latest results
+
+The [latest data quality results](data-quality-results.md) page shows one run of every check, stamped with when it ran (the UTC time its report is named after) and the name of its report: the run's summary, then each check's results with their subject and metrics, and the details of every failed result. It is rendered on every docs build from the report committed under `docs/results/quality/latest.json`, not from the lake, so the published site shows it too.
+
+```sh
+make data-quality      # on the running stack: writes a new report to the lake
+make docs-results      # copy the newest reports from the lake into docs/results/, then commit them
+```
+
+`make docs-results` copies the newest complete run, one of every check (`CHECK=all`), whether its checks passed or not, so a failure shows on the page as it happened; newer runs of only some checks are named on the page and left out. `RESULTS=quality` copies only this report; the [latency page](../operations/latency.md#latest-results) explains the target's other options and exit codes.
