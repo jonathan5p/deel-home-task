@@ -5,7 +5,7 @@
 To run the whole pipeline as it is meant to run, with its metrics, the REST catalog and the scheduled lake maintenance:
 
 ```sh
-make up PROFILES="metrics catalog maintenance"   # the stack, Prometheus, the REST catalog, and maintenance every 6 hours
+make up PROFILES="catalog maintenance"            # the stack, Prometheus, the REST catalog, and maintenance every 6 hours
 make pipeline PIPELINE=all PROFILES=catalog       # the four streaming jobs and the lake views
 ```
 
@@ -46,7 +46,7 @@ Where to look while a job runs:
 - **Application UI** on the job's port (table above), including the Structured Streaming tab with one query per topic.
 - **History Server** at <http://localhost:18080>, for current and past runs, since every driver writes event logs to the `spark-events` volume.
 - **Landing files** in the SeaweedFS filer UI at <http://localhost:8888/buckets/lake/landing/>, one folder per topic.
-- **Spark dashboards** in Grafana, with the `metrics` profile (`make up PROFILES=metrics`): rates, batch durations and state of every query, and the cluster's cores and memory over time ([Monitoring Spark](monitoring.md)).
+- **Spark dashboards** in Grafana, with the `metrics` profile that `make up` starts by default: rates, batch durations and state of every query, and the cluster's cores and memory over time ([Monitoring Spark](monitoring.md)).
 
 Each job service submits its application with the same settings as `make spark-submit` (1-core, 1 GiB executors: `spark.executor.cores=1`, `spark.executor.memory=1g`), plus `spark.cores.max=2` (1 for bronze) and the service name as the driver host, so executors on the workers can connect back to it. The services restart unless they were stopped (`restart: unless-stopped`): a job whose driver fails is restarted and resumes from its checkpoints, without skipping or duplicating records. A container stopped with `make pipeline-stop` or `docker stop`/`docker kill` stays stopped until the next `make pipeline`.
 

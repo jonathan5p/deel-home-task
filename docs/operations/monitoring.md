@@ -1,11 +1,11 @@
 # Monitoring Spark
 
-The optional `metrics` profile scrapes every Spark driver, the master and the workers into [Prometheus](https://prometheus.io/), and [Grafana](../serving/grafana.md) charts them. It answers two questions: are the streaming queries keeping up right now, and how much of the cluster do the jobs really use, to size it (see [the sizing strategy](../architecture/sizing.md#key-metrics)).
+The `metrics` profile, which `make up` starts by default, scrapes every Spark driver, the master and the workers into [Prometheus](https://prometheus.io/), and [Grafana](../serving/grafana.md) charts them. It answers two questions: are the streaming queries keeping up right now, and how much of the cluster do the jobs really use, to size it (see [the sizing strategy](../architecture/sizing.md#key-metrics)).
 
 ## Start it
 
 ```sh
-make up PROFILES=metrics       # Prometheus on http://localhost:9090, the Spark History Server, the REST catalog and the exporter
+make up                        # Prometheus on http://localhost:9090, the Spark History Server, the REST catalog and the exporter
 make pipeline PIPELINE=all     # Then the streaming jobs, if they are not running yet
 ```
 

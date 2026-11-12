@@ -57,7 +57,7 @@ make down           # Stop/remove all project containers, including optional pro
 make help           # Show every command
 ```
 
-Optional services are grouped in Compose profiles and are not started by a plain `make up`:
+Optional services are grouped in Compose profiles. A plain `make up` starts the `metrics` profile and none of the others (`make up DEFAULT_PROFILES=` leaves `metrics` out too):
 
 | Profile | Starts | Guide |
 | --- | --- | --- |
@@ -66,7 +66,7 @@ Optional services are grouped in Compose profiles and are not started by a plain
 | `maintenance` | Scheduled lake maintenance and gold retention | [Maintenance and recovery](docs/operations/maintenance-and-recovery.md) |
 | `data-quality` | Every data quality check on a schedule | [Data quality checks](docs/lakehouse/data-quality.md#data-quality-checks) |
 | `catalog` | A read-only Iceberg REST catalog of the lake, for engines such as DuckDB | [Query the lake from DuckDB](docs/serving/lake-access.md#query-the-lake-from-duckdb) |
-| `metrics` | Prometheus, scraping every Spark driver, the master and the workers, the Spark History Server and an exporter of its completed stages and of the Iceberg tables' file statistics; Grafana's Spark and lake dashboards read it | [Monitoring Spark](docs/operations/monitoring.md) |
+| `metrics` (on by default) | Prometheus, scraping every Spark driver, the master and the workers, the Spark History Server and an exporter of its completed stages and of the Iceberg tables' file statistics; Grafana's Spark and lake dashboards read it | [Monitoring Spark](docs/operations/monitoring.md) |
 
 `make down` keeps every volume, so the source database, Kafka, the lake and gold survive a restart. To work on the code, also run `uv sync --frozen` and `make hooks` ([testing](docs/development/testing.md)).
 
@@ -117,7 +117,7 @@ Optional services are grouped in Compose profiles and are not started by a plain
 | SeaweedFS S3 API and filer | <http://localhost:8333>, <http://localhost:8888/buckets/lake/> | `lakeadmin` / `lakeadmin-secret` |
 | Spark master | <http://localhost:8080> | none |
 | Pipeline job UIs | landing <http://localhost:4040>, bronze 4041, silver 4042, gold 4045 | none |
-| Spark History Server | <http://localhost:18080> | none |
+| Spark History Server (`metrics` profile) | <http://localhost:18080> | none |
 | Lake REST catalog (`catalog` profile) | <http://localhost:8181> | none; read-only |
 | Analytics API | <http://localhost:8000>, docs at <http://localhost:8000/docs> | none |
 | Grafana | <http://localhost:3000> | anonymous viewer; `admin` / `admin` |
