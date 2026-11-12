@@ -4,9 +4,9 @@ from pyspark.sql import Column, DataFrame, Window
 from pyspark.sql import functions as F
 from pyspark.sql.types import LongType
 
-from pipelines.lake.gold.model.versions import IS_DELETED, VersionColumn, all_of
+from pipelines.lake.gold.model.columns import IS_REMOVED, VersionColumn
+from pipelines.lake.gold.model.versions import IS_DELETED, all_of
 
-IS_REMOVED = "_is_removed"
 TOP_PLACES = 3
 
 ORDER_ID = "order_id"

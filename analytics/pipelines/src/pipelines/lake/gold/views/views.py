@@ -8,7 +8,7 @@ from pyspark.sql import SparkSession
 from pipelines.lake.gold.ddl import PIPELINE_ONLY_COLUMNS
 from pipelines.lake.gold.dimensions import DIMENSIONS, FACTS
 from pipelines.lake.gold.facts import AsOfLookup, ChangeFact, FactColumn, KeyLookup
-from pipelines.lake.gold.scd2 import VERSIONS_SUFFIX, Scd2Column, Scd2Dimension
+from pipelines.lake.gold.scd2 import Scd2Column, Scd2Dimension
 from pipelines.lake.shared.columns import MetadataColumn
 from pipelines.lake.shared.tables import TABLE_TEMPLATES, sql_string
 from pipelines.lake.shared.views import ViewDefinition, ensure_view
@@ -91,13 +91,11 @@ class GoldLakeViews:
     def _silver_history(self, load: Scd2Dimension | ChangeFact) -> str:
         return self._silver(TABLE_TEMPLATES[HISTORY].table_name(load.entity))
 
-    def public_columns(
-        self, table: GoldTable, added: Sequence[ColumnDefinition] = ()
-    ) -> tuple[ColumnDefinition, ...]:
+    def public_columns(self, table: GoldTable) -> tuple[ColumnDefinition, ...]:
         """The columns of the public PostgreSQL view of `table`, without the surrogate keys."""
         hidden = self.hidden | INTERNAL_COLUMNS.get(table.name, frozenset())
         kept = (column for column in table.columns if column.name not in hidden)
-        return (*kept, *added)
+        return tuple(kept)
 
     def _definition(
         self, table: GoldTable, columns: Sequence[ColumnDefinition], query: str
@@ -113,7 +111,7 @@ class GoldLakeViews:
         return self._definition(table, table.columns, _render(name))
 
     def dimension(self, dimension: Scd2Dimension) -> ViewDefinition:
-        columns = self.public_columns(dimension.table, self._validity_columns(dimension))
+        columns = self.public_columns(dimension.table)
         sources = dict(dimension.silver_columns) | {dimension.surrogate_key: COMMIT_SEQUENCE}
         selected = [
             column.name
@@ -216,13 +214,7 @@ class GoldLakeViews:
         return self._definition(table, columns, query)
 
     def history(self, fact: ChangeFact) -> ViewDefinition:
-        columns = self.public_columns(fact.history, self._validity_columns(self.dimensions[0]))
-        return self._fact(fact, fact.history, columns, latest=False)
-
-    def _validity_columns(self, dimension: Scd2Dimension) -> list[ColumnDefinition]:
-        """`_valid_to` and `_is_current` of the dimension's versions."""
-        versions = self.tables[f"{dimension.name}{VERSIONS_SUFFIX}"]
-        return [versions.column(name) for name in HISTORY_COLUMNS]
+        return self._fact(fact, fact.history, self.public_columns(fact.history), latest=False)
 
     def current(self, fact: ChangeFact) -> ViewDefinition:
         return self._fact(fact, fact.current, self.public_columns(fact.current), latest=True)

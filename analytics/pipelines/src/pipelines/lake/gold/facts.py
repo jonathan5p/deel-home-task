@@ -1,21 +1,12 @@
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 from enum import StrEnum
 from typing import NoReturn
 
-from pipelines.lake.gold.scd2 import (
-    INTERNAL_SCHEMA,
-    STAGING_DESCRIPTION,
-    STAGING_PREFIX,
-    Scd2Dimension,
-    postgres_string,
-    silver_column,
-)
-from pipelines.lake.gold.templates import render_sql
+from pipelines.lake.gold.model.columns import VERSION_COLUMNS
+from pipelines.lake.gold.scd2 import INTERNAL_SCHEMA, Scd2Dimension, silver_column
 from pipelines.schemas.definitions import ColumnDefinition, EntityDefinition
 from pipelines.schemas.gold_definitions import GoldTable
-
-ROW = "fact_row"
 
 
 class FactColumn(StrEnum):
@@ -25,7 +16,7 @@ class FactColumn(StrEnum):
     IS_DELETED = "_is_deleted"
 
 
-HISTORY_COLUMNS = tuple(FactColumn)
+HISTORY_COLUMNS = (*FactColumn, *VERSION_COLUMNS)
 CURRENT_COLUMNS = (FactColumn.COMMIT_SEQUENCE, FactColumn.CHANGED_AT, FactColumn.IS_DELETED)
 
 
@@ -50,20 +41,6 @@ class KeyLookup:
     code: str
     key: str
     fallback: str | None = None
-
-    def expression(self, row: str) -> str:
-        relation = f"{INTERNAL_SCHEMA}.{self.dimension.name}"
-
-        def key_of(value: str) -> str:
-            return (
-                f"(SELECT lookup.{self.key} FROM {relation} AS lookup"
-                f" WHERE lookup.{self.code} = {value})"
-            )
-
-        matched = key_of(f"{row}.{self.source}")
-        if self.fallback is None:
-            return matched
-        return f"coalesce({matched}, {key_of(postgres_string(self.fallback))})"
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,49 +71,20 @@ class AsOfLookup:
     multiplied: tuple[Multiplied, ...] = ()
 
     @property
-    def alias(self) -> str:
-        return self.dimension.name
-
-    @property
     def fact_columns(self) -> tuple[str, ...]:
         return (*(fact for fact, _ in self.columns), *(m.column for m in self.multiplied))
-
-    def expressions(self, row: str) -> Mapping[str, str]:
-        looked_up = {fact: f"{self.alias}.{column}" for fact, column in self.columns}
-        multiplied = {
-            m.column: f"{row}.{m.factor} * {looked_up[m.looked_up]}" for m in self.multiplied
-        }
-        return looked_up | multiplied
-
-    def join(self, row: str) -> str:
-        """The lateral join that finds the version in the dimension's versions view, which
-        derives the fold flag and validity. The first version by `_commit_sequence` is never
-        folded, so it also covers every earlier time unless it is a delete. When clock skew
-        makes two ranges overlap, the version committed last wins, so the lookup always yields
-        at most one row."""
-        dimension = self.dimension
-        return render_sql(
-            "fact_dimension_version_lookup",
-            columns=[column for _, column in self.columns],
-            versions=dimension.versions_relation,
-            relation=dimension.relation,
-            key=dimension.key,
-            row=row,
-            business_key=self.business_key,
-            alias=self.alias,
-        )
 
 
 @dataclass(frozen=True, slots=True)
 class ChangeFact:
-    """The history fact and the current-state table of one source entity, both loaded from its
-    silver table in one transaction per micro-batch: every change is appended to `history`,
-    and the latest change of each key replaces its `current` row if it is newer.
+    """The history fact and the current-state table of one source entity, both written from
+    its silver table: every change is stored in `history` with its version columns, and the
+    latest change of each key replaces its `current` row if it is newer.
 
     A column is loaded from the silver column its `from` names (`<entity>.<lake name>`), a
     metadata column from the silver column of the same name; `lookups` and `as_of` fill the
-    other columns. Staging also holds the silver columns the lookups read that neither table
-    keeps, such as the order status behind `status_key`.
+    other columns. The staged columns also hold the silver columns the lookups read that
+    neither table keeps, such as the order status behind `status_key`.
     """
 
     history: GoldTable
@@ -198,14 +146,12 @@ class ChangeFact:
         return f"{INTERNAL_SCHEMA}.{self.current.name}"
 
     @property
-    def staging_relation(self) -> str:
-        return f"{INTERNAL_SCHEMA}.{self.staging_table.name}"
-
-    @property
     def derived(self) -> frozenset[str]:
-        """The columns the merge fills in, which are never loaded from silver."""
+        """The columns the gold job computes, which are never loaded from silver: the looked-up
+        ones and the version columns."""
         looked_up = (column for lookup in self.as_of for column in lookup.fact_columns)
-        return frozenset({*(lookup.column for lookup in self.lookups), *looked_up})
+        lookups = (lookup.column for lookup in self.lookups)
+        return frozenset({*lookups, *looked_up, *VERSION_COLUMNS})
 
     def _table_columns(self) -> list[tuple[GoldTable, ColumnDefinition]]:
         """The columns of both tables loaded from silver, each once, with the table naming it
@@ -249,15 +195,6 @@ class ChangeFact:
         return (*(column for _, column in self._table_columns()), *self._extra_inputs())
 
     @property
-    def staging_table(self) -> GoldTable:
-        tables = f"{self.relation} and {self.current_relation}"
-        return GoldTable(
-            name=f"{STAGING_PREFIX}{self.name}",
-            description=STAGING_DESCRIPTION.format(table=tables),
-            columns=self.staged_columns,
-        )
-
-    @property
     def silver_columns(self) -> Mapping[str, str]:
         """The silver column each staged column is loaded from, by staged column."""
         return self._sources()
@@ -292,99 +229,8 @@ class ChangeFact:
             )
         return keys[0]
 
-    @property
-    def history_key(self) -> tuple[str, ...]:
-        """The history's primary key; it holds `_changed_at` because PostgreSQL requires the
-        partition column in it."""
-        return (self.key, FactColumn.COMMIT_SEQUENCE, FactColumn.CHANGED_AT)
-
     def check_silver(self, columns: Iterable[str]) -> None:
         """Fail if the silver input lacks a column the fact is loaded from."""
         missing = sorted(set(self.silver_columns.values()) - set(columns))
         if missing:
             self._fail(f"the silver input has no columns named {', '.join(missing)}")
-
-    def _expressions(self, table: GoldTable) -> tuple[Mapping[str, str], list[str]]:
-        """The expression of each column of `table` over the staged row, and the joins they
-        need."""
-        expressions = {column.name: f"{ROW}.{column.name}" for column in self.staged_columns}
-        expressions |= {lookup.column: lookup.expression(ROW) for lookup in self.lookups}
-        joins: list[str] = []
-        for lookup in self.as_of:
-            if set(lookup.fact_columns) & _names(table):
-                expressions |= lookup.expressions(ROW)
-                joins.append(lookup.join(ROW))
-        return expressions, joins
-
-    def _selected(self, table: GoldTable) -> Mapping[str, object]:
-        """The template values that select the columns of `table` from the staged row."""
-        expressions, joins = self._expressions(table)
-        return {
-            "targets": [column.name for column in table.columns],
-            "expressions": [expressions[column.name] for column in table.columns],
-            "joins": joins,
-            "row": ROW,
-        }
-
-    def history_statement(self) -> str:
-        """Append the staged changes not stored yet; a replayed change is skipped."""
-        return render_sql(
-            "fact_history",
-            relation=self.relation,
-            staging=self.staging_relation,
-            history_key=self.history_key,
-            **self._selected(self.history),
-        )
-
-    def current_statement(self) -> str:
-        """Merge the latest staged change of each key into the current-state table: a new key
-        is inserted, and a stored row is replaced only by a change with a higher
-        `_commit_sequence`, so a late or replayed change never overwrites newer state. A delete
-        is kept as a deleted row with its `_commit_sequence`, so an older change arriving later
-        cannot bring the row back."""
-        expressions, joins = self._expressions(self.current)
-        targets = [column.name for column in self.current.columns]
-        return render_sql(
-            "fact_current",
-            relation=self.current_relation,
-            staging=self.staging_relation,
-            key=self.key,
-            row=ROW,
-            selected=[f"{expressions[column]} AS {column}" for column in targets],
-            joins=joins,
-            targets=targets,
-            replaced=[column for column in targets if column != self.key],
-        )
-
-    def merge_statements(self) -> Sequence[str]:
-        """The statements that merge the staged batch, to run in this order in one transaction."""
-        return (self.history_statement(), self.current_statement())
-
-    def _resolve_statement(self, lookup: AsOfLookup) -> str:
-        expressions = lookup.expressions(ROW)
-        return render_sql(
-            "fact_resolve",
-            relation=self.relation,
-            row=ROW,
-            history_key=self.history_key,
-            looked_up=[f"{expressions[column]} AS {column}" for column in lookup.fact_columns],
-            columns=lookup.fact_columns,
-            join=lookup.join(ROW),
-            business_key=lookup.business_key,
-            dimension_key=lookup.dimension.key,
-            dimension_staging=lookup.dimension.staging_relation,
-        )
-
-    def resolve_statements(self, dimension: str) -> Sequence[str]:
-        """Re-resolve the as-of lookups on `dimension` for the history rows of every key its
-        staged batch touched, updating only the rows whose looked-up values change.
-
-        Run after the dimension's merge in the same transaction: a late dimension version can
-        split a validity range or unfold a version, and a dimension row can arrive after the
-        facts that need it, so values resolved when a change was stored can go stale.
-        """
-        return tuple(
-            self._resolve_statement(lookup)
-            for lookup in self.as_of
-            if lookup.dimension.name == dimension
-        )

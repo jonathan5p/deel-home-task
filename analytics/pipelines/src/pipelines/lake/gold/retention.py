@@ -15,6 +15,13 @@ from pipelines.lake.gold.postgres import (
 from pipelines.settings import GoldRetentionSettings
 
 
+def retained_from(keep_months: int, as_of: date) -> datetime:
+    """The start of the history window retention keeps as of a day: the first day of the month
+    `keep_months` months before the month of `as_of`. The months before it are dropped."""
+    months = as_of.year * 12 + as_of.month - 1 - keep_months
+    return datetime(months // 12, months % 12 + 1, 1)
+
+
 def retention_query(settings: GoldRetentionSettings, as_of: date) -> str:
     return (
         "SELECT dropped FROM gold_internal.apply_history_retention("

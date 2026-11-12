@@ -1,0 +1,19 @@
+{
+  "type": "record",
+  "name": "pending_orders_by_customer",
+  "namespace": "gold",
+  "doc": "Pending (open) orders by customer, recounted by the gold job for the customers each batch of orders touches; top_customers_by_pending_orders is ranked from it, and a customer without pending orders is deleted",
+  "fields": [
+    {
+      "name": "customer_id",
+      "type": ["null", "long"],
+      "default": null,
+      "from": "orders.customer_id"
+    },
+    {
+      "name": "pending_orders",
+      "type": "long",
+      "from": "gold.top_customers_by_pending_orders.pending_orders"
+    }
+  ]
+}

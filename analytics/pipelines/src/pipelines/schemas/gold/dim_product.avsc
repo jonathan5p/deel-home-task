@@ -2,13 +2,13 @@
   "type": "record",
   "name": "dim_product",
   "namespace": "gold",
-  "doc": "Products, SCD2: every product version from silver, folded repeats and deletes included, only ever appended; dim_product_versions derives which ones are folded, their validity and the current one; a product deleted in the source has no current version, and a new price is a new version",
+  "doc": "Products, SCD2: every product version from silver, folded repeats and deletes included, with its fold flag, version number, validity and current flag recomputed from all versions of the product; a product deleted in the source has no current version, and a new price is a new version",
   "public_doc": "Products, SCD2: one row per product version, without folded repeats and deletes; a product deleted in the source has no current version, and a new price is a new version",
   "fields": [
     {
       "name": "product_key",
       "type": "long",
-      "doc": "Surrogate key of the product version"
+      "doc": "Surrogate key of the product version: the 64-bit xxHash of product_id and _commit_sequence, so a rebuild gives every version the same key"
     },
     {
       "name": "product_id",
@@ -58,6 +58,27 @@
       "name": "_valid_from",
       "type": {"type": "long", "logicalType": "timestamp-millis"},
       "doc": "Time this version of the row became current: the change's commit time in the source"
+    },
+    {
+      "name": "_is_folded",
+      "type": "boolean",
+      "doc": "Whether this version repeats the content and deletion state of the previous one by _commit_sequence, so it is not a version of its own and ends with the version it repeats"
+    },
+    {
+      "name": "_version_number",
+      "type": "long",
+      "doc": "Number of the version among the row's versions in _commit_sequence order, from 1; a folded version shares the number of the version it repeats"
+    },
+    {
+      "name": "_valid_to",
+      "type": ["null", {"type": "long", "logicalType": "timestamp-millis"}],
+      "default": null,
+      "doc": "Time the next version of the row replaced this one; null while this version is current"
+    },
+    {
+      "name": "_is_current",
+      "type": "boolean",
+      "doc": "Whether this is the latest version of the row"
     }
   ]
 }

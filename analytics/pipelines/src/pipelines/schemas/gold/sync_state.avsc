@@ -1,0 +1,24 @@
+{
+  "type": "record",
+  "name": "sync_state",
+  "namespace": "gold",
+  "doc": "The Iceberg snapshot of each gold table that the PostgreSQL copy holds, written in the same transaction as the rows copied from it",
+  "fields": [
+    {
+      "name": "table_name",
+      "type": "string",
+      "doc": "Gold table, by its name in gold_internal"
+    },
+    {
+      "name": "snapshot_id",
+      "type": ["null", "long"],
+      "default": null,
+      "doc": "Id of the table's Iceberg snapshot whose rows gold_internal holds; null when the Iceberg table had no snapshot yet"
+    },
+    {
+      "name": "synced_at",
+      "type": {"type": "long", "logicalType": "timestamp-millis"},
+      "doc": "Time the transaction that copied the rows committed"
+    }
+  ]
+}

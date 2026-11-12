@@ -1,9 +1,9 @@
 from collections.abc import Sequence
-from enum import StrEnum
 
 from pyspark.sql import Column, DataFrame, Window
 from pyspark.sql import functions as F
 
+from pipelines.lake.gold.model.columns import VERSION_COLUMNS, VersionColumn
 from pipelines.lake.shared.columns import MetadataColumn
 
 COMMIT_SEQUENCE = str(MetadataColumn.COMMIT_SEQUENCE)
@@ -11,16 +11,6 @@ CONTENT_HASH = str(MetadataColumn.CONTENT_HASH)
 IS_DELETED = str(MetadataColumn.IS_DELETED)
 CHANGED_AT = str(MetadataColumn.CHANGED_AT)
 VALID_FROM = str(MetadataColumn.VALID_FROM)
-
-
-class VersionColumn(StrEnum):
-    IS_FOLDED = "_is_folded"
-    VERSION_NUMBER = "_version_number"
-    VALID_TO = "_valid_to"
-    IS_CURRENT = "_is_current"
-
-
-VERSION_COLUMNS = tuple(str(column) for column in VersionColumn)
 
 
 def all_of(conditions: Sequence[Column]) -> Column:

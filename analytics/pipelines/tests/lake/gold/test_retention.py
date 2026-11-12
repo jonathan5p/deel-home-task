@@ -1,11 +1,11 @@
-from datetime import date
+from datetime import date, datetime
 
 import pytest
 
 from analytics.pipelines.tests.lake.gold.postgres_setup import FakeConnection, StatementFailedError
 from analytics.pipelines.tests.lake.gold.retention_setup import AS_OF, DATABASE, QUERY, SETTINGS
 from pipelines.lake.gold.postgres import WRITER_LOCK, Connection
-from pipelines.lake.gold.retention import apply_retention, main, retention_query
+from pipelines.lake.gold.retention import apply_retention, main, retained_from, retention_query
 
 
 def test_the_query_applies_the_window_and_months_ahead_as_of_a_date() -> None:
@@ -69,3 +69,17 @@ def test_main_reports_when_nothing_was_outside_the_window(
     assert capsys.readouterr().out.splitlines() == [
         "Gold retention as of 2026-11-10, keeping 36 months: dropped 0 partition(s)",
     ]
+
+
+@pytest.mark.parametrize(
+    ("keep_months", "as_of", "start"),
+    [
+        (36, date(2026, 11, 12), datetime(2023, 11, 1)),
+        (1, date(2026, 1, 31), datetime(2025, 12, 1)),
+        (12, date(2026, 12, 1), datetime(2025, 12, 1)),
+    ],
+)
+def test_the_window_starts_keep_months_before_the_month_of_the_day(
+    keep_months: int, as_of: date, start: datetime
+) -> None:
+    assert retained_from(keep_months, as_of) == start

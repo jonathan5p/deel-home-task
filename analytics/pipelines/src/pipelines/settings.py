@@ -25,6 +25,7 @@ DEFAULT_ORPHAN_AGE_HOURS = 72
 MIN_ORPHAN_AGE_HOURS = 24
 DEFAULT_GOLD_RETENTION_MONTHS = 36
 DEFAULT_GOLD_PARTITION_MONTHS_AHEAD = 2
+GOLD_STORED_PREFIX = "internal_"
 DEFAULT_STAGE_EXPORTER_POLL_SECONDS = 30
 DEFAULT_TABLE_STATS_NAMESPACES = ("bronze", "silver")
 DEFAULT_SMALL_FILE_BYTES = 32 * 1024 * 1024
@@ -175,6 +176,7 @@ class GoldSettings(SourcedLakeLayerNames):
     lake: LakeSettings
     analytics_db: AnalyticsDbSettings
     trigger_seconds: int
+    retention_months: int = DEFAULT_GOLD_RETENTION_MONTHS
 
     @classmethod
     def from_env(cls, env: Mapping[str, str]) -> Self:
@@ -183,7 +185,15 @@ class GoldSettings(SourcedLakeLayerNames):
             lake=LakeSettings.from_env(env),
             analytics_db=AnalyticsDbSettings.from_env(env),
             trigger_seconds=positive_int(env, "GOLD_TRIGGER_SECONDS", DEFAULT_GOLD_TRIGGER_SECONDS),
+            retention_months=positive_int(
+                env, "GOLD_RETENTION_MONTHS", DEFAULT_GOLD_RETENTION_MONTHS
+            ),
         )
+
+    def stored_table(self, name: str) -> str:
+        """The Iceberg table of a stored gold table. The prefix keeps the names of the gold
+        views in the same namespace free."""
+        return self.table(f"{GOLD_STORED_PREFIX}{name}")
 
 
 def downstream_checkpoints(value: str) -> dict[str, tuple[str, ...]]:

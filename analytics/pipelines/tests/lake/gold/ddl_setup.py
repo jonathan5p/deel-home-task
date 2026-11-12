@@ -1,3 +1,4 @@
+from pipelines.lake.gold.stored import StoredTable, WriteMode
 from pipelines.schemas.definitions import ColumnDefinition, ColumnType
 from pipelines.schemas.gold_definitions import GoldTable
 
@@ -12,4 +13,13 @@ THINGS = GoldTable(
         ColumnDefinition("_is_deleted", ColumnType.BOOLEAN, "Deleted", not_null=True),
     ),
 )
-VALID_TO = ColumnDefinition("_valid_to", ColumnType.TIMESTAMP_MILLIS, "Replaced at")
+
+
+def stored(
+    mode: WriteMode,
+    keys: tuple[str, ...] = (),
+    *,
+    history: bool = False,
+    unique: tuple[str, ...] = (),
+) -> StoredTable:
+    return StoredTable(THINGS, mode, keys, history=history, unique=unique)

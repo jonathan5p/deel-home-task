@@ -1,6 +1,7 @@
 from pyspark.sql import Column, DataFrame
 from pyspark.sql import functions as F
 
+from pipelines.lake.gold.model.columns import unversioned
 from pipelines.lake.gold.model.versions import (
     COMMIT_SEQUENCE,
     VALID_FROM,
@@ -27,7 +28,7 @@ def dimension_versions(dimension: Scd2Dimension, batch: DataFrame, stored: DataF
     versions. `version_changes` picks the rows to write from it.
     """
     key = dimension.key
-    columns = [column.name for column in dimension.table.columns]
+    columns = unversioned(column.name for column in dimension.table.columns)
     stored_rows = stored.join(batch.select(key).distinct(), key, "left_semi").select(*columns)
     staged = batch.select(*(column.name for column in dimension.staged_columns))
     added = new_changes(staged, stored_rows, key).withColumn(

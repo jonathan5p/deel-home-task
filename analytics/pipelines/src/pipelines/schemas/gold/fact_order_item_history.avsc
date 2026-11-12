@@ -2,7 +2,7 @@
   "type": "record",
   "name": "fact_order_item_history",
   "namespace": "gold",
-  "doc": "Order item history: one row per change to an order item from silver, unchanged versions and deletes included, partitioned by month of _changed_at",
+  "doc": "Order item history: one row per change to an order item from silver, unchanged versions and deletes included, with its fold flag, version number, validity and current flag recomputed from all changes of the item; partitioned by month of _changed_at in PostgreSQL",
   "public_doc": "Order item history: one row per change to an order item, without unchanged versions, with the range in which it was the latest version; a delete is the last row and is never current",
   "fields": [
     {
@@ -70,6 +70,27 @@
       "name": "_is_deleted",
       "type": "boolean",
       "doc": "Whether the row was deleted in the source; the version keeps its last known values"
+    },
+    {
+      "name": "_is_folded",
+      "type": "boolean",
+      "doc": "Whether this version repeats the content and deletion state of the previous one by _commit_sequence, so it is not a version of its own and ends with the version it repeats"
+    },
+    {
+      "name": "_version_number",
+      "type": "long",
+      "doc": "Number of the version among the row's versions in _commit_sequence order, from 1; a folded version shares the number of the version it repeats"
+    },
+    {
+      "name": "_valid_to",
+      "type": ["null", {"type": "long", "logicalType": "timestamp-millis"}],
+      "default": null,
+      "doc": "Time the next version of the row replaced this one; null while this version is current"
+    },
+    {
+      "name": "_is_current",
+      "type": "boolean",
+      "doc": "Whether this is the latest version of the row"
     }
   ]
 }

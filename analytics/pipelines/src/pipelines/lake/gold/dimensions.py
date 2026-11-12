@@ -3,6 +3,7 @@ from importlib.resources.abc import Traversable
 
 from pipelines.lake.gold.facts import AsOfLookup, ChangeFact, KeyLookup, Multiplied
 from pipelines.lake.gold.scd2 import Scd2Dimension
+from pipelines.lake.gold.stored import StoredTable, stored_tables
 from pipelines.schemas.definitions import SCHEMAS, EntityDefinition, load_entities
 from pipelines.schemas.gold_definitions import GoldTable, load_gold_tables
 
@@ -93,5 +94,14 @@ def load_facts(root: Traversable = SCHEMAS) -> Mapping[str, ChangeFact]:
     return change_facts(tables, entities, scd2_dimensions(tables, entities))
 
 
+def load_stored(root: Traversable = SCHEMAS) -> Mapping[str, StoredTable]:
+    """The stored gold tables by name, in the order a batch writes them."""
+    tables, entities = load_gold_tables(root), load_entities(root)
+    dimensions = scd2_dimensions(tables, entities)
+    facts = change_facts(tables, entities, dimensions)
+    return stored_tables(tables, dimensions.values(), facts.values())
+
+
 DIMENSIONS = tuple(load_dimensions().values())
 FACTS = tuple(load_facts().values())
+STORED = load_stored()

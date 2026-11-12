@@ -7,6 +7,7 @@ from pyspark.sql.types import BooleanType, LongType, StructField, StructType, Ti
 
 from pipelines.lake.gold.dimensions import load_dimensions, load_facts
 from pipelines.lake.gold.facts import ChangeFact
+from pipelines.lake.gold.model.columns import VERSION_COLUMNS
 from pipelines.lake.gold.model.seeds import calendar_days, order_statuses
 from pipelines.lake.gold.model.versions import COMMIT_SEQUENCE, VersionColumn
 from pipelines.lake.gold.scd2 import Scd2Dimension
@@ -61,7 +62,8 @@ def stored(
     spark: SparkSession, table: GoldTable, rows: Iterable[Values] = (), *, versioned: bool = True
 ) -> DataFrame:
     """Stored rows of a gold table, with the version columns when `versioned`."""
-    return frame(spark, schema(table.columns, VERSION_FIELDS if versioned else ()), rows)
+    columns = [column for column in table.columns if column.name not in VERSION_COLUMNS]
+    return frame(spark, schema(columns, VERSION_FIELDS if versioned else ()), rows)
 
 
 def customer(

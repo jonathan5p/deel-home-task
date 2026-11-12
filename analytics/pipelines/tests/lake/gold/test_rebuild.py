@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -5,18 +6,18 @@ import pytest
 
 pytest.importorskip("pyspark")
 
-from pyspark.sql import DataFrame, SparkSession
+from pyspark.sql import SparkSession
 
 from analytics.pipelines.tests.lake.gold.rebuild_setup import (
     DATABASE,
     ENTITIES,
     LATER,
+    RecordingWriter,
     silver_tables,
     write_silver_tables,
 )
-from analytics.pipelines.tests.lake.gold.silver_setup import CHANGED_AT, RecordingSinks
+from analytics.pipelines.tests.lake.gold.silver_setup import CHANGED_AT
 from pipelines.lake.gold.rebuild import iso_time, read_silver_table, run, to_time, until
-from pipelines.lake.gold.sink import BatchWriter, GoldLoad
 from pipelines.settings import GoldSettings
 
 SETTINGS = GoldSettings.from_env(DATABASE)
@@ -63,94 +64,72 @@ def test_a_cutoff_keeps_the_changes_committed_at_or_before_it(
     assert until(orders, None).count() == 2
 
 
-def test_dimensions_are_merged_before_facts_each_in_one_batch_then_retention_runs(
+def rebuild(
+    spark: SparkSession,
+    silver: Path,
+    writer: RecordingWriter,
+    log: list[str],
+    *,
+    to_time: datetime | None = None,
+    retain: Callable[[], list[str]] = list,
+) -> list[str]:
+    return run(
+        spark,
+        SETTINGS,
+        to_time=to_time,
+        writer=writer,
+        recreate=lambda: log.append("recreate"),
+        copy=lambda: log.append("copy"),
+        retain=retain,
+        read=silver_tables(silver, ENTITIES, log),
+    )
+
+
+def test_the_tables_are_recreated_then_written_dimensions_first_then_copied_and_retained(
     spark: SparkSession, silver: Path
 ) -> None:
     log: list[str] = []
-    sinks = RecordingSinks()
-
-    def sink(load: GoldLoad) -> BatchWriter:
-        write = sinks(load)
-
-        def logged(batch: DataFrame, batch_id: int) -> None:
-            log.append(f"merge {load.name}")
-            write(batch, batch_id)
-
-        return logged
+    writer = RecordingWriter(log)
 
     def retain() -> list[str]:
         log.append("retain")
         return ["gold_internal.fact_order_history_2023_09"]
 
-    dropped = run(
-        spark,
-        SETTINGS,
-        to_time=None,
-        retain=retain,
-        read=silver_tables(silver, ENTITIES, log),
-        sink=sink,
-    )
+    dropped = rebuild(spark, silver, writer, log, retain=retain)
 
     assert log == [
+        "recreate",
         "read catalog.silver.customers",
-        "merge dim_customer",
+        "write dim_customer",
         "read catalog.silver.products",
-        "merge dim_product",
+        "write dim_product",
         "read catalog.silver.orders",
-        "merge fact_order_history",
+        "write fact_order_history",
         "read catalog.silver.order_items",
-        "merge fact_order_item_history",
+        "write fact_order_item_history",
+        "copy",
         "retain",
     ]
     assert dropped == ["gold_internal.fact_order_history_2023_09"]
-    assert {name: len(batches) for name, batches in sinks.batches.items()} == dict.fromkeys(
-        ["dim_customer", "dim_product", "fact_order_history", "fact_order_item_history"], 1
-    )
-    assert sorted(row._commit_sequence for row in sinks.batches["dim_product"][0]) == [20, 90]
+    assert sorted(row._commit_sequence for row in writer.batches["dim_product"]) == [20, 90]
 
 
 def test_a_cutoff_leaves_later_changes_out_of_every_load(spark: SparkSession, silver: Path) -> None:
-    sinks = RecordingSinks()
+    writer = RecordingWriter([])
 
-    run(
-        spark,
-        SETTINGS,
-        to_time=LATER.replace(tzinfo=UTC) - timedelta(minutes=1),
-        retain=list,
-        read=silver_tables(silver, ENTITIES, []),
-        sink=sinks,
-    )
+    rebuild(spark, silver, writer, [], to_time=LATER.replace(tzinfo=UTC) - timedelta(minutes=1))
 
-    assert [row._commit_sequence for row in sinks.batches["dim_product"][0]] == [20]
-    assert [row._commit_sequence for row in sinks.batches["fact_order_history"][0]] == [50]
+    assert [row._commit_sequence for row in writer.batches["dim_product"]] == [20]
+    assert [row._commit_sequence for row in writer.batches["fact_order_history"]] == [50]
 
 
-def test_a_failed_load_stops_the_rebuild_before_retention(
-    spark: SparkSession, silver: Path
-) -> None:
-    retained: list[str] = []
+def test_a_failed_load_stops_the_rebuild_before_the_copy(spark: SparkSession, silver: Path) -> None:
+    log: list[str] = []
 
-    def failing(load: GoldLoad) -> BatchWriter:
-        def write(batch: DataFrame, batch_id: int) -> None:
-            raise RuntimeError(f"cannot merge {load.name}")
+    with pytest.raises(RuntimeError, match="cannot write dim_customer"):
+        rebuild(spark, silver, RecordingWriter(log, fail=True), log)
 
-        return write
-
-    def retain() -> list[str]:
-        retained.append("retain")
-        return []
-
-    with pytest.raises(RuntimeError, match="cannot merge dim_customer"):
-        run(
-            spark,
-            SETTINGS,
-            to_time=None,
-            retain=retain,
-            read=silver_tables(silver, ENTITIES, []),
-            sink=failing,
-        )
-
-    assert retained == []
+    assert "copy" not in log
 
 
 def test_a_silver_table_is_read_in_batch_from_the_catalog(

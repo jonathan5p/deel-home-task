@@ -1,4 +1,5 @@
 from dataclasses import replace
+from datetime import date, datetime
 from pathlib import Path
 
 import pytest
@@ -17,9 +18,20 @@ from analytics.pipelines.tests.lake.gold.silver_setup import (
     silver_version,
     write_silver,
 )
-from pipelines.lake.gold.dimensions import DIMENSIONS, FACTS, load_dimensions, load_facts
-from pipelines.lake.gold.job import gold_stream, merge_sinks, run
-from pipelines.lake.gold.sink import MergeSink
+from analytics.pipelines.tests.lake.gold.writer_setup import FakeLake, FakeServing
+from pipelines.lake.gold.batch import GoldBatches
+from pipelines.lake.gold.dimensions import DIMENSIONS, FACTS, STORED, load_dimensions, load_facts
+from pipelines.lake.gold.job import (
+    gold_stream,
+    iceberg_gold,
+    postgres_serving,
+    prepare,
+    run,
+    session_conf,
+    writer_sinks,
+)
+from pipelines.lake.gold.sink import GoldSink
+from pipelines.lake.gold.writer import GoldWriter
 from pipelines.lake.shared.streams import await_queries
 from pipelines.settings import GoldSettings
 
@@ -161,26 +173,65 @@ def test_the_job_keeps_running_on_its_processing_time_trigger(
             query.stop()
 
 
-def test_starting_with_the_default_sinks_needs_no_database(
-    spark: SparkSession, streams: StreamingQueryManager, settings: GoldSettings, tmp_path: Path
-) -> None:
-    for entity in ENTITIES:
-        (tmp_path / "empty" / entity.name).mkdir(parents=True)
+def test_each_load_hands_its_batches_to_the_shared_writer(settings: GoldSettings) -> None:
+    writer = GoldWriter(GoldBatches(STORED, DIMENSIONS, FACTS), FakeLake({}, []), None)
 
+    sink = writer_sinks(writer)(PRODUCTS)
+
+    assert sink == GoldSink(PRODUCTS, writer)
+
+
+def test_the_gold_tables_are_named_in_the_gold_namespace_apart_from_its_views(
+    spark: SparkSession, settings: GoldSettings
+) -> None:
+    lake = iceberg_gold(spark, settings)
+
+    assert lake.relation["dim_customer"] == "catalog.gold.internal_dim_customer"
+    assert set(lake.relation) == set(STORED)
+
+
+def test_a_gold_session_never_caches_the_catalog_tables(settings: GoldSettings) -> None:
+    assert session_conf(settings) == {
+        "spark.sql.shuffle.partitions": "4",
+        "spark.sql.catalog.catalog.cache-enabled": "false",
+    }
+
+
+def test_the_copy_keeps_history_from_the_retention_window_of_today(settings: GoldSettings) -> None:
+    serving = postgres_serving(replace(settings, retention_months=36), lambda: date(2026, 11, 12))
+
+    assert serving.retained_from() == datetime(2023, 11, 1)
+
+
+def test_the_job_writes_gold_to_iceberg_and_copies_each_batch(
+    spark: SparkSession,
+    streams: StreamingQueryManager,
+    iceberg_settings: GoldSettings,
+    silver: Path,
+) -> None:
+    for key, value in session_conf(iceberg_settings, {}).items():
+        spark.conf.set(key, value)
+    log: list[str] = []
+    serving = FakeServing(log)
+    lake = iceberg_gold(spark, iceberg_settings)
+    writer = GoldWriter(GoldBatches(STORED, DIMENSIONS, FACTS), lake, serving)
+
+    prepare(spark, writer, lake)
     queries = run(
-        spark, settings, read=silver_folders(tmp_path / "empty", ENTITIES), available_now=True
+        spark,
+        iceberg_settings,
+        writer_sinks(writer),
+        read=silver_folders(silver, ENTITIES),
+        available_now=True,
     )
     await_queries(streams, queries, available_now=True)
 
-    assert all(query.exception() is None for query in queries)
-
-
-def test_by_default_each_load_is_merged_then_its_facts_re_resolved(settings: GoldSettings) -> None:
-    sink = merge_sinks(settings.analytics_db)(PRODUCTS)
-
-    assert isinstance(sink, MergeSink)
-    assert sink.load is PRODUCTS
-    assert sink.facts == FACTS
+    assert lake.read("dim_order_status").count() == 5
+    assert lake.read("dim_date").count() == 36525
+    assert [row.product_id for row in lake.read("dim_product").collect()] == [3, 3]
+    assert [tuple(row) for row in lake.read("pending_items_by_product").collect()] == [(3, 1, 2)]
+    assert serving.synced_snapshots == {name: lake.snapshot(name) for name in STORED}
+    assert len(log) >= 5
 
 
 def test_silver_is_streamed_from_its_iceberg_table(

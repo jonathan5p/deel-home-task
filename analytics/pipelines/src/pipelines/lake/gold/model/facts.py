@@ -4,6 +4,7 @@ from pyspark.sql import DataFrame, Window
 from pyspark.sql import functions as F
 
 from pipelines.lake.gold.facts import AsOfLookup, ChangeFact
+from pipelines.lake.gold.model.columns import unversioned
 from pipelines.lake.gold.model.lookups import with_as_of_lookup, with_key_lookups
 from pipelines.lake.gold.model.versions import (
     CHANGED_AT,
@@ -44,7 +45,7 @@ def history_rows(
     recomputes the same rows; `version_changes` picks the rows to write.
     """
     key = fact.key
-    columns = _names(fact.history)
+    columns = unversioned(_names(fact.history))
     stored_rows = stored.join(batch.select(key).distinct(), key, "left_semi").select(*columns)
     added = new_changes(_staged(fact, batch), stored_rows, key)
     lookups = [lookup for lookup in fact.lookups if lookup.column in columns]

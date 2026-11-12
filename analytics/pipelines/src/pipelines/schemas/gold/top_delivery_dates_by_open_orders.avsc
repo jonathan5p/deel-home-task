@@ -2,7 +2,8 @@
   "type": "record",
   "name": "top_delivery_dates_by_open_orders",
   "namespace": "gold",
-  "doc": "The 3 delivery dates with the most open orders, more when several share the third place",
+  "doc": "The delivery dates in the first 3 places by open orders, ranked by the gold job from open_orders_by_delivery_date_and_status and replaced whenever they change",
+  "public_doc": "The 3 delivery dates with the most open orders, more when several share the third place",
   "fields": [
     {
       "name": "delivery_date",

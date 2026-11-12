@@ -9,14 +9,17 @@ from pyspark.sql import functions as F
 
 from pipelines.lake.gold.dimensions import DIMENSIONS, FACTS
 from pipelines.lake.gold.facts import ChangeFact
-from pipelines.lake.gold.job import SilverReader, SinkFactory, merge_sinks
+from pipelines.lake.gold.job import SilverReader, gold_writer, prepare, session_conf
+from pipelines.lake.gold.lake import IcebergGold
 from pipelines.lake.gold.postgres import connection_factory
 from pipelines.lake.gold.retention import apply_retention
 from pipelines.lake.gold.scd2 import Scd2Dimension
-from pipelines.lake.gold.sink import GoldLoad, staged_rows
+from pipelines.lake.gold.sink import BatchLoader, GoldLoad, staged_rows
+from pipelines.lake.gold.writer import GoldWriter
 from pipelines.settings import GoldRetentionSettings, GoldSettings
 
 type Retain = Callable[[], list[str]]
+type Prepare = Callable[[], None]
 
 
 def iso_time(value: str) -> datetime:
@@ -58,20 +61,32 @@ def run(
     settings: GoldSettings,
     *,
     to_time: datetime | None,
+    writer: BatchLoader,
+    recreate: Prepare,
+    copy: Prepare,
     retain: Retain,
     dimensions: Iterable[Scd2Dimension] = DIMENSIONS,
     facts: Iterable[ChangeFact] = FACTS,
     read: SilverReader = read_silver_table,
-    sink: SinkFactory | None = None,
 ) -> list[str]:
-    """The partitions retention dropped after loading every silver change up to `to_time`."""
-    facts = tuple(facts)
-    sinks = sink or merge_sinks(settings.analytics_db, facts)
+    """Recreate the gold tables, write every silver change up to `to_time` with the gold job's
+    writer, one batch per load and the dimensions first, then copy every table into
+    PostgreSQL; returns the partitions retention dropped afterwards."""
+    recreate()
     loads: list[GoldLoad] = [*dimensions, *facts]
     for load in loads:
         silver = until(read(spark, settings.source_table(load.entity.name)), to_time)
-        sinks(load)(staged_rows(silver, load), 0)
+        writer.write_batch(load.name, staged_rows(silver, load))
+    copy()
     return retain()
+
+
+def recreated(spark: SparkSession, writer: GoldWriter, lake: IcebergGold) -> Prepare:
+    def recreate() -> None:
+        lake.drop()
+        prepare(spark, writer, lake)
+
+    return recreate
 
 
 def main(argv: Sequence[str]) -> None:
@@ -83,9 +98,26 @@ def main(argv: Sequence[str]) -> None:
     def retain() -> list[str]:
         return apply_retention(connect, retention, datetime.now(UTC).date())
 
-    spark = SparkSession.builder.appName("gold-rebuild").getOrCreate()
+    builder = SparkSession.builder.appName("gold-rebuild")
+    for key, value in session_conf(settings, {}).items():
+        builder = builder.config(key, value)
+    spark = builder.getOrCreate()
     try:
-        dropped = run(spark, settings, to_time=cutoff, retain=retain)
+        writer, lake = gold_writer(spark, settings, serve=False)
+        serving, _ = gold_writer(spark, settings)
+
+        def copy() -> None:
+            serving.sync(reload=True)
+
+        dropped = run(
+            spark,
+            settings,
+            to_time=cutoff,
+            writer=writer,
+            recreate=recreated(spark, writer, lake),
+            copy=copy,
+            retain=retain,
+        )
     finally:
         spark.stop()
     scope = f"up to {cutoff.isoformat()}" if cutoff else "with every change"
