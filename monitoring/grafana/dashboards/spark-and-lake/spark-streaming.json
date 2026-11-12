@@ -271,15 +271,15 @@
     },
     {
       "type": "timeseries",
-      "title": "Batch duration vs the 10 s trigger",
-      "description": "Duration of each query's last micro-batch, against the 10 s trigger of the pipeline jobs (*_TRIGGER_SECONDS). Batches over the line start late.",
+      "title": "Batch duration / trigger",
+      "description": "Duration of each query's last micro-batch as a share of its job's trigger interval (*_TRIGGER_SECONDS, recorded per job as spark_streaming_trigger_seconds). Batches over 100% start late.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "s",
+          "unit": "percentunit",
           "custom": {
             "drawStyle": "line",
             "lineWidth": 1,
@@ -303,7 +303,7 @@
               },
               {
                 "color": "red",
-                "value": 10
+                "value": 1
               }
             ]
           }
@@ -329,7 +329,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "spark_streaming_latency{service=~\"$service\", query=~\"$query\"} / 1000",
+          "expr": "spark_streaming_latency{service=~\"$service\", query=~\"$query\"} / on (service) group_left () (1000 * spark_streaming_trigger_seconds)",
           "legendFormat": "{{query}}",
           "range": true
         }
@@ -345,7 +345,7 @@
     {
       "type": "timeseries",
       "title": "Share of time over the trigger",
-      "description": "Share of the samples in which the last micro-batch took longer than the 10 s trigger.",
+      "description": "Share of the samples in which the last micro-batch took longer than its job's trigger interval.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -386,7 +386,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "avg_over_time((spark_streaming_latency{service=~\"$service\", query=~\"$query\"} > bool 10000)[$__rate_interval:])",
+          "expr": "avg_over_time((spark_streaming_latency{service=~\"$service\", query=~\"$query\"} > bool on (service) group_left () (1000 * spark_streaming_trigger_seconds))[$__rate_interval:])",
           "legendFormat": "{{query}}",
           "range": true
         }

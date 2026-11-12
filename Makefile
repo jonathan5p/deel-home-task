@@ -41,7 +41,7 @@ CHECKS_PROJECT ?= deel-checks-$(shell basename "$(CURDIR)" | LC_ALL=C tr 'A-Z' '
 APP_BUILD ?= --build
 PYTEST_WORKERS ?= 4
 CODE_MOUNTS = -v "$(CURDIR)/analytics:/opt/app/analytics" -v "$(CURDIR)/tests:/opt/app/tests" \
-	-v "$(CURDIR)/monitoring:/opt/app/monitoring:ro"
+	-v "$(CURDIR)/monitoring:/opt/app/monitoring:ro" -v "$(CURDIR)/.env:/opt/app/.env:ro"
 MKDOCS = uv run --frozen --group docs mkdocs
 RENDER_GOLD_DDL = uv run --frozen python -m pipelines.gold.ddl docker/analytics-db/initdb/02-gold-model.sql
 

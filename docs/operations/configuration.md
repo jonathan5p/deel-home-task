@@ -24,10 +24,10 @@ The code holds no deployment details: anything that depends on where it runs (br
 | `LAKE_S3_ACCESS_KEY` | `pipelines.latency.settings.LakeReadSettings` | required | `lakeadmin` | Access key of the lake's S3 endpoint; Spark reads it from the same variable |
 | `LAKE_S3_SECRET_KEY` | `pipelines.latency.settings.LakeReadSettings` | required | `lakeadmin-secret` | Secret key of the lake's S3 endpoint |
 | `CHECKPOINT_ROOT` | `pipelines.settings.LakeSettings` | `<LAKE_ROOT>/checkpoints` | not set | Root for Structured Streaming checkpoints |
-| `LANDING_TRIGGER_SECONDS` | `pipelines.settings.LandingSettings` | `10` | not set | Micro-batch interval of the landing job (a positive integer) |
-| `BRONZE_TRIGGER_SECONDS` | `pipelines.settings.BronzeSettings` | `10` | not set | Micro-batch interval of the bronze job (a positive integer) |
-| `SILVER_TRIGGER_SECONDS` | `pipelines.settings.SilverSettings` | `10` | not set | Micro-batch interval of the silver job (a positive integer) |
-| `GOLD_TRIGGER_SECONDS` | `pipelines.settings.GoldSettings` | `10` | not set | Micro-batch interval of the gold job (a positive integer) |
+| `LANDING_TRIGGER_SECONDS` | `pipelines.settings.LandingSettings` | `10` | `10` | Micro-batch interval of the landing job (a positive integer) |
+| `BRONZE_TRIGGER_SECONDS` | `pipelines.settings.BronzeSettings` | `10` | `2` | Micro-batch interval of the bronze job (a positive integer) |
+| `SILVER_TRIGGER_SECONDS` | `pipelines.settings.SilverSettings` | `10` | `2` | Micro-batch interval of the silver job (a positive integer) |
+| `GOLD_TRIGGER_SECONDS` | `pipelines.settings.GoldSettings` | `10` | `5` | Micro-batch interval of the gold job (a positive integer) |
 | `GOLD_RETENTION_MONTHS` | `pipelines.settings.GoldRetentionSettings` | `36` (3 years) | not set | Months of gold history kept in PostgreSQL; a monthly partition that ends before this window is dropped (a positive integer) |
 | `GOLD_PARTITION_MONTHS_AHEAD` | `pipelines.settings.GoldRetentionSettings` | `2` | not set | Months after the current one that the retention job creates history partitions for (a positive integer) |
 | `GOLD_RETENTION_INTERVAL_HOURS` | `gold-retention-job` service | `24` | not set | Hours between two runs of the scheduled gold retention service |
