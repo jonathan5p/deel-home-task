@@ -24,6 +24,6 @@ In short:
 
 `make data-quality CHECK=gold` compares the two, view by view ([data quality checks](../data-quality.md)).
 
-- [Gold model](model.md): the inputs from silver, the internal tables and public views, the star schema and the grain of every table, the versioning and open-order rules, the business-question views, their indexes and the known source issues.
+- [Gold model](model.md): the inputs from silver, the internal tables and public views, the star schema and the grain of every table, the versioning and open-order rules, the business-question views, their indexes and the things to know about the source data.
 - [Gold writer](writer.md): the gold DDL, the gold job and how it writes each micro-batch, current state and retention, rebuilding gold from silver, and gold in the lake.
 - [Table reference](../../reference/gold/index.md): every gold table and view, with its columns, types and descriptions.

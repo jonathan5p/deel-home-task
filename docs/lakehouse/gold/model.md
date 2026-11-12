@@ -279,7 +279,16 @@ The planner estimates how many rows a filter keeps from the statistics of the ta
 - One wider index for all four views was slower for the top customers and pending items views than the two narrow ones.
 - The plans keep these indexes when the visibility map lags behind recent updates: the indexes hold only open orders, so the extra table reads stay few.
 
-## Known source issues
+## Things to know about the source data
 
-- The data generator looks up "today's order of a customer" by customer and date only when inserting items, so new items can be attached to an order of the same day that is already `COMPLETED`. Gold keeps these items; they are not pending because their order is not open.
+- **Open orders never get items, so "pending items by product" is empty.** The supplied generator (`generate_orders` in `db-scripts/initialize_db_ddl.sql`, run every minute by `pg_cron`) inserts a new `PENDING` order when a customer has no open order that day, then looks the order up again to add its items by customer and date only (`... AND order_date = CURRENT_DATE LIMIT 1`, without the status filter or an `ORDER BY`). The items land on whichever of the customer's orders that day comes first, normally the first one, which the generator's status updates complete within minutes. Every later order of the day stays without items. Gold keeps every item; they are not pending because their order is not open. The source was left as supplied ([D29](../../architecture/decisions.md#d29--the-source-database-and-the-debezium-connector-stay-as-provided)); [the way to production](../../architecture/production.md) lists the fix for the source owners.
+
+    Counted in the source on 2026-11-12:
+
+    | Orders | Count | Items | Items per order |
+    | --- | --- | --- | --- |
+    | Completed, first of the day | 40 | 128,258 | 3,206 on average |
+    | Completed, later ones | 8,525 | 95,134 | 11 on average |
+    | Open | 27 | 0 | 0 |
+
 - `products.unity_price` is a `DECIMAL` without precision or scale, so `unit_price` is an unconstrained `NUMERIC` in gold, which keeps every price exact.
