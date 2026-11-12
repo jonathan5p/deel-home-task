@@ -47,7 +47,7 @@ make schemas    # render the flat Avro schema of every lake table and view to th
 
 ## Docs build
 
-`make docs` builds this site in strict mode, so any warning fails it, a broken link or anchor included; `make docs-serve` serves it on <http://localhost:8001> and rebuilds on every change. The [table reference](../reference/index.md) is rendered from the Avro schemas on every build.
+`make docs` builds this site in strict mode, so any warning fails it, a broken link or anchor included; `make docs-serve` serves it on <http://localhost:8001> and rebuilds on every change. The [table reference](../reference/index.md) is rendered from the Avro schemas on every build, and the [latest latency results](../operations/latency-results.md) and [latest data quality results](../lakehouse/data-quality-results.md) from the reports committed under `docs/results/`. `make docs-results` refreshes those reports from the lake: it copies the newest latency report (JSON and HTML) and the newest data quality report, so a fresh measurement is one `make latency-probe` or `make data-quality`, one `make docs-results` and a commit away from the site.
 
 ## Infra tests
 

@@ -55,7 +55,7 @@ Every job runs a micro-batch every `*_TRIGGER_SECONDS` (10 by default, see [conf
 2. waits in Kafka for landing's next batch, anywhere between 0 and `LANDING_TRIGGER_SECONDS`, then for that batch to finish (`kafka_to_landing`);
 3. waits about one full interval at each later hop, because the next job started its batch at the same moment as the job before it, before that batch committed the change, and picks it up one interval later, plus the difference between the two batches' durations.
 
-With the default 10-second triggers, expect landing between about 1 and 12 seconds after the commit, then about 10 seconds more for each of bronze, silver and gold, so gold about 30 seconds after landing. With different intervals, a hop waits for the next batch of the downstream job instead, anywhere between 0 and its interval. A hop well above its job's interval means a batch took longer than the interval (Spark then starts the next one late), or the job was stopped or restarting.
+With the default 10-second triggers, expect landing between about 1 and 12 seconds after the commit, then about 10 seconds more for each of bronze, silver and gold, so gold about 30 seconds after landing. The [latest latency results](latency-results.md) show what the last committed run measured. With different intervals, a hop waits for the next batch of the downstream job instead, anywhere between 0 and its interval. A hop well above its job's interval means a batch took longer than the interval (Spark then starts the next one late), or the job was stopped or restarting.
 
 ## Output and exit codes
 
@@ -77,3 +77,14 @@ Every run writes two files to the lake's object storage, named after the run's s
 - `<LAKE_ROOT>/latency/reports/<UTC>.html`: the same as a static page: the summary and settings, the percentile table with each limit's status, a chart of the median latency per entity and layer, the hop breakdown and one row per probe. It has no scripts or external assets.
 
 Each run also rebuilds `<LAKE_ROOT>/latency/reports/index.html`, the list of every run, newest first, with its status and links to both files. SeaweedFS serves the lake bucket over HTTP, with HTML as `text/html`, so the reports open in a browser at <http://localhost:8888/buckets/lake/latency/reports/index.html>, and `curl http://localhost:8888/buckets/lake/latency/reports/` lists the files.
+
+## Latest results
+
+The [latest latency results](latency-results.md) page shows one run of the probe, stamped with when it ran and the name of its report: the summary and settings, p50 and p95 per entity and layer, the hop medians and every probe. It is rendered on every docs build from the report committed under `docs/results/latency/` (`latest.json`, with the run's [HTML page](../results/latency/latest.html) next to it), not from the lake, so the published site shows it too.
+
+```sh
+make latency-probe     # on the running pipeline: writes a new report to the lake
+make docs-results      # copy the newest reports from the lake into docs/results/, then commit them
+```
+
+`make docs-results` reads the lake through the SeaweedFS filer on <http://localhost:8888> (override with `LAKE_FILER_URL`), so only `seaweedfs` needs to be running. It copies the newest run that passed; when newer runs did not pass, the page names them and says why. When no run passed, it copies the newest one and the page says it did not pass. `RESULTS=latency` copies only the latency report. It exits 2 when `seaweedfs` is not running or the filer cannot be reached, and 1 when a kind of report is missing from the lake, after copying the others. Only the latest report is kept in the repository; the lake keeps every run.
