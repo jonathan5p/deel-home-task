@@ -79,8 +79,6 @@ class IcebergTables:
     def data_files(self, namespace: str, table: str) -> list[DataFile]:
         loaded = self.catalog.load_table((namespace, table))
         snapshot = loaded.current_snapshot()
-        # PyIceberg's inspection fails on a snapshot without manifests, which a streaming batch
-        # that writes no rows commits.
         if snapshot is None or not snapshot.manifests(loaded.io):
             return []
         files = loaded.inspect.data_files()
