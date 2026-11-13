@@ -238,6 +238,14 @@ def test_gold_reads_silver_tables_and_keeps_checkpoints_per_gold_table() -> None
     assert settings.checkpoint_path("dim_customer") == "s3a://bucket/checkpoints/gold/dim_customer"
 
 
+def test_gold_tables_are_named_in_gold_internal_as_in_postgres_and_views_in_gold() -> None:
+    settings = GoldSettings.from_env(LAKE | DATABASE)
+
+    assert settings.stored_table("dim_customer") == "catalog.gold_internal.dim_customer"
+    assert settings.lake.gold_table("sync_state") == "catalog.gold_internal.sync_state"
+    assert settings.table("dim_customer") == "catalog.gold.dim_customer"
+
+
 MAINTENANCE = {"ICEBERG_CATALOG": "catalog", "LAKE_ROOT": "s3a://lake"}
 
 

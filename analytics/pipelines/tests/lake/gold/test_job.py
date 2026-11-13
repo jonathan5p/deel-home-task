@@ -185,12 +185,12 @@ def test_each_load_hands_its_batches_to_the_shared_writer(
     assert sink == GoldSink(PRODUCTS, writer)
 
 
-def test_the_gold_tables_are_named_in_the_gold_namespace_apart_from_its_views(
+def test_the_gold_tables_are_named_in_gold_internal_as_their_postgres_copies(
     spark: SparkSession, settings: GoldSettings
 ) -> None:
     lake = iceberg_gold(spark, settings)
 
-    assert lake.relation["dim_customer"] == "catalog.gold.internal_dim_customer"
+    assert lake.relation["dim_customer"] == "catalog.gold_internal.dim_customer"
     assert set(lake.relation) == set(STORED)
 
 
