@@ -3,9 +3,9 @@
 The pipeline turns the change stream of the supplied `finance_db` PostgreSQL database into a lake that keeps the full history, and a star schema for serving.
 
 1. Debezium captures every change of the four source tables into Kafka.
-2. Spark Structured Streaming lands the records as raw files.
+2. Spark Structured Streaming lands the records as raw files. Every Spark layer is one application with one streaming query per table (bronze adds one per quarantine), so tables never wait for each other.
 3. Spark types them in bronze and versions them in silver, both Iceberg tables on SeaweedFS.
-4. Spark computes gold in four independent streams, one per silver table, and writes it as Iceberg tables.
+4. Spark computes gold, one stream per silver table, and writes it as Iceberg tables.
 5. Each gold batch copies its rows into a separate analytics PostgreSQL, which serves the API and Grafana. Both stores answer through the same views.
 
 Everything runs locally with Docker Compose.
@@ -152,7 +152,7 @@ Every streaming job also writes its checkpoints under `<CHECKPOINT_ROOT>` (defau
 
 ## Data flow
 
-The streaming hops from the source to silver, the four gold streams, their Iceberg tables and PostgreSQL copy, and the one set of views both stores render.
+The streaming hops from the source to silver, with the number of streaming queries in each job, the gold streams, their Iceberg tables and PostgreSQL copy, and the one set of views both stores render.
 
 ```mermaid
 flowchart LR
@@ -164,7 +164,7 @@ flowchart LR
     silver[("Silver<br/>lake.silver.ENTITY<br/>append-only history")]
     sviews["Silver views<br/>ENTITY_history, ENTITY_current"]
 
-    subgraph goldjob["gold-job: 4 independent streams"]
+    subgraph goldjob["gold-job: 4 queries, one per silver table"]
         gc["customers"]
         gp["products"]
         go["orders"]
@@ -184,10 +184,10 @@ flowchart LR
     lakeconsumers["Spark SQL, DuckDB, Trino"]
 
     src -- "Debezium" --> topics
-    topics -- "landing-job" --> landing
-    landing -- "bronze-job" --> bronze
+    topics -- "landing-job<br/>4 queries, one per topic" --> landing
+    landing -- "bronze-job<br/>8 queries: 4 entities, 4 quarantines" --> bronze
     landing -- "failed validation" --> quarantine
-    bronze -- "silver-job<br/>dropDuplicates" --> silver
+    bronze -- "silver-job<br/>4 queries, dropDuplicates" --> silver
     silver -- "lake-views" --> sviews
     silver --> gc & gp & go & gi
     gc -- "mergeInto" --> dc

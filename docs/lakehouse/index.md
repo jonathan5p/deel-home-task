@@ -8,7 +8,7 @@ flowchart LR
     kafka --> landing[/"Landing<br/>raw Avro"/]
     landing --> bronze[("Bronze<br/>typed change log")]
     bronze --> silver[("Silver<br/>version history")]
-    silver --> gold[("Gold<br/>dimensional model, Iceberg<br/>4 independent streams")]
+    silver --> gold[("Gold<br/>dimensional model, Iceberg")]
     gold --> serving[("PostgreSQL<br/>serving copy, same views")]
 ```
 

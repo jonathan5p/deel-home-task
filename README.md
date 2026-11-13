@@ -25,7 +25,7 @@ A change data capture pipeline for Deel's data engineering take-home. Debezium s
 flowchart LR
     source[("finance_db<br/>PostgreSQL")] -->|Debezium| kafka[Kafka]
     kafka --> landing[/"Landing<br/>raw Avro"/] --> bronze[("Bronze<br/>typed change log")] --> silver[("Silver<br/>version history")]
-    silver -->|4 independent gold streams| lakegold[("Gold<br/>Iceberg tables")]
+    silver --> lakegold[("Gold<br/>Iceberg tables")]
     lakegold -->|computed rows copied<br/>every micro-batch| gold[("Gold serving copy<br/>analytics PostgreSQL")]
     lakegold --> lakeviews["lake.gold views"] --> engines[Spark SQL, DuckDB]
     gold --> views["gold views<br/>same SQL"]

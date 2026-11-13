@@ -14,7 +14,7 @@ ACME Delivery Services wants to monitor orders with low latency. The task: a Spa
 flowchart LR
     source[("finance_db<br/>PostgreSQL")] -->|Debezium| kafka[Kafka]
     kafka --> landing[/"Landing<br/>raw Avro"/] --> bronze[("Bronze<br/>typed change log")] --> silver[("Silver<br/>version history")]
-    silver -->|4 independent gold streams| lakegold[("Gold<br/>Iceberg tables")]
+    silver --> lakegold[("Gold<br/>Iceberg tables")]
     lakegold -->|computed rows copied<br/>every micro-batch| gold[("Gold serving copy<br/>analytics PostgreSQL")]
     lakegold --> lakeviews["lake.gold views"] --> engines[Spark SQL, DuckDB]
     gold --> views["gold views<br/>same SQL"]
@@ -25,8 +25,8 @@ flowchart LR
 | Part | What it does |
 | --- | --- |
 | Capture | The supplied database and Debezium connector, as provided, stream every change to Kafka |
-| Lake | Spark streams keep an Iceberg lake on SeaweedFS: **landing** keeps every Kafka record, **bronze** types and validates each change, **silver** keeps the deduplicated version history |
-| Gold | Four independent Spark streams build a star schema (SCD2 dimensions, history facts, current state) as Iceberg tables, and copy each batch into PostgreSQL for serving |
+| Lake | Spark streams keep an Iceberg lake on SeaweedFS: **landing** keeps every Kafka record, **bronze** types and validates each change, **silver** keeps the deduplicated version history. Every layer runs one streaming query per table |
+| Gold | Spark streams build a star schema (SCD2 dimensions, history facts, current state) as Iceberg tables, and copy each batch into PostgreSQL for serving |
 | Serving | The same views in PostgreSQL (`gold`) and the lake (`lake.gold`), read by a FastAPI service, Grafana, `psql`, Spark SQL and DuckDB |
 | Operations | Bronze replay, gold rebuild, gold retention, scheduled lake maintenance and data quality checks from Kafka to gold |
 | Engineering | Typed Python in a uv workspace, unit tests with at least 90% branch coverage, infra tests on isolated stacks, and this site built in strict mode |
