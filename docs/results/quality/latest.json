@@ -7,12 +7,12 @@
           "subject": "finance_db.operations.customers[0]",
           "passed": true,
           "metrics": {
-            "rows": 1519,
+            "rows": 909,
             "min_offset": 0,
-            "max_offset": 1518,
+            "max_offset": 908,
             "tombstones": 0,
             "kafka_min_offset": 0,
-            "kafka_max_offset": 1518,
+            "kafka_max_offset": 908,
             "lag": 0
           },
           "description": "Every Kafka partition has landed records."
@@ -22,8 +22,8 @@
           "subject": "finance_db.operations.customers[0]",
           "passed": true,
           "metrics": {
-            "rows": 1519,
-            "distinct_offsets": 1519
+            "rows": 909,
+            "distinct_offsets": 909
           },
           "description": "Every offset landed exactly once."
         },
@@ -33,7 +33,7 @@
           "passed": true,
           "metrics": {
             "from_offset": 0,
-            "to_offset": 1518,
+            "to_offset": 908,
             "missing_offsets": 0
           },
           "description": "Every offset Kafka holds in the compared range landed."
@@ -53,7 +53,7 @@
           "subject": "finance_db.operations.customers[0]",
           "passed": true,
           "metrics": {
-            "compared": 1519,
+            "compared": 909,
             "different": 0,
             "missing_in_kafka": 0
           },
@@ -64,13 +64,13 @@
           "subject": "finance_db.operations.order_items[0]",
           "passed": true,
           "metrics": {
-            "rows": 309982,
+            "rows": 195275,
             "min_offset": 0,
-            "max_offset": 309981,
+            "max_offset": 195274,
             "tombstones": 0,
             "kafka_min_offset": 0,
-            "kafka_max_offset": 310553,
-            "lag": 572
+            "kafka_max_offset": 195274,
+            "lag": 0
           },
           "description": "Every Kafka partition has landed records."
         },
@@ -79,8 +79,8 @@
           "subject": "finance_db.operations.order_items[0]",
           "passed": true,
           "metrics": {
-            "rows": 309982,
-            "distinct_offsets": 309982
+            "rows": 195275,
+            "distinct_offsets": 195275
           },
           "description": "Every offset landed exactly once."
         },
@@ -90,7 +90,7 @@
           "passed": true,
           "metrics": {
             "from_offset": 0,
-            "to_offset": 309981,
+            "to_offset": 195274,
             "missing_offsets": 0
           },
           "description": "Every offset Kafka holds in the compared range landed."
@@ -110,7 +110,7 @@
           "subject": "finance_db.operations.order_items[0]",
           "passed": true,
           "metrics": {
-            "compared": 309982,
+            "compared": 195275,
             "different": 0,
             "missing_in_kafka": 0
           },
@@ -121,13 +121,13 @@
           "subject": "finance_db.operations.orders[0]",
           "passed": true,
           "metrics": {
-            "rows": 47488,
+            "rows": 29614,
             "min_offset": 0,
-            "max_offset": 47487,
+            "max_offset": 29613,
             "tombstones": 0,
             "kafka_min_offset": 0,
-            "kafka_max_offset": 47588,
-            "lag": 101
+            "kafka_max_offset": 29613,
+            "lag": 0
           },
           "description": "Every Kafka partition has landed records."
         },
@@ -136,8 +136,8 @@
           "subject": "finance_db.operations.orders[0]",
           "passed": true,
           "metrics": {
-            "rows": 47488,
-            "distinct_offsets": 47488
+            "rows": 29614,
+            "distinct_offsets": 29614
           },
           "description": "Every offset landed exactly once."
         },
@@ -147,7 +147,7 @@
           "passed": true,
           "metrics": {
             "from_offset": 0,
-            "to_offset": 47487,
+            "to_offset": 29613,
             "missing_offsets": 0
           },
           "description": "Every offset Kafka holds in the compared range landed."
@@ -167,7 +167,7 @@
           "subject": "finance_db.operations.orders[0]",
           "passed": true,
           "metrics": {
-            "compared": 47488,
+            "compared": 29614,
             "different": 0,
             "missing_in_kafka": 0
           },
@@ -178,12 +178,12 @@
           "subject": "finance_db.operations.products[0]",
           "passed": true,
           "metrics": {
-            "rows": 2707,
+            "rows": 1663,
             "min_offset": 0,
-            "max_offset": 2706,
+            "max_offset": 1662,
             "tombstones": 0,
             "kafka_min_offset": 0,
-            "kafka_max_offset": 2706,
+            "kafka_max_offset": 1662,
             "lag": 0
           },
           "description": "Every Kafka partition has landed records."
@@ -193,8 +193,8 @@
           "subject": "finance_db.operations.products[0]",
           "passed": true,
           "metrics": {
-            "rows": 2707,
-            "distinct_offsets": 2707
+            "rows": 1663,
+            "distinct_offsets": 1663
           },
           "description": "Every offset landed exactly once."
         },
@@ -204,7 +204,7 @@
           "passed": true,
           "metrics": {
             "from_offset": 0,
-            "to_offset": 2706,
+            "to_offset": 1662,
             "missing_offsets": 0
           },
           "description": "Every offset Kafka holds in the compared range landed."
@@ -224,7 +224,7 @@
           "subject": "finance_db.operations.products[0]",
           "passed": true,
           "metrics": {
-            "compared": 2707,
+            "compared": 1663,
             "different": 0,
             "missing_in_kafka": 0
           },
@@ -245,10 +245,10 @@
           "subject": "finance_db.operations.customers",
           "passed": true,
           "metrics": {
-            "committed_records": 1519,
+            "committed_records": 909,
             "missing": 0,
-            "bronze_batch": 281,
-            "quarantine_batch": 281
+            "bronze_batch": 136,
+            "quarantine_batch": 136
           },
           "description": "Every landed record that bronze and its quarantine have both committed is in one of them."
         },
@@ -257,7 +257,7 @@
           "subject": "finance_db.operations.customers",
           "passed": true,
           "metrics": {
-            "held_records": 1519,
+            "held_records": 909,
             "duplicated": 0
           },
           "description": "No landed record is in both bronze and its quarantine, or twice in either."
@@ -276,10 +276,10 @@
           "subject": "finance_db.operations.products",
           "passed": true,
           "metrics": {
-            "committed_records": 2707,
+            "committed_records": 1663,
             "missing": 0,
-            "bronze_batch": 280,
-            "quarantine_batch": 280
+            "bronze_batch": 136,
+            "quarantine_batch": 136
           },
           "description": "Every landed record that bronze and its quarantine have both committed is in one of them."
         },
@@ -288,7 +288,7 @@
           "subject": "finance_db.operations.products",
           "passed": true,
           "metrics": {
-            "held_records": 2707,
+            "held_records": 1663,
             "duplicated": 0
           },
           "description": "No landed record is in both bronze and its quarantine, or twice in either."
@@ -307,10 +307,10 @@
           "subject": "finance_db.operations.orders",
           "passed": true,
           "metrics": {
-            "committed_records": 47690,
+            "committed_records": 29715,
             "missing": 0,
-            "bronze_batch": 468,
-            "quarantine_batch": 469
+            "bronze_batch": 259,
+            "quarantine_batch": 259
           },
           "description": "Every landed record that bronze and its quarantine have both committed is in one of them."
         },
@@ -319,7 +319,7 @@
           "subject": "finance_db.operations.orders",
           "passed": true,
           "metrics": {
-            "held_records": 47690,
+            "held_records": 29715,
             "duplicated": 0
           },
           "description": "No landed record is in both bronze and its quarantine, or twice in either."
@@ -338,10 +338,10 @@
           "subject": "finance_db.operations.order_items",
           "passed": true,
           "metrics": {
-            "committed_records": 311282,
+            "committed_records": 195743,
             "missing": 0,
-            "bronze_batch": 468,
-            "quarantine_batch": 468
+            "bronze_batch": 259,
+            "quarantine_batch": 260
           },
           "description": "Every landed record that bronze and its quarantine have both committed is in one of them."
         },
@@ -350,7 +350,7 @@
           "subject": "finance_db.operations.order_items",
           "passed": true,
           "metrics": {
-            "held_records": 311282,
+            "held_records": 195743,
             "duplicated": 0
           },
           "description": "No landed record is in both bronze and its quarantine, or twice in either."
@@ -379,14 +379,14 @@
           "subject": "finance_db.operations.customers",
           "passed": true,
           "metrics": {
-            "bronze_changes": 1519,
+            "bronze_changes": 915,
             "missing": 0,
             "extra": 0,
-            "silver_batch": 282
+            "silver_batch": 137
           },
           "details": {
-            "bronze_snapshot": 5535508912197503231,
-            "silver_snapshot": 6797444869951277459
+            "bronze_snapshot": 2189830809730684005,
+            "silver_snapshot": 106761419837615861
           },
           "description": "Silver holds exactly the changes (key, commit sequence, change op) bronze held at the snapshot silver's committed batch had read."
         },
@@ -395,7 +395,7 @@
           "subject": "finance_db.operations.customers",
           "passed": true,
           "metrics": {
-            "silver_rows": 1519,
+            "silver_rows": 915,
             "duplicated": 0
           },
           "description": "No change (key, commit sequence, change op) is in silver more than once."
@@ -405,14 +405,14 @@
           "subject": "finance_db.operations.products",
           "passed": true,
           "metrics": {
-            "bronze_changes": 2707,
+            "bronze_changes": 1674,
             "missing": 0,
             "extra": 0,
-            "silver_batch": 281
+            "silver_batch": 137
           },
           "details": {
-            "bronze_snapshot": 6895872495509636099,
-            "silver_snapshot": 1690188416221355331
+            "bronze_snapshot": 2698239292365890942,
+            "silver_snapshot": 7168195266355266450
           },
           "description": "Silver holds exactly the changes (key, commit sequence, change op) bronze held at the snapshot silver's committed batch had read."
         },
@@ -421,7 +421,7 @@
           "subject": "finance_db.operations.products",
           "passed": true,
           "metrics": {
-            "silver_rows": 2707,
+            "silver_rows": 1674,
             "duplicated": 0
           },
           "description": "No change (key, commit sequence, change op) is in silver more than once."
@@ -431,14 +431,14 @@
           "subject": "finance_db.operations.orders",
           "passed": true,
           "metrics": {
-            "bronze_changes": 47589,
+            "bronze_changes": 29816,
             "missing": 0,
             "extra": 0,
-            "silver_batch": 467
+            "silver_batch": 258
           },
           "details": {
-            "bronze_snapshot": 7708146842142769713,
-            "silver_snapshot": 8462847105846043945
+            "bronze_snapshot": 1065772258736867195,
+            "silver_snapshot": 367431528705713895
           },
           "description": "Silver holds exactly the changes (key, commit sequence, change op) bronze held at the snapshot silver's committed batch had read."
         },
@@ -447,7 +447,7 @@
           "subject": "finance_db.operations.orders",
           "passed": true,
           "metrics": {
-            "silver_rows": 47589,
+            "silver_rows": 29816,
             "duplicated": 0
           },
           "description": "No change (key, commit sequence, change op) is in silver more than once."
@@ -457,14 +457,14 @@
           "subject": "finance_db.operations.order_items",
           "passed": true,
           "metrics": {
-            "bronze_changes": 310606,
+            "bronze_changes": 196549,
             "missing": 0,
             "extra": 0,
-            "silver_batch": 467
+            "silver_batch": 259
           },
           "details": {
-            "bronze_snapshot": 4455104127081100236,
-            "silver_snapshot": 309945146211165209
+            "bronze_snapshot": 3088253413933229182,
+            "silver_snapshot": 7819973987260196467
           },
           "description": "Silver holds exactly the changes (key, commit sequence, change op) bronze held at the snapshot silver's committed batch had read."
         },
@@ -473,7 +473,7 @@
           "subject": "finance_db.operations.order_items",
           "passed": true,
           "metrics": {
-            "silver_rows": 310606,
+            "silver_rows": 196549,
             "duplicated": 0
           },
           "description": "No change (key, commit sequence, change op) is in silver more than once."
@@ -489,310 +489,407 @@
     "gold": {
       "results": [
         {
-          "check": "gold_matches_silver",
-          "subject": "lake.gold.dim_date",
-          "passed": true,
-          "metrics": {
-            "lake_rows": 36525,
-            "postgres_rows": 36525,
-            "lake_only": 0,
-            "postgres_only": 0,
-            "stale": 0
-          },
-          "details": {
-            "snapshots": {
-              "customers": 6797444869951277459,
-              "products": 1690188416221355331,
-              "orders": 8462847105846043945,
-              "order_items": 309945146211165209
-            },
-            "lake_only": [],
-            "postgres_only": []
-          },
-          "description": "The PostgreSQL gold view holds the rows of the gold view in the lake, computed over silver at the snapshots of the gold job's last committed micro-batches or of the ones it is writing, and the lake view is up to date with its definition; surrogate keys are compared as the dimension versions they name, and history from the first month PostgreSQL keeps."
-        },
-        {
-          "check": "gold_matches_silver",
-          "subject": "lake.gold.dim_order_status",
+          "check": "gold_copy_matches_iceberg",
+          "subject": "lake.gold_internal.dim_order_status",
           "passed": true,
           "metrics": {
             "lake_rows": 5,
             "postgres_rows": 5,
             "lake_only": 0,
-            "postgres_only": 0,
-            "stale": 0
+            "postgres_only": 0
           },
           "details": {
-            "snapshots": {
-              "customers": 6797444869951277459,
-              "products": 1690188416221355331,
-              "orders": 8462847105846043945,
-              "order_items": 309945146211165209
-            },
+            "snapshot_id": 1036809884682694952,
             "lake_only": [],
             "postgres_only": []
           },
-          "description": "The PostgreSQL gold view holds the rows of the gold view in the lake, computed over silver at the snapshots of the gold job's last committed micro-batches or of the ones it is writing, and the lake view is up to date with its definition; surrogate keys are compared as the dimension versions they name, and history from the first month PostgreSQL keeps."
+          "description": "The PostgreSQL gold_internal table holds exactly the rows of its Iceberg table at the snapshot gold_internal.sync_state records for it; history is compared from the first day of the retention window, which PostgreSQL keeps."
         },
         {
-          "check": "gold_matches_silver",
-          "subject": "lake.gold.dim_customer",
+          "check": "gold_copy_matches_iceberg",
+          "subject": "lake.gold_internal.dim_date",
           "passed": true,
           "metrics": {
-            "lake_rows": 1218,
-            "postgres_rows": 1218,
+            "lake_rows": 36525,
+            "postgres_rows": 36525,
             "lake_only": 0,
-            "postgres_only": 0,
-            "stale": 0
+            "postgres_only": 0
           },
           "details": {
-            "snapshots": {
-              "customers": 6797444869951277459,
-              "products": 1690188416221355331,
-              "orders": 8462847105846043945,
-              "order_items": 309945146211165209
-            },
+            "snapshot_id": 1714910370378327371,
             "lake_only": [],
             "postgres_only": []
           },
-          "description": "The PostgreSQL gold view holds the rows of the gold view in the lake, computed over silver at the snapshots of the gold job's last committed micro-batches or of the ones it is writing, and the lake view is up to date with its definition; surrogate keys are compared as the dimension versions they name, and history from the first month PostgreSQL keeps."
+          "description": "The PostgreSQL gold_internal table holds exactly the rows of its Iceberg table at the snapshot gold_internal.sync_state records for it; history is compared from the first day of the retention window, which PostgreSQL keeps."
         },
         {
-          "check": "gold_matches_silver",
-          "subject": "lake.gold.dim_product",
+          "check": "gold_copy_matches_iceberg",
+          "subject": "lake.gold_internal.dim_customer",
           "passed": true,
           "metrics": {
-            "lake_rows": 2618,
-            "postgres_rows": 2618,
+            "lake_rows": 915,
+            "postgres_rows": 915,
             "lake_only": 0,
-            "postgres_only": 0,
-            "stale": 0
+            "postgres_only": 0
           },
           "details": {
-            "snapshots": {
-              "customers": 6797444869951277459,
-              "products": 1690188416221355331,
-              "orders": 8462847105846043945,
-              "order_items": 309945146211165209
-            },
+            "snapshot_id": 8644070569383145352,
             "lake_only": [],
             "postgres_only": []
           },
-          "description": "The PostgreSQL gold view holds the rows of the gold view in the lake, computed over silver at the snapshots of the gold job's last committed micro-batches or of the ones it is writing, and the lake view is up to date with its definition; surrogate keys are compared as the dimension versions they name, and history from the first month PostgreSQL keeps."
+          "description": "The PostgreSQL gold_internal table holds exactly the rows of its Iceberg table at the snapshot gold_internal.sync_state records for it; history is compared from the first day of the retention window, which PostgreSQL keeps."
         },
         {
-          "check": "gold_matches_silver",
-          "subject": "lake.gold.fact_order_history",
+          "check": "gold_copy_matches_iceberg",
+          "subject": "lake.gold_internal.dim_product",
           "passed": true,
           "metrics": {
-            "lake_rows": 39515,
-            "postgres_rows": 39515,
+            "lake_rows": 1674,
+            "postgres_rows": 1674,
             "lake_only": 0,
-            "postgres_only": 0,
-            "stale": 0
+            "postgres_only": 0
           },
           "details": {
-            "snapshots": {
-              "customers": 6797444869951277459,
-              "products": 1690188416221355331,
-              "orders": 8462847105846043945,
-              "order_items": 309945146211165209
-            },
+            "snapshot_id": 6709905813456667374,
+            "lake_only": [],
+            "postgres_only": []
+          },
+          "description": "The PostgreSQL gold_internal table holds exactly the rows of its Iceberg table at the snapshot gold_internal.sync_state records for it; history is compared from the first day of the retention window, which PostgreSQL keeps."
+        },
+        {
+          "check": "gold_copy_matches_iceberg",
+          "subject": "lake.gold_internal.fact_order_history",
+          "passed": true,
+          "metrics": {
+            "lake_rows": 29816,
+            "postgres_rows": 29816,
+            "lake_only": 0,
+            "postgres_only": 0
+          },
+          "details": {
+            "snapshot_id": 8259549763442655140,
             "lake_only": [],
             "postgres_only": [],
-            "history_from": "2026-11-01T00:00:00"
+            "history_from": "2023-11-01T00:00:00"
           },
-          "description": "The PostgreSQL gold view holds the rows of the gold view in the lake, computed over silver at the snapshots of the gold job's last committed micro-batches or of the ones it is writing, and the lake view is up to date with its definition; surrogate keys are compared as the dimension versions they name, and history from the first month PostgreSQL keeps."
+          "description": "The PostgreSQL gold_internal table holds exactly the rows of its Iceberg table at the snapshot gold_internal.sync_state records for it; history is compared from the first day of the retention window, which PostgreSQL keeps."
         },
         {
-          "check": "gold_matches_silver",
-          "subject": "lake.gold.fact_order_item_history",
+          "check": "gold_copy_matches_iceberg",
+          "subject": "lake.gold_internal.fact_order_item_history",
           "passed": true,
           "metrics": {
-            "lake_rows": 310518,
-            "postgres_rows": 310518,
+            "lake_rows": 196549,
+            "postgres_rows": 196549,
             "lake_only": 0,
-            "postgres_only": 0,
-            "stale": 0
+            "postgres_only": 0
           },
           "details": {
-            "snapshots": {
-              "customers": 6797444869951277459,
-              "products": 1690188416221355331,
-              "orders": 8462847105846043945,
-              "order_items": 309945146211165209
-            },
+            "snapshot_id": 3398695868512778851,
             "lake_only": [],
             "postgres_only": [],
-            "history_from": "2026-11-01T00:00:00"
+            "history_from": "2023-11-01T00:00:00"
           },
-          "description": "The PostgreSQL gold view holds the rows of the gold view in the lake, computed over silver at the snapshots of the gold job's last committed micro-batches or of the ones it is writing, and the lake view is up to date with its definition; surrogate keys are compared as the dimension versions they name, and history from the first month PostgreSQL keeps."
+          "description": "The PostgreSQL gold_internal table holds exactly the rows of its Iceberg table at the snapshot gold_internal.sync_state records for it; history is compared from the first day of the retention window, which PostgreSQL keeps."
         },
         {
-          "check": "gold_matches_silver",
-          "subject": "lake.gold.current_orders",
+          "check": "gold_copy_matches_iceberg",
+          "subject": "lake.gold_internal.current_orders",
           "passed": true,
           "metrics": {
-            "lake_rows": 11943,
-            "postgres_rows": 11943,
+            "lake_rows": 7559,
+            "postgres_rows": 7559,
             "lake_only": 0,
-            "postgres_only": 0,
-            "stale": 0
+            "postgres_only": 0
           },
           "details": {
-            "snapshots": {
-              "customers": 6797444869951277459,
-              "products": 1690188416221355331,
-              "orders": 8462847105846043945,
-              "order_items": 309945146211165209
-            },
+            "snapshot_id": 1220742150025049010,
             "lake_only": [],
             "postgres_only": []
           },
-          "description": "The PostgreSQL gold view holds the rows of the gold view in the lake, computed over silver at the snapshots of the gold job's last committed micro-batches or of the ones it is writing, and the lake view is up to date with its definition; surrogate keys are compared as the dimension versions they name, and history from the first month PostgreSQL keeps."
+          "description": "The PostgreSQL gold_internal table holds exactly the rows of its Iceberg table at the snapshot gold_internal.sync_state records for it; history is compared from the first day of the retention window, which PostgreSQL keeps."
         },
         {
-          "check": "gold_matches_silver",
-          "subject": "lake.gold.current_order_items",
+          "check": "gold_copy_matches_iceberg",
+          "subject": "lake.gold_internal.current_order_items",
           "passed": true,
           "metrics": {
-            "lake_rows": 310518,
-            "postgres_rows": 310518,
+            "lake_rows": 196534,
+            "postgres_rows": 196534,
             "lake_only": 0,
-            "postgres_only": 0,
-            "stale": 0
+            "postgres_only": 0
           },
           "details": {
-            "snapshots": {
-              "customers": 6797444869951277459,
-              "products": 1690188416221355331,
-              "orders": 8462847105846043945,
-              "order_items": 309945146211165209
-            },
+            "snapshot_id": 180406335030058707,
             "lake_only": [],
             "postgres_only": []
           },
-          "description": "The PostgreSQL gold view holds the rows of the gold view in the lake, computed over silver at the snapshots of the gold job's last committed micro-batches or of the ones it is writing, and the lake view is up to date with its definition; surrogate keys are compared as the dimension versions they name, and history from the first month PostgreSQL keeps."
+          "description": "The PostgreSQL gold_internal table holds exactly the rows of its Iceberg table at the snapshot gold_internal.sync_state records for it; history is compared from the first day of the retention window, which PostgreSQL keeps."
         },
         {
-          "check": "gold_matches_silver",
-          "subject": "lake.gold.open_orders",
+          "check": "gold_one_current_version",
+          "subject": "lake.gold_internal.dim_customer",
           "passed": true,
           "metrics": {
-            "lake_rows": 27,
-            "postgres_rows": 27,
-            "lake_only": 0,
-            "postgres_only": 0,
-            "stale": 0
+            "rows": 20,
+            "violations": 0
           },
           "details": {
-            "snapshots": {
-              "customers": 6797444869951277459,
-              "products": 1690188416221355331,
-              "orders": 8462847105846043945,
-              "order_items": 309945146211165209
-            },
-            "lake_only": [],
-            "postgres_only": []
+            "violating": []
           },
-          "description": "The PostgreSQL gold view holds the rows of the gold view in the lake, computed over silver at the snapshots of the gold job's last committed micro-batches or of the ones it is writing, and the lake view is up to date with its definition; surrogate keys are compared as the dimension versions they name, and history from the first month PostgreSQL keeps."
+          "description": "Each business key has at most one current row: one version with _is_current in a dimension or history fact, one row in a current-state table."
         },
         {
-          "check": "gold_matches_silver",
-          "subject": "lake.gold.open_orders_by_delivery_date_and_status",
+          "check": "gold_one_current_version",
+          "subject": "lake.gold_internal.dim_product",
           "passed": true,
           "metrics": {
-            "lake_rows": 6,
-            "postgres_rows": 6,
-            "lake_only": 0,
-            "postgres_only": 0,
-            "stale": 0
+            "rows": 28,
+            "violations": 0
           },
           "details": {
-            "snapshots": {
-              "customers": 6797444869951277459,
-              "products": 1690188416221355331,
-              "orders": 8462847105846043945,
-              "order_items": 309945146211165209
-            },
-            "lake_only": [],
-            "postgres_only": []
+            "violating": []
           },
-          "description": "The PostgreSQL gold view holds the rows of the gold view in the lake, computed over silver at the snapshots of the gold job's last committed micro-batches or of the ones it is writing, and the lake view is up to date with its definition; surrogate keys are compared as the dimension versions they name, and history from the first month PostgreSQL keeps."
+          "description": "Each business key has at most one current row: one version with _is_current in a dimension or history fact, one row in a current-state table."
         },
         {
-          "check": "gold_matches_silver",
-          "subject": "lake.gold.top_delivery_dates_by_open_orders",
+          "check": "gold_one_current_version",
+          "subject": "lake.gold_internal.fact_order_history",
           "passed": true,
           "metrics": {
-            "lake_rows": 2,
-            "postgres_rows": 2,
-            "lake_only": 0,
-            "postgres_only": 0,
-            "stale": 0
+            "rows": 7559,
+            "violations": 0
           },
           "details": {
-            "snapshots": {
-              "customers": 6797444869951277459,
-              "products": 1690188416221355331,
-              "orders": 8462847105846043945,
-              "order_items": 309945146211165209
-            },
-            "lake_only": [],
-            "postgres_only": []
+            "violating": []
           },
-          "description": "The PostgreSQL gold view holds the rows of the gold view in the lake, computed over silver at the snapshots of the gold job's last committed micro-batches or of the ones it is writing, and the lake view is up to date with its definition; surrogate keys are compared as the dimension versions they name, and history from the first month PostgreSQL keeps."
+          "description": "Each business key has at most one current row: one version with _is_current in a dimension or history fact, one row in a current-state table."
         },
         {
-          "check": "gold_matches_silver",
-          "subject": "lake.gold.pending_items_by_product",
+          "check": "gold_one_current_version",
+          "subject": "lake.gold_internal.fact_order_item_history",
           "passed": true,
           "metrics": {
-            "lake_rows": 0,
-            "postgres_rows": 0,
-            "lake_only": 0,
-            "postgres_only": 0,
-            "stale": 0
+            "rows": 196534,
+            "violations": 0
           },
           "details": {
-            "snapshots": {
-              "customers": 6797444869951277459,
-              "products": 1690188416221355331,
-              "orders": 8462847105846043945,
-              "order_items": 309945146211165209
-            },
-            "lake_only": [],
-            "postgres_only": []
+            "violating": []
           },
-          "description": "The PostgreSQL gold view holds the rows of the gold view in the lake, computed over silver at the snapshots of the gold job's last committed micro-batches or of the ones it is writing, and the lake view is up to date with its definition; surrogate keys are compared as the dimension versions they name, and history from the first month PostgreSQL keeps."
+          "description": "Each business key has at most one current row: one version with _is_current in a dimension or history fact, one row in a current-state table."
         },
         {
-          "check": "gold_matches_silver",
-          "subject": "lake.gold.top_customers_by_pending_orders",
+          "check": "gold_one_current_version",
+          "subject": "lake.gold_internal.current_orders",
           "passed": true,
           "metrics": {
-            "lake_rows": 8,
-            "postgres_rows": 8,
-            "lake_only": 0,
-            "postgres_only": 0,
-            "stale": 0
+            "rows": 7559,
+            "violations": 0
           },
           "details": {
-            "snapshots": {
-              "customers": 6797444869951277459,
-              "products": 1690188416221355331,
-              "orders": 8462847105846043945,
-              "order_items": 309945146211165209
-            },
-            "lake_only": [],
-            "postgres_only": []
+            "violating": []
           },
-          "description": "The PostgreSQL gold view holds the rows of the gold view in the lake, computed over silver at the snapshots of the gold job's last committed micro-batches or of the ones it is writing, and the lake view is up to date with its definition; surrogate keys are compared as the dimension versions they name, and history from the first month PostgreSQL keeps."
+          "description": "Each business key has at most one current row: one version with _is_current in a dimension or history fact, one row in a current-state table."
+        },
+        {
+          "check": "gold_one_current_version",
+          "subject": "lake.gold_internal.current_order_items",
+          "passed": true,
+          "metrics": {
+            "rows": 196534,
+            "violations": 0
+          },
+          "details": {
+            "violating": []
+          },
+          "description": "Each business key has at most one current row: one version with _is_current in a dimension or history fact, one row in a current-state table."
+        },
+        {
+          "check": "gold_no_overlapping_validity",
+          "subject": "lake.gold_internal.dim_customer",
+          "passed": true,
+          "metrics": {
+            "rows": 747,
+            "violations": 0
+          },
+          "details": {
+            "violating": []
+          },
+          "description": "The validity ranges of a key's versions that are not folded do not overlap: each version ends at or before the start of the next one, and only the last one is open."
+        },
+        {
+          "check": "gold_no_overlapping_validity",
+          "subject": "lake.gold_internal.dim_product",
+          "passed": true,
+          "metrics": {
+            "rows": 1659,
+            "violations": 0
+          },
+          "details": {
+            "violating": []
+          },
+          "description": "The validity ranges of a key's versions that are not folded do not overlap: each version ends at or before the start of the next one, and only the last one is open."
+        },
+        {
+          "check": "gold_no_overlapping_validity",
+          "subject": "lake.gold_internal.fact_order_history",
+          "passed": true,
+          "metrics": {
+            "rows": 24883,
+            "violations": 0
+          },
+          "details": {
+            "violating": []
+          },
+          "description": "The validity ranges of a key's versions that are not folded do not overlap: each version ends at or before the start of the next one, and only the last one is open."
+        },
+        {
+          "check": "gold_no_overlapping_validity",
+          "subject": "lake.gold_internal.fact_order_item_history",
+          "passed": true,
+          "metrics": {
+            "rows": 196534,
+            "violations": 0
+          },
+          "details": {
+            "violating": []
+          },
+          "description": "The validity ranges of a key's versions that are not folded do not overlap: each version ends at or before the start of the next one, and only the last one is open."
+        },
+        {
+          "check": "gold_lookups_resolve",
+          "subject": "lake.gold_internal.fact_order_history",
+          "passed": true,
+          "metrics": {
+            "rows": 29816,
+            "violations": 0
+          },
+          "details": {
+            "violating": []
+          },
+          "description": "Every status and date key names a row of its seeded dimension, or is null where the model allows it (an unknown status takes the UNKNOWN row)."
+        },
+        {
+          "check": "gold_lookups_resolve",
+          "subject": "lake.gold_internal.current_orders",
+          "passed": true,
+          "metrics": {
+            "rows": 7559,
+            "violations": 0
+          },
+          "details": {
+            "violating": []
+          },
+          "description": "Every status and date key names a row of its seeded dimension, or is null where the model allows it (an unknown status takes the UNKNOWN row)."
+        },
+        {
+          "check": "gold_lookups_resolve",
+          "subject": "lake.gold_internal.fact_order_item_history",
+          "passed": true,
+          "metrics": {
+            "rows": 196549,
+            "violations": 0
+          },
+          "details": {
+            "violating": []
+          },
+          "description": "Every status and date key names a row of its seeded dimension, or is null where the model allows it (an unknown status takes the UNKNOWN row)."
+        },
+        {
+          "check": "gold_lookups_resolve",
+          "subject": "lake.gold_internal.current_order_items",
+          "passed": true,
+          "metrics": {
+            "rows": 196534,
+            "violations": 0
+          },
+          "details": {
+            "violating": []
+          },
+          "description": "Every status and date key names a row of its seeded dimension, or is null where the model allows it (an unknown status takes the UNKNOWN row)."
+        },
+        {
+          "check": "gold_business_keys_known",
+          "subject": "lake.gold_internal.fact_order_history",
+          "passed": true,
+          "metrics": {
+            "rows": 29816,
+            "violations": 0
+          },
+          "details": {
+            "violating": []
+          },
+          "description": "Every history fact's dimension business key (an order's customer_id, an item's product_id) names a key the dimension holds, for every change committed no later than the dimension's newest version, which the gold views join as of the change."
+        },
+        {
+          "check": "gold_business_keys_known",
+          "subject": "lake.gold_internal.fact_order_item_history",
+          "passed": true,
+          "metrics": {
+            "rows": 196549,
+            "violations": 0
+          },
+          "details": {
+            "violating": []
+          },
+          "description": "Every history fact's dimension business key (an order's customer_id, an item's product_id) names a key the dimension holds, for every change committed no later than the dimension's newest version, which the gold views join as of the change."
+        },
+        {
+          "check": "gold_report_views_match_lake",
+          "subject": "gold.open_orders_by_delivery_date_and_status",
+          "passed": true,
+          "metrics": {
+            "rows": 6,
+            "violations": 0
+          },
+          "details": {
+            "violating": []
+          },
+          "description": "Each PostgreSQL business-question view returns the rows the same view returns in the lake over the Iceberg tables at the snapshots the copy held when PostgreSQL answered it."
+        },
+        {
+          "check": "gold_report_views_match_lake",
+          "subject": "gold.top_delivery_dates_by_open_orders",
+          "passed": true,
+          "metrics": {
+            "rows": 2,
+            "violations": 0
+          },
+          "details": {
+            "violating": []
+          },
+          "description": "Each PostgreSQL business-question view returns the rows the same view returns in the lake over the Iceberg tables at the snapshots the copy held when PostgreSQL answered it."
+        },
+        {
+          "check": "gold_report_views_match_lake",
+          "subject": "gold.pending_items_by_product",
+          "passed": true,
+          "metrics": {
+            "rows": 0,
+            "violations": 0
+          },
+          "details": {
+            "violating": []
+          },
+          "description": "Each PostgreSQL business-question view returns the rows the same view returns in the lake over the Iceberg tables at the snapshots the copy held when PostgreSQL answered it."
+        },
+        {
+          "check": "gold_report_views_match_lake",
+          "subject": "gold.top_customers_by_pending_orders",
+          "passed": true,
+          "metrics": {
+            "rows": 12,
+            "violations": 0
+          },
+          "details": {
+            "violating": []
+          },
+          "description": "Each PostgreSQL business-question view returns the rows the same view returns in the lake over the Iceberg tables at the snapshots the copy held when PostgreSQL answered it."
         }
       ],
       "summary": {
         "summary": true,
-        "checks": 13,
+        "checks": 28,
         "failed": 0,
         "passed": true
       }
@@ -800,7 +897,7 @@
   },
   "summary": {
     "summary": true,
-    "checks": 53,
+    "checks": 68,
     "failed": 0,
     "passed": true
   }

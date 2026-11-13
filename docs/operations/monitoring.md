@@ -65,7 +65,7 @@ The **Spark stages** dashboard charts them; the questions it answers are in the 
 
 The same exporter process (`python -m pipelines.observability.exporter`) also measures the lake's Iceberg tables with [PyIceberg](https://py.iceberg.apache.org/), through the read-only REST catalog (`iceberg-rest`, which the `metrics` profile starts too) and the S3 files it points at:
 
-- every 5 minutes (`TABLE_STATS_INTERVAL_SECONDS`), for every table of the namespaces in `TABLE_STATS_NAMESPACES` (default `bronze,silver`), the data files of its current snapshot: how many, their bytes and records, their average size and how many are below `SMALL_FILE_BYTES` (default 32 MiB);
+- every 5 minutes (`TABLE_STATS_INTERVAL_SECONDS`), for every table of the namespaces in `TABLE_STATS_NAMESPACES` (default `bronze,silver,gold_internal`, so the gold Iceberg tables are measured too), the data files of its current snapshot: how many, their bytes and records, their average size and how many are below `SMALL_FILE_BYTES` (default 32 MiB);
 - every hour (`PARTITION_STATS_INTERVAL_SECONDS`), the same tables per partition, keeping only the partitions that hold small files.
 
 | Metric | Labels | Holds |
@@ -77,6 +77,29 @@ The same exporter process (`python -m pipelines.observability.exporter`) also me
 | `iceberg_partition_small_files` | `namespace`, `table`, `partition` | Small files per partition that has any; a partition compaction fixed disappears |
 
 Every micro-batch adds files, and [lake maintenance](maintenance-and-recovery.md#lake-maintenance) merges them, so the **Iceberg tables** dashboard shows the data files per table as a saw-tooth and the hourly change in files (`delta(iceberg_table_data_files[1h])`, a gauge) dropping at each compaction. A line that only climbs means maintenance is not running.
+
+## Gold batch log
+
+The gold job logs one line per micro-batch of each of its four streams, to the driver's standard error, prefixed with `GOLD BATCH ` and followed by one JSON object:
+
+```text
+GOLD BATCH {"load":"fact_order_history","batch_id":<id>,"seconds":<s>,"jobs":<n>,"written":{"fact_order_history":<rows>,"current_orders":<rows>},"steps":[{"step":"catch-up","seconds":<s>,"jobs":<n>},{"step":"compute fact_order_history",...},{"step":"merge fact_order_history",...},{"step":"compute current_orders",...},{"step":"merge current_orders",...},{"step":"snapshots",...},{"step":"copy",...}]}
+```
+
+| Field | Holds |
+| --- | --- |
+| `load` | The stream: `dim_customer`, `dim_product`, `fact_order_history` or `fact_order_item_history` |
+| `batch_id` | The micro-batch id of the stream's checkpoint |
+| `seconds`, `jobs` | The batch's wall time and the Spark jobs it ran, counted in the stream's own job group, so the other streams' jobs running at the same time are not counted |
+| `written` | The rows computed for each table; a table with 0 gets no merge and no copy |
+| `steps` | Each step in order, with its seconds and Spark jobs: `catch-up` (copying a table a failed batch left behind), `compute <table>` and `merge <table>` for each table, `snapshots` (reading the new snapshot ids, no Spark job) and `copy` (the JDBC staging and the PostgreSQL transaction) |
+
+```sh
+docker compose logs gold-job | grep 'GOLD BATCH'                                                   # every batch
+docker compose logs --no-log-prefix gold-job | sed -n 's/.*GOLD BATCH //p' | jq -c '{load, seconds, jobs}'   # the totals, one line per batch
+```
+
+A replayed batch, after an Iceberg commit conflict, logs once: its steps list every attempt's steps, and its totals cover them all. The other log lines of the gold job are warnings and errors only.
 
 ## Alerts
 

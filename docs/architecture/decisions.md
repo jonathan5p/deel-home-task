@@ -26,14 +26,15 @@ The numbers (D3, D13, ...) come from the project's decision log, and other pages
 | [D31 · Late arrivals are history](#d31--late-arrivals-are-history-deduplication-happens-in-silver) | A late change is kept in its place and never overwrites newer state |
 | [D36 · Silver deduplication](#d36--silver-deduplication-exact-duplicates-on-write-unchanged-versions-on-read) | Exact duplicates are dropped on write, unchanged versions folded on read |
 | **Gold** | |
-| [D3 · Gold in PostgreSQL](#d3--gold-in-postgresql-not-clickhouse) | Gold is small and must be consistent after every micro-batch |
+| [D3 · Gold in PostgreSQL](#d3--gold-in-postgresql-not-clickhouse) | Gold is small and must be consistent after every micro-batch; amended by D44: PostgreSQL serves a copy |
 | [D20 · A separate analytics PostgreSQL](#d20--a-separate-analytics-postgresql) | Analytics load never touches the source database |
 | [D32 · The gold dimensional model](#d32--the-gold-dimensional-model) | SCD2 dimensions, history facts and current state answer every question |
 | [D35 · Public views over an internal schema](#d35--public-views-over-an-internal-schema) | The consumer contract is kept apart from the pipeline's storage |
-| [D40 · Indexes from query plans](#d40--gold-indexes-chosen-from-the-query-plans-of-the-current-use-cases) | Only the indexes the business questions use, chosen from their plans |
+| [D40 · Indexes from query plans](#d40--gold-indexes-chosen-from-the-query-plans-of-the-current-use-cases) | Only the indexes the business questions use, chosen from their plans and checked by an infra test |
 | [D37 · Retention by monthly partitions](#d37--gold-retention-by-monthly-partitions) | Whole months are dropped instead of deleting rows |
 | [D38 · Rebuild gold from silver](#d38--rebuild-gold-from-silver-with-an-optional-cutoff) | Gold can be recreated, up to any point in time, with the streaming code |
-| [D39 · Gold in the lake as views](#d39--gold-in-the-lake-as-iceberg-views-over-silver) | The lake has the gold model without a second writer |
+| [D39 · Gold in the lake as views](#d39--gold-in-the-lake-as-iceberg-views-over-silver) | Superseded by D44 |
+| [D44 · Gold in Spark on Iceberg](#d44--gold-modelled-in-spark-on-iceberg-postgresql-as-serving-copy) | Gold computed once by Spark for both stores, by independent streams; one set of views resolves point-in-time attributes and the answers when read |
 | **Observability** | |
 | [D33 · Observability catalog](#d33--pipeline-metrics-in-a-separate-observability-catalog-proposed) | Proposed: per-batch pipeline metrics apart from business data |
 | [D42 · Spark metrics in Prometheus](#d42--spark-metrics-sparks-prometheus-servlet-scraped-by-dns-service-discovery) | Spark's own servlet, pulled by Prometheus, with drivers found by their service names |
@@ -155,6 +156,8 @@ The numbers (D3, D13, ...) come from the project's decision log, and other pages
 **Outcome.** Past and crashed runs can be inspected at any time ([Spark History Server](infrastructure.md#spark-history-server-optional)). In production, the event logs would live on object storage, with a cleaner for old logs.
 
 ### D43 · Cluster sizing and triggers from measured metrics
+
+**Status.** Amended by [D44](#d44--gold-modelled-in-spark-on-iceberg-postgresql-as-serving-copy) where it discusses gold: the measurements below were taken when gold's batches were PostgreSQL merges under one advisory lock. Gold now runs four independent Spark streams that merge into Iceberg and copy into PostgreSQL; its trigger is unchanged, and its latency and batch times are measured again in D44's outcome.
 
 **Context.** The cluster's settings were estimates: 10-second triggers everywhere, 2 cores per application in whatever executors the master handed out, and lake maintenance only when someone started its profile. A first look at the metrics (#195) showed the cluster nearly idle (each job's cores busy 1–2 % of the time, executor heaps under a quarter of 1 GiB, no spill), gold about 40 seconds behind the source because every hop waited one full 10-second interval, bronze and silver tables growing by about 60–120 small files an hour that were never compacted, and the Iceberg table statistics missing from Prometheus.
 
@@ -299,6 +302,8 @@ The numbers (D3, D13, ...) come from the project's decision log, and other pages
 
 ### D3 · Gold in PostgreSQL, not ClickHouse
 
+**Status.** Amended by [D44](#d44--gold-modelled-in-spark-on-iceberg-postgresql-as-serving-copy): Spark computes gold and stores it as Iceberg tables; PostgreSQL keeps serving the business questions, as a copy of the same tables filled by plain upserts, with the same views as the lake. The reasons below still hold for serving.
+
 **Context.** Gold answers the four business questions in near real time, and the assignment asks for consistent results.
 
 **Decision.** The dimensional model is served from PostgreSQL.
@@ -326,6 +331,8 @@ The numbers (D3, D13, ...) come from the project's decision log, and other pages
 
 ### D32 · The gold dimensional model
 
+**Status.** Amended by [D44](#d44--gold-modelled-in-spark-on-iceberg-postgresql-as-serving-copy): the model below is unchanged, but Spark computes it. The history facts store their business keys and their version columns, and the public history views resolve the dimension version valid at each change when read. The four questions are still views over the open current orders, with `rank()` for the top 3.
+
 **Context.** The four questions need the current state of orders and items, and the assignment also asks for history.
 
 **Decision.**
@@ -347,6 +354,8 @@ The numbers (D3, D13, ...) come from the project's decision log, and other pages
 
 ### D35 · Public views over an internal schema
 
+**Status.** Amended by [D44](#d44--gold-modelled-in-spark-on-iceberg-postgresql-as-serving-copy): the views no longer compute the fold or the validity ranges; they filter the version columns the gold job stores (`_is_folded`, `_valid_to`, `_is_current`). The history views join the dimension version valid at each change, and the business-question views count the open orders. One set of templates renders the same views over `gold_internal` in PostgreSQL and over `lake.gold_internal` in the lake.
+
 **Context.** The gold writer needs columns consumers should not see, such as `_commit_sequence` and soft-deleted rows.
 
 **Decision.** The pipeline writes tables in `gold_internal`, and consumers read views of the same names in `gold`.
@@ -361,6 +370,8 @@ The numbers (D3, D13, ...) come from the project's decision log, and other pages
 **Outcome.** The API and Grafana log in with read-only logins that can read `gold` but not `gold_internal` ([read-only service logins](infrastructure.md#read-only-service-logins)).
 
 ### D40 · Gold indexes chosen from the query plans of the current use cases
+
+**Status.** Amended by [D44](#d44--gold-modelled-in-spark-on-iceberg-postgresql-as-serving-copy): the gold job writes the tables, and the business-question views still count the open orders when read, so the partial indexes below are in use, and an infra test checks with `EXPLAIN` that each view scans the open orders through its index. The writer indexes below are gone: nothing re-resolves the facts' dimension keys, and the dimensions need only their primary key and the unique surrogate key.
 
 **Context.** The business questions must stay fast as the order history grows, and every index costs the gold writer time on each micro-batch.
 
@@ -410,6 +421,8 @@ New use cases get their indexes the same way: write the query, read its plan on 
 
 ### D38 · Rebuild gold from silver, with an optional cutoff
 
+**Status.** Amended by [D44](#d44--gold-modelled-in-spark-on-iceberg-postgresql-as-serving-copy): the rebuild writes all of silver through the gold job's own writer, one batch per stream in any order, into the Iceberg tables, then reloads PostgreSQL from them. The surrogate keys are deterministic, so a rebuild keeps them.
+
 **Context.** Gold needs a way back after a logic or schema change, or a corruption, without replaying Kafka.
 
 **Decision.** `make gold-rebuild CONFIRM=1 [TO_TIME=...]` resets gold and loads every silver table in one batch, through the same merge as the stream, up to a `_changed_at` cutoff. It then applies retention (#49, #150).
@@ -421,21 +434,23 @@ New use cases get their indexes the same way: write the query, read its plan on 
 
 **Alternatives considered.** Restarting the gold job from an empty checkpoint, which has no cutoff and replays every change one micro-batch at a time.
 
-**Outcome.** Infra tests check that a rebuild equals streaming the same changes, with and without a cutoff. Surrogate keys get new values after a rebuild. The rebuild is one of two recovery operations; the other is the bronze replay:
+**Outcome.** Infra tests check that a rebuild equals streaming the same changes, with and without a cutoff. Surrogate keys keep their values after a rebuild. The rebuild is one of two recovery operations; the other is the bronze replay:
 
 | | Bronze replay (#133) | Gold rebuild (#150) |
 | --- | --- | --- |
 | Purpose | Fill gaps: re-read a landing range and append only the changes bronze lacks | Recreate gold from scratch from silver |
-| Destructive | No, append-only | Yes: `gold-reset` drops and recreates the gold schemas and checkpoints |
+| Destructive | No, append-only | Yes: `gold-reset` drops and recreates the gold schemas, drops the gold Iceberg tables and lake gold views, and deletes the gold checkpoints |
 | Input | Landing topic and an offset or time range | All of silver, optionally up to `TO_TIME` |
-| Deduplication | Anti-join on (key, `_commit_sequence`, `_change_op`); quarantine once per source coordinates | Starts empty; loads through the gold job's own sinks |
+| Deduplication | Anti-join on (key, `_commit_sequence`, `_change_op`); quarantine once per source coordinates | Starts empty; loads through the gold job's own writer |
 | Afterwards | Silver picks the rows up as late events; no restart | The gold job is left stopped; `make pipeline` resumes from fresh checkpoints |
-| Side effects | None | Surrogate keys regenerated |
+| Side effects | None | None: the surrogate keys keep their values |
 | When | A missed or failed range | A logic or schema change in gold, or corrupted gold |
 
 Both reuse the streaming code and are tested to equal streaming output. A full bronze rebuild is a manual procedure ([rebuilding bronze](../operations/maintenance-and-recovery.md#rebuilding-bronze-from-landing)). Replaying a silver range into gold would be a cheap extension, because the gold writer is idempotent.
 
 ### D39 · Gold in the lake as Iceberg views over silver
+
+**Status.** Superseded by [D44](#d44--gold-modelled-in-spark-on-iceberg-postgresql-as-serving-copy): the gold job writes gold as Iceberg tables in `lake.gold_internal`, and the `lake.gold` views render the same SQL templates as PostgreSQL's `gold` views over them. Kept as the record of the earlier design.
 
 **Context.** Lake users, such as Spark SQL or DuckDB, should see the same gold model as PostgreSQL, over the full history.
 
@@ -453,6 +468,64 @@ Both reuse the streaming code and are tested to equal streaming output. A full b
 - Append-only lake change tables: duplicates silver.
 
 **Outcome.** Lake reads recompute over the full history. They can be materialised later if needed ([querying the lake](../serving/lake-access.md)).
+
+### D44 · Gold modelled in Spark on Iceberg; PostgreSQL as serving copy
+
+**Context.** I first modelled gold in PostgreSQL: Spark staged each micro-batch, SQL templates computed the SCD2 versions, looked up the dimension keys as of each change and ran the merges, and the four business questions were PostgreSQL views. The lake had gold only as views that recomputed the same model from silver at read time ([D39](#d39--gold-in-the-lake-as-iceberg-views-over-silver)). That left two problems:
+
+- **The two golds could disagree.** PostgreSQL gold was written per batch, while the lake views recomputed the model from silver whenever they were read, with a second, separate SQL implementation of the same rules. At any moment the two could give different answers, and over time the two implementations could drift apart.
+- **The work ran far from the data.** The data and the Spark cluster were already in the lake, but gold's compute ran in PostgreSQL, the store that also had to serve the dashboards.
+
+**Decision.** The gold job computes the gold tables once, with the Spark DataFrame API, stores them as Iceberg tables in `lake.gold_internal`, copies the rows it computed into PostgreSQL's `gold_internal`, and both stores serve them through one set of view templates (#221, #224, #225).
+
+- **Four independent streams,** one per silver table, each writing only its own tables, with no lock between them and each in its own fair-scheduler pool: customers into `dim_customer`, products into `dim_product`, orders into `fact_order_history` and `current_orders`, order items into `fact_order_item_history` and `current_order_items`.
+- **SCD2 dimensions per touched business key.** The stored versions of the batch's keys and the batch's changes are deduplicated on (key, `_commit_sequence`), then window functions partitioned by the business key and ordered by `_commit_sequence` store `_is_folded`, `_version_number`, `_valid_from`, `_valid_to` and `_is_current`. The surrogate key is `xxhash64(business key, _commit_sequence)`, kept `UNIQUE` in PostgreSQL.
+- **History facts keep business keys.** Each change is stored with its business keys (`order_id` and `customer_id`; `order_item_id`, `order_id` and `product_id`) and its own version columns, computed from its own key only. No dimension key or attribute is stored.
+- **Current state** applies only newer changes by `_commit_sequence`, keeps deletes soft and stores `is_open`.
+- **Status and date keys** come from broadcast joins to the seeded `dim_order_status` and `dim_date` when a fact is written; those dimensions never change with the data.
+- **Each batch** computes its rows once (the staged batch persisted, each table's rows cut from their lineage with `localCheckpoint`), merges them into each Iceberg table with one `mergeInto`, then copies the computed rows into PostgreSQL: JDBC staging, then one upsert transaction that also records the Iceberg snapshot ids in `gold_internal.sync_state`. The snapshot-difference copy runs only as catch-up, at start-up and after a failed batch. An Iceberg commit conflict replays the batch, up to three times. Every batch logs one `GOLD BATCH {...}` line with its step timings and Spark job counts. The copies take a PostgreSQL advisory lock in shared mode and retention takes it exclusively.
+- **One set of view templates** (`pipelines/lake/gold/sql/views/*.sql.j2`), rendered for PostgreSQL (`gold.*` over `gold_internal.*`) and for the lake (`lake.gold.*` over `lake.gold_internal.*`), differing only in the namespace:
+    - the **point-in-time fact views** `LEFT JOIN` the dimension on the business key and its stored validity, leaving out folded and deleted versions; the first version also covers earlier changes, because Debezium snapshots the tables at slightly different times; when clock skew makes two ranges overlap, the version committed last wins (`row_number`). They expose `customer_key`, `customer_name` and `customer_address`, or `product_key`, `product_name`, `unit_price` and `line_amount` (the price as of the change times the quantity), resolved when read;
+    - the **four business-question views** count the open rows of `current_orders` when read (pending items joins `current_order_items`), with the top 3 ranked by `rank()` so ties for third place are kept, served by the partial indexes of [D40](#d40--gold-indexes-chosen-from-the-query-plans-of-the-current-use-cases).
+
+    The views keep their names and columns, so the API and Grafana did not change.
+- **Data quality** checks exact Iceberg-to-PostgreSQL parity at the `sync_state` snapshots, one current version per key, no overlapping validity, status and date keys that resolve, business keys their dimension knows, and PostgreSQL's business-question views against the same views in the lake ([data quality checks](../lakehouse/data-quality.md)).
+- **Maintenance, reset and rebuild.** Lake maintenance covers `bronze`, `silver` and `gold_internal`, rewriting position delete files too, with partial progress. `make gold-reset` drops the gold PostgreSQL schemas, the gold Iceberg tables and lake gold views, and the gold checkpoints; `make gold-rebuild` rebuilds gold from silver, and the keys stay the same. There are no migration commands. Retention stays in PostgreSQL; Iceberg keeps the full history.
+
+**Why.**
+
+- **One computation, two consistent copies.** Both stores hold the same computed rows, PostgreSQL records which Iceberg snapshot it holds, and both answer with the same SQL. So the copies can be compared exactly, and the gold check does.
+- **The work runs where the data is.** The data and the Spark cluster are already in the lake: computing the model once there and serving both copies uses the cluster for what it is for and leaves PostgreSQL to serve reads.
+- **Independent streams, resolved on read.** This is the usual lakehouse shape for change data: SCD2 dimensions and newer-only facts built by Spark, as Databricks' `APPLY CHANGES` (now `AUTO CDC`) builds them, with point-in-time attributes and metrics resolved when read. No stream reads another's tables, so there is no lock, no re-linking and no recount, and a late customer or product shows up in the facts as soon as its stream stores it.
+- **Deterministic keys.** Hashing the business key and `_commit_sequence` gives the same key in both copies and after a rebuild, in one narrow column, and keeps pipeline metadata out of the public views. I hash the LSN rather than `_version_number` because version numbers renumber when a late change lands between stored versions or a version unfolds; a version's LSN never changes. Collisions follow the birthday bound over 2^64 values, about 3 in a million at 10 million versions, and PostgreSQL's unique constraint on the surrogate key rejects one loudly.
+- **Read-time answers are cheap at this size.** The open orders are a small share of all orders, and the partial indexes hold only them.
+
+**How it evolved.**
+
+1. **Gold modelled in PostgreSQL.** Spark staged each batch; SQL templates did the SCD2 versions, the as-of lookups and the merges; the four reports were PostgreSQL views over the current state; the lake gold views recomputed the model from silver at read time ([D39](#d39--gold-in-the-lake-as-iceberg-views-over-silver)).
+2. **Why I moved it to Spark.** First, consistency between the two golds: PostgreSQL gold was written per batch while the lake views recomputed the model from silver at read time with a second, separate SQL implementation, so the two could disagree at any moment and drift. Second, efficiency: the data and the Spark cluster were already there, so I compute the model once in Spark and serve both copies from it.
+3. **The first Spark version.** It linked facts to dimension-version surrogate keys at write time: as-of range joins against the stored versions, and re-linking of stored facts whenever a late dimension version arrived. It kept per-batch report tables and top-3 tables, recounted from the old and new current rows, and one lock in the driver across the four streams, so that a fact batch and a dimension batch never ran side by side without each other's rows. Measured on the dev stack, gold was 42–67 s behind a source commit at p50, against 15–18 s before, and an order batch ran about 170 Spark jobs.
+4. **The final design.** That cost came from the coupling: every stream read the others' tables, so they had to take turns, and every batch re-linked and recounted. I dropped write-time linking, the report tables and the lock, and took the standard lakehouse shape described above. On an isolated stack, with a snapshot of 300 customers, 100 products, 3,000 orders and 9,000 items followed by four source commits (`tests/infra/test_gold_batch_cost.py`), an order batch runs 23 Spark jobs in about 8.6 s, an item batch 20–22 jobs in 9.3 s, and a customer or product batch 11 jobs in about 5.7–5.8 s.
+
+**Alternatives considered.**
+
+- **Keep gold's SQL in PostgreSQL and add an Iceberg copy:** two implementations of the same rules, and the lake copy would still trail PostgreSQL.
+- **Write-time surrogate-key linking of the facts** (the first Spark version): couples the fact streams to the dimension streams, needs a lock between them and re-linking of stored facts when a late dimension version arrives.
+- **Report or aggregate tables written per batch inside the streams:** couples orders, items and customers again, needs locks, and has to recount with the old and new values of every changed order.
+- **A separate Spark report job on a timer:** the reports would lag gold by the interval, for no gain at this size.
+- **A streaming `groupBy` without a time window:** fits append-only events only. It cannot retract a count when an order changes delivery date or completes, and without a watermark its state never shrinks.
+- **Incremental counts with retractions,** as Flink changelog streams, Kafka Streams table aggregations (adder and subtractor) or Materialize keep them: subtract the change's old bucket and add its new one. It needs the previous version of every row, newer-only handling, an exactly-once marker written in the same transaction as the counters, and a periodic recount to correct drift; in Spark it would be `foreachBatch` deltas or `transformWithState`. I did not choose it because the views over the indexed open orders are exact and cheap at this size; it is the scaling path once the rows a view scans on read grow too large ([the way to production](production.md#gold-serving)).
+- **Hash (business key, `_version_number`)** for the surrogate keys: renumbered by late changes and unfolds.
+- **PostgreSQL identities:** not reproducible in the lake or after a rebuild.
+- **ClickHouse or another columnar serving store instead of PostgreSQL:** the next step for scale ([the way to production](production.md#gold-serving)), not needed at this size.
+
+**Outcome.**
+
+- **Consistency trade-off.** Each store is consistent per stream batch (PostgreSQL) or per table (Iceberg), not across streams. A fact can be stored before its customer or product version; the point-in-time views resolve it as soon as the version arrives ([consistency](../lakehouse/gold/writer.md#consistency-between-the-two-copies)).
+- **Indexes.** The partial indexes of [D40](#d40--gold-indexes-chosen-from-the-query-plans-of-the-current-use-cases) serve the business-question views again, and an infra test checks with `EXPLAIN` that each view scans the open orders through its index. Query time on the running stack: 0.15–0.33 ms per view: open orders by delivery date and status 0.18 ms, top 3 delivery dates 0.15 ms, pending items by product 0.22 ms, top 3 customers 0.33 ms, over 32 open orders out of 6,503 (2026-11-13).
+- Gold latency after the change: 13 s at the median and 16 s at p95 for customers and products, and 16 s at the median and 19–20 s at p95 for orders and order items (`make latency-probe PROBES=5` on 2026-11-13, report `20261113T054301Z`).
+- Gold batch duration on the dev stack: the batches that carry rows take 1.6 s at the median and about 5 s at p95 for customers and products (11 Spark jobs each), 4.9 s and 8.2 s for orders (23 jobs) and 4.3 s and 8.5 s for order items (20 jobs), from the `GOLD BATCH` lines of 2026-11-13; most batches find no new rows and take a few milliseconds.
+- Data quality after the change: all 68 checks passed, the 28 gold checks among them (report `20261113T054751Z`, 2026-11-13).
 
 ## Observability
 

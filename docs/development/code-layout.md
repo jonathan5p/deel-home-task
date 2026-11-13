@@ -29,11 +29,16 @@ analytics/
         landing/            landing layer: job.py (streaming job), quality.py (data quality checks)
         bronze/             bronze layer: source entities, the transforms from landing records to bronze rows, job.py (streaming job) and quality.py (data quality checks)
         silver/             silver layer: the transform from bronze rows to version rows, the history and current views (SQL templates in sql/), and job.py (streaming job)
-        gold/               gold layer: ddl.py and sql/ddl.sql.j2 (the gold DDL from the gold Avro schemas), scd2.py (the SCD2 SQL),
-                            facts.py (the history fact and current-state SQL), dimensions.py (the dimensions and facts
-                            and their lookups), sink.py, postgres.py, job.py (the gold streaming job),
-                            retention.py and rebuild.py (the gold retention and rebuild jobs), and sql/ (their SQL templates)
-          views/            the gold views in the lake, with their SQL templates in sql/
+        gold/               gold layer: scd2.py, facts.py and dimensions.py (the SCD2 dimensions, the facts and their lookups,
+                            declared from the gold Avro schemas), stored.py (every stored table with its write mode and keys),
+                            batch.py (the writes of one micro-batch), writer.py (compute once, merge, copy, retries and catch-up),
+                            lake.py (the gold Iceberg tables and their mergeInto), serving.py (the PostgreSQL copy),
+                            metrics.py (the GOLD BATCH log line), public.py (the public views from sql/views/),
+                            sink.py, postgres.py, job.py (the four gold streams), reset.py, rebuild.py and retention.py,
+                            ddl.py and sql/ddl.sql.j2 (the PostgreSQL DDL from the gold Avro schemas),
+                            sql/views/ (the view templates PostgreSQL and the lake both render), quality.py (the gold checks)
+          model/            the gold transforms as Spark DataFrame functions: versions, dimensions, lookups, facts, seeds
+          views/            the gold views in the lake, created from the same templates
       observability/        the Prometheus exporter: exporter.py (its entry point), stage_exporter.py (completed Spark stages, read from the History Server), table_stats.py (Iceberg table statistics, read with PyIceberg) and schedule.py (their periodic tasks)
     tests/
   sql/gold/                 the four business questions as SQL on the gold views in PostgreSQL

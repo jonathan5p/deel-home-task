@@ -31,7 +31,7 @@ flowchart LR
 | Pending items by product | table: items and total quantity | `gold.pending_items_by_product` |
 | Top 3 customers by pending orders | table, ties for third place included | `gold.top_customers_by_pending_orders` |
 
-Each business-question panel runs exactly the query of its file in `analytics/sql/gold/`, so the dashboard and the documented queries always agree. Freshness is measured from the data, as the time since the source commit of the newest change gold holds, so it also grows while the source is idle.
+Each business-question panel runs exactly the query of its file in `analytics/sql/gold/`, so the dashboard and the documented queries always agree. The views count the open current orders when the panel reads them, through the partial indexes on the open orders ([the four business questions](../lakehouse/gold/model.md#the-four-business-questions)), so every refresh shows the state of the last micro-batch each gold stream copied; the lake has the same views, with the same SQL. Freshness is measured from the data, as the time since the source commit of the newest change gold holds, so it also grows while the source is idle.
 
 ## Spark dashboards
 
@@ -81,7 +81,7 @@ The **Spark and lake** folder holds three Spark dashboards over the Prometheus d
 
 ## Iceberg tables dashboard
 
-The **Spark and lake** folder also holds **Iceberg tables** (http://localhost:3000/d/iceberg-tables), the last 24 hours, filtered by `namespace` and `table`, over the exporter's [Iceberg table statistics](../operations/monitoring.md#iceberg-tables):
+The **Spark and lake** folder also holds **Iceberg tables** (http://localhost:3000/d/iceberg-tables), the last 24 hours, filtered by `namespace` (`bronze`, `silver` and `gold_internal` by default) and `table`, over the exporter's [Iceberg table statistics](../operations/monitoring.md#iceberg-tables):
 
 | Row | Panel | Shows |
 | --- | --- | --- |
