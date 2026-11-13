@@ -194,7 +194,7 @@ flowchart LR
     gp -- "mergeInto" --> dp
     go -- "mergeInto" --> fo
     gi -- "mergeInto" --> fi
-    goldjob -- "the same rows, one upsert<br/>transaction per stream batch" --> gint
+    ice -- "same rows, one upsert<br/>per batch" --> gint
     ice --> lgold
     gint --> gpub
     tpl -. "over lake.gold_internal" .-> lgold
