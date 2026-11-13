@@ -541,22 +541,22 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
       <div class="card latency">
         <div class="latency-head">
           <h3>From a source commit to gold</h3>
-          <div class="metric">15&ndash;18 s <small>median, 39&ndash;41 s at p95</small></div>
+          <div class="metric">13&ndash;16 s <small>median, 16&ndash;20 s at p95</small></div>
         </div>
-        <div class="timeline" role="img" aria-label="Median seconds from the source commit: landing 9, bronze 10 to 11, silver 12, gold 15 to 18.">
-          <div class="seg" style="--lc:var(--c-landing)"><b>Landing</b><span>9 s</span></div>
-          <div class="seg" style="--lc:var(--c-bronze)"><b>Bronze</b><span>10&ndash;11 s</span></div>
-          <div class="seg" style="--lc:var(--c-silver)"><b>Silver</b><span>12 s</span></div>
-          <div class="seg" style="--lc:var(--c-gold)"><b>Gold</b><span>15&ndash;18 s</span></div>
+        <div class="timeline" role="img" aria-label="Median seconds from the source commit: landing 7 to 8, bronze 8 to 9, silver 10 to 11, gold 13 to 16.">
+          <div class="seg" style="--lc:var(--c-landing)"><b>Landing</b><span>7&ndash;8 s</span></div>
+          <div class="seg" style="--lc:var(--c-bronze)"><b>Bronze</b><span>8&ndash;9 s</span></div>
+          <div class="seg" style="--lc:var(--c-silver)"><b>Silver</b><span>10&ndash;11 s</span></div>
+          <div class="seg" style="--lc:var(--c-gold)"><b>Gold</b><span>13&ndash;16 s</span></div>
         </div>
-        <p>The commit reaches Kafka in about 0.3 s and waits up to 10 s for landing&rsquo;s next batch. Bronze, silver and gold trigger every 2, 2 and 5 seconds, so each adds 1 to 4 s; the p95 is a change that arrives behind one of gold&rsquo;s slow dimension merges in PostgreSQL. With 10-second triggers everywhere, gold was 39&ndash;40 s at the median.</p>
-        <p class="src"><code>make latency-probe PROBES=10</code>, every entity, on 2026-11-12 after the sizing changes of issue <a href="https://github.com/jonathan5p/deel-home-task/issues/195">#195</a> (<a href="../architecture/sizing/#measured-on-the-real-load">measured runs</a>); <a href="../operations/latency-results/">latest measured results</a>; <a href="../operations/latency/">end-to-end latency</a>.</p>
+        <p>The commit reaches Kafka in about 0.3 s and waits up to 10 s for landing&rsquo;s next batch. Bronze, silver and gold trigger every 2, 2 and 5 seconds, so each adds 1 to 6 s. Gold&rsquo;s four streams run independently, so a change waits only for its own entity&rsquo;s batch: about 2 s for customers and products, 5 to 6 s for orders and items. With 10-second triggers everywhere, gold was 39&ndash;40 s at the median.</p>
+        <p class="src"><code>make latency-probe PROBES=5</code>, every entity, on 2026-11-13 with gold built by Spark (<a href="../architecture/decisions/#d44--gold-modelled-in-spark-on-iceberg-postgresql-as-serving-copy">D44</a>); <a href="../operations/latency-results/">latest measured results</a>; <a href="../operations/latency/">end-to-end latency</a>.</p>
       </div>
       <div class="card">
         <h3>Data quality</h3>
-        <div class="metric">All passed <small>in bronze, silver and gold</small></div>
-        <p>12 of 12 bronze, 8 of 8 silver and 13 of 13 gold checks, each layer compared with the one before it.</p>
-        <p class="src">Runs on the local stack in <a href="https://github.com/jonathan5p/deel-home-task/pull/151">#151</a> (2026-11-10), <a href="https://github.com/jonathan5p/deel-home-task/pull/179">#179</a> and <a href="https://github.com/jonathan5p/deel-home-task/pull/154">#154</a> (2026-11-11); <a href="../lakehouse/data-quality-results/">latest results</a>; <a href="../lakehouse/data-quality/">checks</a>.</p>
+        <div class="metric">68 of 68 <small>from landing to gold</small></div>
+        <p>20 landing, 12 bronze, 8 silver and 28 gold checks, each layer compared with the one before it; gold&rsquo;s PostgreSQL copy is compared row by row with its Iceberg tables.</p>
+        <p class="src"><code>make data-quality</code> on the local stack, 2026-11-13; <a href="../lakehouse/data-quality-results/">latest results</a>; <a href="../lakehouse/data-quality/">checks</a>.</p>
       </div>
       <div class="card">
         <h3>Unit tests</h3>

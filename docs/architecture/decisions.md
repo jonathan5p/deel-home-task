@@ -522,10 +522,10 @@ Both reuse the streaming code and are tested to equal streaming output. A full b
 **Outcome.**
 
 - **Consistency trade-off.** Each store is consistent per stream batch (PostgreSQL) or per table (Iceberg), not across streams. A fact can be stored before its customer or product version; the point-in-time views resolve it as soon as the version arrives ([consistency](../lakehouse/gold/writer.md#consistency-between-the-two-copies)).
-- **Indexes.** The partial indexes of [D40](#d40--gold-indexes-chosen-from-the-query-plans-of-the-current-use-cases) serve the business-question views again, and an infra test checks with `EXPLAIN` that each view scans the open orders through its index. Query time on the running stack: **[pending measurement: `EXPLAIN (ANALYZE)` time of each of the four business-question views]**.
-- Gold latency after the change: **[pending measurement: end-to-end gold latency p50 / p95 per entity, from the latency rerun]**.
-- Gold batch duration on the dev stack: **[pending measurement: gold batch p50 / p95 per stream (dim_customer, dim_product, fact_order_history, fact_order_item_history), from the GOLD BATCH log lines]**.
-- Data quality after the change: **[pending measurement: result of a full `make data-quality` run]**.
+- **Indexes.** The partial indexes of [D40](#d40--gold-indexes-chosen-from-the-query-plans-of-the-current-use-cases) serve the business-question views again, and an infra test checks with `EXPLAIN` that each view scans the open orders through its index. Query time on the running stack: 0.15–0.33 ms per view: open orders by delivery date and status 0.18 ms, top 3 delivery dates 0.15 ms, pending items by product 0.22 ms, top 3 customers 0.33 ms, over 32 open orders out of 6,503 (2026-11-13).
+- Gold latency after the change: 13 s at the median and 16 s at p95 for customers and products, and 16 s at the median and 19–20 s at p95 for orders and order items (`make latency-probe PROBES=5` on 2026-11-13, report `20261113T054301Z`).
+- Gold batch duration on the dev stack: the batches that carry rows take 1.6 s at the median and about 5 s at p95 for customers and products (11 Spark jobs each), 4.9 s and 8.2 s for orders (23 jobs) and 4.3 s and 8.5 s for order items (20 jobs), from the `GOLD BATCH` lines of 2026-11-13; most batches find no new rows and take a few milliseconds.
+- Data quality after the change: all 68 checks passed, the 28 gold checks among them (report `20261113T054751Z`, 2026-11-13).
 
 ## Observability
 

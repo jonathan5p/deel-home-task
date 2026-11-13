@@ -307,7 +307,7 @@ The business-question views read only the open orders, through the partial index
 - `current_orders_open_customer_idx (customer_id) WHERE is_open AND NOT _is_deleted`, for the top customers;
 - `current_order_items_live_order_idx (order_id) INCLUDE (product_id, quantity) WHERE NOT _is_deleted`, for the items of each open order.
 
-An infra test reads the `EXPLAIN` of each view and checks that it scans the open orders through its index. Measured on the running stack: **[pending measurement: `EXPLAIN (ANALYZE)` time of each of the four business-question views]**. The lake views read the same tables without indexes; they are for analysis, not for the dashboards.
+An infra test reads the `EXPLAIN` of each view and checks that it scans the open orders through its index. Measured on the running stack: 0.15–0.33 ms per view: open orders by delivery date and status 0.18 ms, top 3 delivery dates 0.15 ms, pending items by product 0.22 ms, top 3 customers 0.33 ms, over 32 open orders out of 6,503 (2026-11-13). The lake views read the same tables without indexes; they are for analysis, not for the dashboards.
 
 ## Things to know about the source data
 
