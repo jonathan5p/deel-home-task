@@ -82,17 +82,6 @@ def committed_batch(files: CheckpointFiles, checkpoint: str) -> CommittedBatch |
     return _batch(files, checkpoint, max(batches)) if batches else None
 
 
-def planned_batch(files: CheckpointFiles, checkpoint: str) -> CommittedBatch | None:
-    """The batch the stream planned after its last commit, or None when it has none.
-
-    A batch's offsets are written before it runs, so its sink may already hold its output while
-    `commits/` does not list it yet.
-    """
-    committed = max(_batches(files, f"{checkpoint}/commits"), default=-1)
-    planned = max(_batches(files, f"{checkpoint}/offsets"), default=-1)
-    return _batch(files, checkpoint, planned) if planned > committed else None
-
-
 def committed_snapshots(files: CheckpointFiles, checkpoint: str) -> tuple[int, ...] | None:
     """The Iceberg snapshots a stream had read up to in its last committed batch, or None before
     its first commit; an Iceberg source's offset names a `snapshot_id`."""

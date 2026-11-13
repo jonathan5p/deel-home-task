@@ -1,27 +1,32 @@
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date
 from typing import cast
 
-from pyspark.sql import DataFrame, Row, SparkSession
-from pyspark.sql import functions as F
+from pyspark.sql import DataFrame, SparkSession
 
-from analytics.pipelines.tests.lake.gold.silver_setup import silver_schema
-from analytics.pipelines.tests.lake.gold.views.views_setup import (
-    ENTITIES,
+from analytics.pipelines.tests.lake.gold.batch_setup import MemoryGold
+from analytics.pipelines.tests.lake.gold.model.model_samples import (
+    CUSTOMERS,
+    ITEMS,
+    ORDERS,
+    PRODUCTS,
     customer,
     item,
     order,
     product,
+    staged,
 )
+from pipelines.lake.gold.batch import GoldBatches
+from pipelines.lake.gold.dimensions import DIMENSIONS, FACTS, STORED
 from pipelines.lake.gold.quality import GoldCheck, GoldReaders
-from pipelines.lake.gold.views.views import GoldLakeViews
-from pipelines.lake.shared.checkpoints import CommittedBatch
-from pipelines.lake.shared.views import StoredView
+from pipelines.lake.gold.serving import SYNC_STATE
 from pipelines.quality.checks import CheckResult
-from pipelines.settings import GoldSettings, SilverSettings
+from pipelines.settings import GoldSettings
 
-FAKE_KEY_OFFSET = 1000
+SNAPSHOT = 7
+TODAY = date(2026, 11, 13)
+SYNC_SCHEMA = "table_name string, snapshot_id long"
 SETTINGS = GoldSettings.from_env(
     {
         "LAKE_ROOT": "s3a://lake",
@@ -31,108 +36,89 @@ SETTINGS = GoldSettings.from_env(
         "ANALYTICS_DB_PASSWORD": "password",
     }
 )
-type SilverRows = Mapping[str, Sequence[Row]]
+BATCHES = GoldBatches(STORED, DIMENSIONS, FACTS)
+
+type Synced = dict[str, int | None]
+type GoldTables = Mapping[str, DataFrame]
 
 
-def base_silver() -> dict[str, list[Row]]:
-    """A customer with two versions, a product, an order with two changes and one item."""
-    return {
-        "customers": [customer(1, 10, "Ana", op="create"), customer(1, 20, "Bo")],
-        "products": [product(9, 5, "1.50", op="create")],
-        "orders": [order(701, 30, "PENDING", op="create"), order(701, 40, "PROCESSING")],
-        "order_items": [item(801, 31, 9, 2, order_id=701)],
-    }
-
-
-def batch(snapshot: int) -> CommittedBatch:
-    return CommittedBatch(query_id="query", batch=1, sources=({"snapshot_id": snapshot},))
-
-
-def batches(snapshots: Mapping[str, int]) -> dict[str, CommittedBatch]:
-    """A batch per gold stream checkpoint, reading the entity's silver snapshot."""
-    views = GoldLakeViews(SETTINGS.lake)
-    loads = (*views.dimensions, *views.facts)
-    return {
-        SETTINGS.checkpoint_path(load.name): batch(snapshots[name])
-        for load in loads
-        if (name := load.entity.name) in snapshots
-    }
+def consistent_gold(spark: SparkSession) -> dict[str, DataFrame]:
+    """Every stored gold table as the gold job writes them for two customers, one with two
+    versions, a product, three orders, one of them closed, and two items."""
+    gold = MemoryGold(spark)
+    loads = (
+        (CUSTOMERS, [customer(1, 10, "Ada"), customer(1, 20, "Bo"), customer(2, 15, "Cy")]),
+        (PRODUCTS, [product(1, 11, "1.50")]),
+        (
+            ORDERS,
+            [
+                order(70, 30),
+                order(70, 40, "PROCESSING"),
+                order(71, 31, customer_id=2),
+                order(72, 32, "COMPLETED"),
+            ],
+        ),
+        (ITEMS, [item(80, 33, order_id=70), item(81, 34, order_id=71, quantity=5)]),
+    )
+    for load, rows in loads:
+        gold.apply(BATCHES.writes(load.name, staged(spark, load, rows), gold.read))
+    return {name: rows.localCheckpoint() for name, rows in gold.tables.items()}
 
 
 @dataclass
-class FakeLake:
+class FakeGold:
+    """The gold tables in Iceberg, one snapshot of each, and their PostgreSQL copy, with the
+    sync_state rows each read of it returns in turn, the last one from then on."""
+
     spark: SparkSession
-    snapshots: dict[tuple[str, int], DataFrame] = field(default_factory=dict)
-    committed: dict[str, CommittedBatch] = field(default_factory=dict)
-    planned: dict[str, CommittedBatch] = field(default_factory=dict)
-    postgres: dict[str, DataFrame] = field(default_factory=dict)
-    history_starts: dict[str, datetime | None] = field(default_factory=dict)
-    stale: set[str] = field(default_factory=set)
+    lake: dict[str, dict[int, DataFrame]]
+    postgres: dict[str, DataFrame]
+    sync_states: list[Synced]
+    sync_reads: int = 0
+    reads: list[str] = field(default_factory=list)
 
-    def add_snapshot(self, snapshot: int, silver: SilverRows) -> None:
-        for name, entity in ENTITIES.items():
-            table = SETTINGS.lake.table(SilverSettings.LAYER, name)
-            rows = list(silver.get(name, ()))
-            self.snapshots[table, snapshot] = self.spark.createDataFrame(
-                rows, silver_schema(entity)
-            )
-
-    def read_snapshot(self, spark: SparkSession, table: str, snapshot: int) -> DataFrame:
-        return self.snapshots[table, snapshot]
-
-    def read_postgres(self, spark: SparkSession, relation: str) -> DataFrame:
-        if "history_start" in relation:
-            (fact,) = [name for name in self.history_starts if f".{name})" in relation]
-            return spark.createDataFrame([(self.history_starts[fact],)], "start timestamp")
-        return self.postgres[relation]
-
-    def read_stored_view(self, spark: SparkSession, view: str) -> StoredView | None:
-        if view in self.stale:
-            return None
-        definition = GoldLakeViews(SETTINGS.lake).definitions()[view]
-        return StoredView.of(definition)
-
-    def readers(self) -> GoldReaders:
-        return GoldReaders(
-            committed=self.committed.get,
-            planned=self.planned.get,
-            read_snapshot=self.read_snapshot,
-            read_postgres=self.read_postgres,
-            read_stored_view=self.read_stored_view,
+    @classmethod
+    def mirrored(cls, spark: SparkSession, tables: GoldTables) -> FakeGold:
+        return cls(
+            spark=spark,
+            lake={name: {SNAPSHOT: rows} for name, rows in tables.items()},
+            postgres={STORED[name].relation: rows for name, rows in tables.items()},
+            sync_states=[dict.fromkeys(tables, SNAPSHOT)],
         )
 
+    def read(self, name: str) -> DataFrame:
+        return next(iter(self.lake[name].values()))
+
+    def read_snapshot(self, name: str, snapshot_id: int) -> DataFrame | None:
+        return self.lake[name].get(snapshot_id)
+
+    def read_postgres(self, spark: SparkSession, relation: str) -> DataFrame:
+        if relation != SYNC_STATE:
+            self.reads.append(relation)
+            return self.postgres[relation]
+        state = self.sync_states[min(self.sync_reads, len(self.sync_states) - 1)]
+        self.sync_reads += 1
+        return spark.createDataFrame(list(state.items()), SYNC_SCHEMA)
+
+    def change(self, name: str, edit: Callable[[DataFrame], DataFrame]) -> None:
+        """Edit a table on both sides, so the copy still matches."""
+        self.lake[name] = {snapshot: edit(rows) for snapshot, rows in self.lake[name].items()}
+        relation = STORED[name].relation
+        self.postgres[relation] = edit(self.postgres[relation])
+
     def check(self) -> GoldCheck:
-        return GoldCheck(self.spark, SETTINGS, self.readers())
+        readers = GoldReaders(read_postgres=self.read_postgres, lake=self)
+        return GoldCheck(self.spark, SETTINGS, readers, today=lambda: TODAY)
 
-    def mirror_postgres(
-        self, snapshots: Mapping[str, int], starts: Mapping[str, datetime | None] | None = None
-    ) -> None:
-        starts = starts or {}
-        self.history_starts = {
-            fact.history.name: starts.get(fact.entity.name)
-            for fact in GoldLakeViews(SETTINGS.lake).facts
-        }
-        check = self.check()
-        rows = check.lake_rows(snapshots, starts)
-        keys = check.lake.surrogate_keys
-        for name, frame in rows.items():
-            self.postgres[f"gold.{name}"] = frame.select(
-                *(
-                    (F.col(c) + FAKE_KEY_OFFSET).alias(c) if c in keys else F.col(c)
-                    for c in frame.columns
-                )
-            )
-        for dimension in check.lake.dimensions:
-            versions = rows[dimension.name].select(
-                (F.col(dimension.surrogate_key) + FAKE_KEY_OFFSET).alias(dimension.surrogate_key),
-                F.col(dimension.surrogate_key).alias("_commit_sequence"),
-            )
-            self.postgres[f"gold_internal.{dimension.name}"] = versions
+    def results(self) -> list[CheckResult]:
+        return self.check().run()
 
 
-def by_view(results: Sequence[CheckResult]) -> dict[str, CheckResult]:
-    """The results by the name of the view they compared."""
-    return {result.subject.rpartition(".")[2]: result for result in results}
+def by_check(results: Sequence[CheckResult], check: str) -> dict[str, CheckResult]:
+    """The results of one check by the name of the table they checked."""
+    return {
+        result.subject.rpartition(".")[2]: result for result in results if result.check == check
+    }
 
 
 def samples(result: CheckResult, side: str) -> tuple[Mapping[str, object], ...]:
