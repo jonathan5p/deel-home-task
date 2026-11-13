@@ -67,12 +67,14 @@ SILVER = SilverFixture("test-fixtures/gold", "gold_fixture", BATCHES)
 
 @dataclass(frozen=True, slots=True)
 class GoldState:
-    """Every stored version of the fixture keys, and what the public views show of them."""
+    """Every stored version of the fixture keys, what the public views show of them, and the
+    seeded dimensions' row counts."""
 
     products: Table
     customers: Table
     public_products: Table
     public_customers: Table
+    seeded: Table
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,7 +88,7 @@ class GoldRuns:
 STORED = """
 SELECT {key}, _commit_sequence, {surrogate}, {value}, _valid_from, coalesce(_valid_to::text, ''),
     _is_current, _is_folded, _is_deleted
-FROM gold_internal.{table}_versions
+FROM gold_internal.{table}
 WHERE {key} IN ({keys})
 ORDER BY 1, 2;
 """
@@ -95,6 +97,12 @@ SELECT {key}, {value}, _valid_from, coalesce(_valid_to::text, ''), _is_current
 FROM gold.{table}
 WHERE {key} IN ({keys})
 ORDER BY 1, 3;
+"""
+
+SEEDED = """
+SELECT 'statuses', count(*), count(*) FILTER (WHERE is_open) FROM gold.dim_order_status
+UNION ALL
+SELECT 'days', count(*), count(*) FILTER (WHERE is_weekend) FROM gold.dim_date;
 """
 
 
@@ -118,6 +126,7 @@ def gold_state(stack: Stack) -> GoldState:
         customers=rows(stack, STORED.format(**customer_query)),
         public_products=rows(stack, PUBLIC.format(**product_query)),
         public_customers=rows(stack, PUBLIC.format(**customer_query)),
+        seeded=rows(stack, SEEDED),
     )
 
 
@@ -141,7 +150,7 @@ def remove_fixture_rows(stack: Stack) -> None:
         stack,
         f"DELETE FROM gold_internal.dim_product WHERE product_id IN ({keys(PRODUCTS)});"
         f" DELETE FROM gold_internal.dim_customer WHERE customer_id IN ({keys(CUSTOMERS)});"
-        " TRUNCATE gold_internal.stage_dim_product, gold_internal.stage_dim_customer;",
+        " TRUNCATE gold_internal.sync_state;",
     )
 
 

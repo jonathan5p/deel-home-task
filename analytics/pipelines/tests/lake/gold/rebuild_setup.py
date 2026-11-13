@@ -1,7 +1,7 @@
 from datetime import timedelta
 from pathlib import Path
 
-from pyspark.sql import DataFrame, SparkSession
+from pyspark.sql import DataFrame, Row, SparkSession
 
 from analytics.pipelines.tests.lake.gold.silver_setup import (
     CHANGED_AT,
@@ -68,3 +68,18 @@ def silver_tables(root: Path, entities: list[EntityDefinition], log: list[str]) 
         return spark.read.schema(schemas[entity]).parquet(str(root / entity))
 
     return read
+
+
+class RecordingWriter:
+    """A gold writer that keeps the rows of every batch by load, or fails them."""
+
+    def __init__(self, log: list[str], *, fail: bool = False) -> None:
+        self.log = log
+        self.fail = fail
+        self.batches: dict[str, list[Row]] = {}
+
+    def write_batch(self, load: str, batch: DataFrame, batch_id: int | None = None) -> None:
+        if self.fail:
+            raise RuntimeError(f"cannot write {load}")
+        self.log.append(f"write {load}")
+        self.batches[load] = batch.collect()

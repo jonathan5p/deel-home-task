@@ -20,10 +20,10 @@ from tests.infra.gold_fixtures import (
     UNDESCRIBED_INDEXES,
     UNDESCRIBED_RELATIONS,
     UNDESCRIBED_SCHEMAS,
-    VERSIONS_VIEWS,
     VIEWS_WITHOUT_TABLE,
     answer,
     column_types,
+    explained,
     item_change,
     order_change,
     psql,
@@ -35,6 +35,23 @@ from tests.infra.gold_fixtures import (
 from tests.infra.stack import Stack
 
 NEXT_MONTH = "date_trunc('month', localtimestamp) + interval '1 month 2 days'"
+# Order 1 changed before its customer's first version, 2 and 3 in each version's range, and 4
+# belongs to a customer gold does not hold.
+POINT_IN_TIME = """
+INSERT INTO gold_internal.fact_order_history (
+    order_id, _commit_sequence, _changed_at, _change_op, status_key, customer_id,
+    _content_hash, _is_deleted, _is_folded, _version_number, _valid_to, _is_current
+)
+VALUES
+    (1, 1, '2026-10-30 08:00', 'create', 1, 1, 'h', false, false, 1, NULL, true),
+    (2, 2, '2026-11-03 08:00', 'create', 1, 1, 'h', false, false, 1, NULL, true),
+    (3, 3, '2026-11-06 08:00', 'create', 1, 1, 'h', false, false, 1, NULL, true),
+    (4, 4, '2026-11-06 08:00', 'create', 1, 4, 'h', false, false, 1, NULL, true);
+SELECT order_id, _changed_at, customer_key, customer_name
+FROM gold.fact_order_history
+WHERE order_id BETWEEN 1 AND 4
+ORDER BY order_id;
+"""
 
 
 @pytest.fixture(scope="module")
@@ -58,14 +75,13 @@ def test_ddl_applies_again_to_an_existing_database(
         assert "ERROR" not in run.stderr
 
 
-def test_internal_schema_holds_the_model_tables_and_the_dimension_versions_views(
+def test_internal_schema_holds_only_the_stored_tables_their_staging_and_the_sync_state(
     gold: Stack,
 ) -> None:
     relations = dict(rows(gold, top_level_relations("gold_internal")))
 
-    assert set(relations) == INTERNAL_TABLES | STAGING_TABLES | VERSIONS_VIEWS
-    assert {relations[name] for name in INTERNAL_TABLES | STAGING_TABLES} <= {"r", "p"}
-    assert {relations[name] for name in VERSIONS_VIEWS} == {"v"}
+    assert set(relations) == INTERNAL_TABLES | STAGING_TABLES
+    assert set(relations.values()) <= {"r", "p"}
 
 
 def test_staging_tables_are_unlogged(gold: Stack) -> None:
@@ -148,55 +164,22 @@ def test_current_state_tables_have_the_indexes_of_the_business_views(gold: Stack
     ]
 
 
-def test_order_statuses_are_seeded_with_their_open_flag(gold: Stack) -> None:
-    statuses = rows(gold, "SELECT status_code, is_open FROM gold.dim_order_status;")
-
-    assert dict(statuses) == {
-        "PENDING": "t",
-        "PROCESSING": "t",
-        "REPROCESSING": "t",
-        "COMPLETED": "f",
-        "UNKNOWN": "t",
-    }
-
-
-def test_status_keys_are_stable(gold: Stack) -> None:
-    keys = rows(gold, "SELECT status_key, status_code FROM gold.dim_order_status ORDER BY 1;")
-
-    assert keys == [
-        ["1", "PENDING"],
-        ["2", "PROCESSING"],
-        ["3", "REPROCESSING"],
-        ["4", "COMPLETED"],
-        ["5", "UNKNOWN"],
-    ]
-
-
-def test_dates_cover_2000_to_2099_once_each(gold: Stack) -> None:
-    summary = rows(
-        gold,
-        "SELECT count(*), count(DISTINCT calendar_date), min(calendar_date), max(calendar_date)"
-        " FROM gold.dim_date;",
-    )
-
-    assert summary == [["36525", "36525", "2000-01-01", "2099-12-31"]]
-
-
 @pytest.mark.parametrize(
-    ("date_key", "expected"),
+    ("view", "index"),
     [
-        (20240229, ["2024-02-29", "2024", "1", "2", "29", "4", "f"]),
-        (20261108, ["2026-11-08", "2026", "4", "11", "8", "7", "t"]),
+        ("open_orders_by_delivery_date_and_status", "current_orders_open_delivery_idx"),
+        ("top_delivery_dates_by_open_orders", "current_orders_open_delivery_idx"),
+        ("top_customers_by_pending_orders", "current_orders_open_customer_idx"),
+        ("pending_items_by_product", "current_order_items_live_order_idx"),
     ],
 )
-def test_date_attributes(gold: Stack, date_key: int, expected: list[str]) -> None:
-    day = rows(
-        gold,
-        "SELECT calendar_date, year, quarter, month, day_of_month, day_of_week, is_weekend"
-        f" FROM gold.dim_date WHERE date_key = {date_key};",
-    )
+def test_each_business_view_reads_the_open_orders_through_its_partial_index(
+    gold: Stack, view: str, index: str
+) -> None:
+    plan = explained(gold, view)
 
-    assert day == [expected]
+    assert f"Index Only Scan using {index}" in plan or f"Index Scan using {index}" in plan, plan
+    assert "Seq Scan on current_orders" not in plan, plan
 
 
 def test_history_rows_land_in_the_default_partition(gold: Stack) -> None:
@@ -234,43 +217,6 @@ def test_a_replayed_history_row_is_ignored_on_conflict(gold: Stack) -> None:
     )
 
     assert count == [["1"]]
-
-
-def test_order_versions_are_ordered_by_commit_sequence_despite_a_late_event(
-    gold: Stack,
-) -> None:
-    versions = rows(
-        gold,
-        rolled_back(
-            order_change(7, 500, "timestamp '2026-11-02 10:00'", "PROCESSING"),
-            order_change(7, 610, "timestamp '2026-11-02 11:00'", "COMPLETED"),
-            order_change(7, 420, "timestamp '2026-11-02 09:00'", "PENDING"),
-            "SELECT status_key, _valid_to, _is_current"
-            " FROM gold.fact_order_history ORDER BY _changed_at;",
-        ),
-    )
-
-    assert versions == [
-        ["1", "2026-11-02 10:00:00", "f"],
-        ["2", "2026-11-02 11:00:00", "f"],
-        ["4", "", "t"],
-    ]
-
-
-def test_item_versions_are_ordered_by_commit_sequence_despite_a_late_event(
-    gold: Stack,
-) -> None:
-    versions = rows(
-        gold,
-        rolled_back(
-            item_change(3, 700, "timestamp '2026-11-03 10:00'", quantity=2),
-            item_change(3, 650, "timestamp '2026-11-03 09:00'", quantity=1),
-            "SELECT quantity, _valid_to, _is_current"
-            " FROM gold.fact_order_item_history ORDER BY _changed_at;",
-        ),
-    )
-
-    assert versions == [["1", "2026-11-03 10:00:00", "f"], ["2", "", "t"]]
 
 
 def test_open_orders_by_delivery_date_and_status(gold: Stack) -> None:
@@ -329,6 +275,36 @@ def test_top_customers_include_ties_and_customers_missing_from_the_dimension(
         ["3", "Alan Turing", "1"],
         ["4", "", "1"],
     ]
+
+
+def test_an_order_change_sees_the_customer_version_valid_when_it_was_committed(
+    gold: Stack,
+) -> None:
+    seen = rows(gold, rolled_back(CURRENT_STATE, POINT_IN_TIME))
+
+    assert seen == [
+        ["1", "2026-10-30 08:00:00", "9000", "Ada"],
+        ["2", "2026-11-03 08:00:00", "9000", "Ada"],
+        ["3", "2026-11-06 08:00:00", "9001", "Ada Lovelace"],
+        ["4", "2026-11-06 08:00:00", "", ""],
+    ]
+
+
+@pytest.mark.parametrize("dimension", ["dim_customer", "dim_product"])
+def test_a_surrogate_key_collision_is_refused(gold: Stack, dimension: str) -> None:
+    key, business_key = f"{dimension[4:]}_key", f"{dimension[4:]}_id"
+    version = (
+        f"INSERT INTO gold_internal.{dimension} ({key}, {business_key}, _commit_sequence,"
+        " _content_hash, _is_deleted, _valid_from, _is_folded, _version_number, _valid_to,"
+        " _is_current) VALUES (77, {id}, {sequence}, 'h', false, now(), false, 1, NULL, true);"
+    )
+    run = psql(
+        gold,
+        rolled_back(version.format(id=1, sequence=10), version.format(id=2, sequence=20)),
+    )
+
+    assert run.returncode != 0
+    assert f"{dimension}_{key}_key" in run.stderr
 
 
 def test_freshness_is_the_newest_change_per_entity(gold: Stack) -> None:

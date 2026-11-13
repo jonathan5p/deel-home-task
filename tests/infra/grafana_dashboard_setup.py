@@ -2,16 +2,11 @@ import json
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 
-from tests.infra.gold_fixtures import CURRENT_STATE, rows
+from tests.infra.gold_fixtures import CURRENT_STATE, REMOVE_CURRENT_STATE, rows
 from tests.infra.grafana_setup import Json, request
 from tests.infra.stack import REPO_ROOT, Stack
 
 DASHBOARD = REPO_ROOT / "monitoring/grafana/dashboards/gold-metrics.json"
-REMOVE_CURRENT_STATE = """
-DELETE FROM gold_internal.current_order_items WHERE order_item_id BETWEEN 1001 AND 1008;
-DELETE FROM gold_internal.current_orders WHERE order_id BETWEEN 101 AND 110;
-DELETE FROM gold_internal.dim_customer WHERE customer_id IN (1, 2, 3);
-"""
 
 type Cell = str | Decimal | None
 

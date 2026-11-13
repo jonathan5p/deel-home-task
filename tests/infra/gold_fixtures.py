@@ -6,7 +6,13 @@ from tests.infra.stack import REPO_ROOT, Stack
 GOLD_DDL = REPO_ROOT / "docker/analytics-db/initdb/02-gold-model.sql"
 GOLD_QUERIES = REPO_ROOT / "analytics/sql/gold"
 
-INTERNAL_TABLES = {
+BUSINESS_VIEWS = (
+    "open_orders_by_delivery_date_and_status",
+    "top_delivery_dates_by_open_orders",
+    "pending_items_by_product",
+    "top_customers_by_pending_orders",
+)
+STORED_TABLES = {
     "dim_customer",
     "dim_product",
     "dim_date",
@@ -16,21 +22,16 @@ INTERNAL_TABLES = {
     "current_orders",
     "current_order_items",
 }
-STAGING_TABLES = {
-    "stage_dim_customer",
-    "stage_dim_product",
-    "stage_fact_order_history",
-    "stage_fact_order_item_history",
-}
-VERSIONS_VIEWS = {"dim_customer_versions", "dim_product_versions"}
-BUSINESS_VIEWS = (
-    "open_orders_by_delivery_date_and_status",
-    "top_delivery_dates_by_open_orders",
-    "pending_items_by_product",
-    "top_customers_by_pending_orders",
-)
+INTERNAL_TABLES = STORED_TABLES | {"sync_state"}
+STAGING_TABLES = {f"stage_{name}" for name in STORED_TABLES}
 VIEWS_WITHOUT_TABLE = ("open_orders", *BUSINESS_VIEWS)
-PUBLIC_VIEWS = INTERNAL_TABLES | {"data_freshness", *VIEWS_WITHOUT_TABLE}
+PUBLIC_VIEWS = STORED_TABLES | {"data_freshness", *VIEWS_WITHOUT_TABLE}
+CURRENT_STATE_INDEXES = """
+SELECT indexname, indexdef
+FROM pg_indexes
+WHERE schemaname = 'gold_internal' AND tablename IN ('current_orders', 'current_order_items')
+ORDER BY 1;
+"""
 
 UNDESCRIBED_RELATIONS = """
 SELECT n.nspname || '.' || c.relname
@@ -71,13 +72,6 @@ WHERE n.nspname IN ('gold', 'gold_internal')
       WHERE k.conindid = i.indexrelid AND k.contype IN ('p', 'u', 'x')
   )
   AND coalesce(obj_description(c.oid, 'pg_class'), '') = ''
-ORDER BY 1;
-"""
-
-CURRENT_STATE_INDEXES = """
-SELECT indexname, indexdef
-FROM pg_indexes
-WHERE schemaname = 'gold_internal' AND tablename IN ('current_orders', 'current_order_items')
 ORDER BY 1;
 """
 
@@ -123,23 +117,40 @@ JOIN pg_namespace AS n ON n.oid = c.relnamespace
 WHERE n.nspname = 'gold'
   AND a.attnum > 0
   AND NOT a.attisdropped
-  AND a.attname IN ('_commit_sequence', '_content_hash', '_is_deleted', '_is_folded')
+  AND a.attname IN (
+      '_commit_sequence', '_content_hash', '_is_deleted', '_is_folded', '_version_number'
+  )
 ORDER BY 1;
 """
 
-# Each case is load-bearing for the expected query results: a COMPLETED order (108), a
-# deleted order (110), an UNKNOWN status (103), a customer with two versions (1), a customer
-# missing from dim_customer (4), and ties for third place in the top-3 questions.
-CURRENT_STATE = """
+VERSION_VALUES = "false, 1, NULL, true"
+STATUS_KEYS = {"PENDING": 1, "PROCESSING": 2, "REPROCESSING": 3, "COMPLETED": 4, "UNKNOWN": 5}
+
+# The seeded statuses, which the gold job copies; a test stack may not have run it.
+ORDER_STATUSES = """
+INSERT INTO gold_internal.dim_order_status (status_key, status_code, is_open)
+VALUES (1, 'PENDING', true), (2, 'PROCESSING', true), (3, 'REPROCESSING', true),
+    (4, 'COMPLETED', false), (5, 'UNKNOWN', true)
+ON CONFLICT (status_key) DO NOTHING;
+"""
+
+# Customer 1 has an older version, customer 4 is missing from dim_customer; order 108 is
+# completed, order 110 deleted, and item 1007 belongs to an order gold does not hold.
+CURRENT_STATE = f"""
+{ORDER_STATUSES}
 INSERT INTO gold_internal.dim_customer (
-    customer_id, customer_name, customer_address, is_active, _commit_sequence,
-    _content_hash, _is_deleted, _valid_from
+    customer_key, customer_id, customer_name, customer_address, is_active, _commit_sequence,
+    _content_hash, _is_deleted, _valid_from, _is_folded, _version_number, _valid_to, _is_current
 )
 VALUES
-    (1, 'Ada', 'Old Street 1', true, 100, 'a1', false, '2026-11-01 08:00'),
-    (1, 'Ada Lovelace', 'New Street 2', true, 300, 'a2', false, '2026-11-05 08:00'),
-    (2, 'Grace Hopper', 'Main Street 3', true, 110, 'g1', false, '2026-11-01 08:00'),
-    (3, 'Alan Turing', 'Side Street 4', true, 120, 't1', false, '2026-11-01 08:00');
+    (9000, 1, 'Ada', 'Old Street 1', true, 100, 'a1', false, '2026-11-01 08:00',
+        false, 1, '2026-11-05 08:00', false),
+    (9001, 1, 'Ada Lovelace', 'New Street 2', true, 300, 'a2', false, '2026-11-05 08:00',
+        false, 2, NULL, true),
+    (9002, 2, 'Grace Hopper', 'Main Street 3', true, 110, 'g1', false, '2026-11-01 08:00',
+        {VERSION_VALUES}),
+    (9003, 3, 'Alan Turing', 'Side Street 4', true, 120, 't1', false, '2026-11-01 08:00',
+        {VERSION_VALUES});
 
 INSERT INTO gold_internal.current_orders (
     order_id, status_key, is_open, customer_id, order_date, delivery_date,
@@ -183,11 +194,17 @@ FROM (
 ) AS i (order_item_id, order_id, product_id, quantity, is_deleted);
 """
 
+REMOVE_CURRENT_STATE = """
+DELETE FROM gold_internal.dim_customer WHERE customer_key BETWEEN 9000 AND 9003;
+DELETE FROM gold_internal.current_orders WHERE order_id BETWEEN 101 AND 110;
+DELETE FROM gold_internal.current_order_items WHERE order_item_id BETWEEN 1001 AND 1008;
+"""
 
 # Two delivery dates and two customers tie for first place with 3 open orders, then one with 2
 # and one with 1: ranked with gaps, the tie takes places 1 and 2, so the single third place
 # is the one with 2, and the one with 1 (fourth) is left out.
-TIES_AT_THE_TOP = """
+TIES_AT_THE_TOP = f"""
+{ORDER_STATUSES}
 INSERT INTO gold_internal.current_orders (
     order_id, status_key, is_open, customer_id, order_date, delivery_date,
     order_date_key, delivery_date_key, _commit_sequence, _changed_at, _is_deleted
@@ -253,11 +270,14 @@ def order_change(
     stands for the content hash."""
     conflict = " ON CONFLICT DO NOTHING" if ignore_duplicate else ""
     return f"""
-INSERT INTO gold_internal.fact_order_history
-    (order_id, _commit_sequence, _changed_at, _change_op, status_key, _content_hash, _is_deleted)
-SELECT {order_id}, {commit_sequence}, {changed_at}, 'update', status_key, '{status}', false
-FROM gold_internal.dim_order_status
-WHERE status_code = '{status}'{conflict};
+INSERT INTO gold_internal.fact_order_history (
+    order_id, _commit_sequence, _changed_at, _change_op, status_key, _content_hash, _is_deleted,
+    _is_folded, _version_number, _valid_to, _is_current
+)
+VALUES (
+    {order_id}, {commit_sequence}, {changed_at}, 'update', {STATUS_KEYS[status]}, '{status}',
+    false, {VERSION_VALUES}
+){conflict};
 """
 
 
@@ -267,11 +287,11 @@ def item_change(order_item_id: int, commit_sequence: int, changed_at: str, quant
     return f"""
 INSERT INTO gold_internal.fact_order_item_history (
     order_item_id, _commit_sequence, _changed_at, _change_op, order_id, product_id, quantity,
-    _content_hash, _is_deleted
+    _content_hash, _is_deleted, _is_folded, _version_number, _valid_to, _is_current
 )
 VALUES (
     {order_item_id}, {commit_sequence}, {changed_at}, 'update', 1, 1, {quantity},
-    '{quantity}', false
+    '{quantity}', false, {VERSION_VALUES}
 );
 """
 
@@ -287,19 +307,36 @@ def answer(stack: Stack, query_file: str, fixture: str = CURRENT_STATE) -> list[
     return rows(stack, rolled_back(fixture, query))
 
 
-FRESHNESS_FIXTURE = """
+def explained(stack: Stack, view: str, fixture: str = CURRENT_STATE) -> str:
+    """The plan PostgreSQL picks for a whole gold view on a fixture, with sequential scans
+    off as they would be on a table too large to scan, so only an index the plan can use
+    takes their place."""
+    plan = rows(
+        stack,
+        rolled_back(
+            fixture,
+            "ANALYZE gold_internal.current_orders, gold_internal.current_order_items;",
+            "SET LOCAL enable_seqscan = off;",
+            f"EXPLAIN (COSTS OFF) SELECT * FROM gold.{view};",
+        ),
+    )
+    return "\n".join(line[0] for line in plan)
+
+
+FRESHNESS_FIXTURE = f"""
 INSERT INTO gold_internal.dim_customer (
-    customer_id, _commit_sequence, _content_hash, _is_deleted, _valid_from
+    customer_key, customer_id, _commit_sequence, _content_hash, _is_deleted, _valid_from,
+    _is_folded, _version_number, _valid_to, _is_current
 )
 VALUES
-    (1, 10, 'a1', false, timestamp '2026-11-08 10:00'),
-    (1, 20, 'a2', false, timestamp '2026-11-09 08:00');
+    (1, 1, 10, 'a1', false, timestamp '2026-11-08 10:00', {VERSION_VALUES}),
+    (2, 1, 20, 'a2', false, timestamp '2026-11-09 08:00', {VERSION_VALUES});
 INSERT INTO gold_internal.current_orders (
-    order_id, status_key, is_open, _commit_sequence, _changed_at
+    order_id, status_key, is_open, _commit_sequence, _changed_at, _is_deleted
 )
 VALUES
-    (1, 1, true, 30, timestamp '2026-11-09 09:00'),
-    (2, 1, true, 40, timestamp '2026-11-09 09:30');
+    (1, 1, true, 30, timestamp '2026-11-09 09:00', false),
+    (2, 1, true, 40, timestamp '2026-11-09 09:30', false);
 """
 
 FRESHNESS = (

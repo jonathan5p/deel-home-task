@@ -1,7 +1,0 @@
-INSERT INTO {{ relation }} (
-    {{ staged | join(",\n    ") }}
-)
-SELECT
-    {{ staged | join(",\n    ") }}
-FROM {{ staging }}
-ON CONFLICT ({{ key }}, _commit_sequence) DO NOTHING

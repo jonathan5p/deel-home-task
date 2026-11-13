@@ -1,8 +1,9 @@
 from collections.abc import Iterable, Mapping
 from importlib.resources.abc import Traversable
 
-from pipelines.lake.gold.facts import AsOfLookup, ChangeFact, KeyLookup, Multiplied
+from pipelines.lake.gold.facts import ChangeFact, KeyLookup
 from pipelines.lake.gold.scd2 import Scd2Dimension
+from pipelines.lake.gold.stored import StoredTable, stored_tables
 from pipelines.schemas.definitions import SCHEMAS, EntityDefinition, load_entities
 from pipelines.schemas.gold_definitions import GoldTable, load_gold_tables
 
@@ -30,11 +31,9 @@ def scd2_dimensions(
 def change_facts(
     tables: Mapping[str, GoldTable],
     entities: Iterable[EntityDefinition],
-    dimensions: Mapping[str, Scd2Dimension],
 ) -> Mapping[str, ChangeFact]:
-    """The history facts by gold table, each with its current-state table, its source entity,
-    and the dimensions its columns are looked up in. The as-of lookups also declare which
-    facts a dimension's merge re-resolves."""
+    """The history facts by gold table, each with its current-state table as they are stored,
+    its source entity, and the seeded dimensions its keys are looked up in."""
     by_name = {entity.name: entity for entity in entities}
 
     def day(column: str, source: str) -> KeyLookup:
@@ -51,20 +50,9 @@ def change_facts(
             fallback=UNKNOWN_STATUS,
         )
 
-    customer = AsOfLookup(
-        dimensions["dim_customer"],
-        business_key="customer_id",
-        columns=(("customer_key", "customer_key"),),
-    )
-    product = AsOfLookup(
-        dimensions["dim_product"],
-        business_key="product_id",
-        columns=(("product_key", "product_key"), ("unit_price", "unit_price")),
-        multiplied=(Multiplied("line_amount", factor="quantity", looked_up="unit_price"),),
-    )
     return {
         "fact_order_history": ChangeFact(
-            tables["fact_order_history"],
+            tables["fact_order_history"].stored(),
             tables["current_orders"],
             by_name["orders"],
             lookups=(
@@ -73,13 +61,11 @@ def change_facts(
                 day("order_date_key", "order_date"),
                 day("delivery_date_key", "delivery_date"),
             ),
-            as_of=(customer,),
         ),
         "fact_order_item_history": ChangeFact(
-            tables["fact_order_item_history"],
+            tables["fact_order_item_history"].stored(),
             tables["current_order_items"],
             by_name["order_items"],
-            as_of=(product,),
         ),
     }
 
@@ -90,8 +76,17 @@ def load_dimensions(root: Traversable = SCHEMAS) -> Mapping[str, Scd2Dimension]:
 
 def load_facts(root: Traversable = SCHEMAS) -> Mapping[str, ChangeFact]:
     tables, entities = load_gold_tables(root), load_entities(root)
-    return change_facts(tables, entities, scd2_dimensions(tables, entities))
+    return change_facts(tables, entities)
+
+
+def load_stored(root: Traversable = SCHEMAS) -> Mapping[str, StoredTable]:
+    """The gold tables the gold job writes, by name."""
+    tables, entities = load_gold_tables(root), load_entities(root)
+    dimensions = scd2_dimensions(tables, entities)
+    facts = change_facts(tables, entities)
+    return stored_tables(tables, dimensions.values(), facts.values())
 
 
 DIMENSIONS = tuple(load_dimensions().values())
 FACTS = tuple(load_facts().values())
+STORED = load_stored()

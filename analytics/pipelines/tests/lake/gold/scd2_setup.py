@@ -29,6 +29,10 @@ DIM_THINGS = GoldTable(
         column("_content_hash", ColumnType.STRING),
         column("_is_deleted", ColumnType.BOOLEAN),
         column("_valid_from", ColumnType.TIMESTAMP_MILLIS),
+        column("_is_folded", ColumnType.BOOLEAN),
+        column("_version_number"),
+        column("_valid_to", ColumnType.TIMESTAMP_MILLIS),
+        column("_is_current", ColumnType.BOOLEAN),
     ),
     references=(("thing_id", "things.thing_id"), ("thing_name", "things.thing_name")),
 )

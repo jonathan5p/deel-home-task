@@ -1,4 +1,4 @@
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -6,18 +6,17 @@ from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 
 from common.settings import AnalyticsDbSettings
-from pipelines.lake.gold.facts import ChangeFact
-from pipelines.lake.gold.postgres import WRITER_LOCK, ConnectionFactory, run_in_transaction
+from pipelines.lake.gold.serving import StageWriter
 from pipelines.schemas.definitions import EntityDefinition
 
 POSTGRES_DRIVER = "org.postgresql.Driver"
+SCHEDULER_POOL = "spark.scheduler.pool"
 
-type StageWriter = Callable[[DataFrame, str], None]
 type BatchWriter = Callable[[DataFrame, int], None]
 
 
 class GoldLoad(Protocol):
-    """A gold table, or a pair of them, loaded from the silver table of one source entity."""
+    """The gold tables loaded from the silver table of one source entity."""
 
     @property
     def name(self) -> str: ...
@@ -26,14 +25,13 @@ class GoldLoad(Protocol):
     def entity(self) -> EntityDefinition: ...
 
     @property
-    def staging_relation(self) -> str: ...
-
-    @property
     def silver_columns(self) -> Mapping[str, str]: ...
 
     def check_silver(self, columns: Iterable[str]) -> None: ...
 
-    def merge_statements(self) -> Sequence[str]: ...
+
+class BatchLoader(Protocol):
+    def write_batch(self, load: str, batch: DataFrame, batch_id: int | None = None) -> None: ...
 
 
 def staged_rows(silver: DataFrame, load: GoldLoad) -> DataFrame:
@@ -64,20 +62,14 @@ def jdbc_stage(settings: AnalyticsDbSettings) -> StageWriter:
 
 
 @dataclass(frozen=True, slots=True)
-class MergeSink:
-    """Writes one micro-batch of a load: stages its rows, then merges them in one transaction,
-    followed by the re-resolution of the facts that look up what it wrote. Both steps are
-    idempotent, so a replayed batch changes nothing."""
+class GoldSink:
+    """The foreachBatch function of a load's stream: hands each micro-batch to the writer. The
+    batch's jobs run in a scheduler pool named after the load, so under fair scheduling the
+    streams share the executors instead of queueing behind each other's jobs."""
 
     load: GoldLoad
-    stage: StageWriter
-    connect: ConnectionFactory
-    facts: tuple[ChangeFact, ...] = ()
-
-    def statements(self) -> tuple[str, ...]:
-        resolved = (s for fact in self.facts for s in fact.resolve_statements(self.load.name))
-        return (WRITER_LOCK, *self.load.merge_statements(), *resolved)
+    writer: BatchLoader
 
     def __call__(self, batch: DataFrame, batch_id: int) -> None:
-        self.stage(batch, self.load.staging_relation)
-        run_in_transaction(self.connect, self.statements())
+        batch.sparkSession.sparkContext.setLocalProperty(SCHEDULER_POOL, self.load.name)
+        self.writer.write_batch(self.load.name, batch, batch_id)

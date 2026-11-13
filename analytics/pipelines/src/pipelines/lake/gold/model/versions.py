@@ -1,9 +1,9 @@
 from collections.abc import Sequence
-from enum import StrEnum
 
 from pyspark.sql import Column, DataFrame, Window
 from pyspark.sql import functions as F
 
+from pipelines.lake.gold.model.columns import VERSION_COLUMNS, VersionColumn
 from pipelines.lake.shared.columns import MetadataColumn
 
 COMMIT_SEQUENCE = str(MetadataColumn.COMMIT_SEQUENCE)
@@ -11,16 +11,6 @@ CONTENT_HASH = str(MetadataColumn.CONTENT_HASH)
 IS_DELETED = str(MetadataColumn.IS_DELETED)
 CHANGED_AT = str(MetadataColumn.CHANGED_AT)
 VALID_FROM = str(MetadataColumn.VALID_FROM)
-
-
-class VersionColumn(StrEnum):
-    IS_FOLDED = "_is_folded"
-    VERSION_NUMBER = "_version_number"
-    VALID_TO = "_valid_to"
-    IS_CURRENT = "_is_current"
-
-
-VERSION_COLUMNS = tuple(str(column) for column in VersionColumn)
 
 
 def all_of(conditions: Sequence[Column]) -> Column:
@@ -37,17 +27,10 @@ def any_of(conditions: Sequence[Column]) -> Column:
     return combined
 
 
-def new_changes(batch: DataFrame, stored: DataFrame, key: str) -> DataFrame:
-    """The changes of `batch` not stored yet, one per `key` and `_commit_sequence`. A replayed
-    change is skipped, so the stored row, with the values resolved when it was written, wins."""
-    identity = [key, COMMIT_SEQUENCE]
-    pick = Window.partitionBy(*identity).orderBy(CONTENT_HASH, IS_DELETED)
-    distinct = (
-        batch.withColumn("__pick", F.row_number().over(pick))
-        .where(F.col("__pick") == 1)
-        .drop("__pick")
-    )
-    return distinct.join(stored.select(*identity), identity, "left_anti").select(*batch.columns)
+def touched(stored: DataFrame, batch: DataFrame, key: str) -> DataFrame:
+    """The `stored` rows of the keys `batch` touches. A batch holds few keys, so they are
+    broadcast and the stored rows are filtered where they are read, with no shuffle."""
+    return stored.join(F.broadcast(batch.select(key)), key, "left_semi")
 
 
 def with_versions(rows: DataFrame, key: str, starts_at: str) -> DataFrame:
@@ -85,32 +68,38 @@ def with_versions(rows: DataFrame, key: str, starts_at: str) -> DataFrame:
     )
 
 
-def changed_rows(
-    recomputed: DataFrame, stored: DataFrame, keys: Sequence[str], compared: Sequence[str]
-) -> DataFrame:
-    """The rows of `recomputed` that `stored` has no row for, by `keys`, or whose `compared`
-    values differ from the stored row's, nulls comparing equal. A replayed batch that changes
-    nothing gives no rows."""
-    before = stored.select(
-        *keys,
-        *(F.col(column).alias(f"__stored_{column}") for column in compared),
-        F.lit(True).alias("__stored"),
-    )
-    differs = any_of(
-        [~F.col(column).eqNullSafe(F.col(f"__stored_{column}")) for column in compared]
-    )
-    return (
-        recomputed.join(before, list(keys), "left")
-        .where(F.col("__stored").isNull() | differs)
-        .select(*recomputed.columns)
-    )
+def version_changes(stored: DataFrame, batch: DataFrame, key: str, starts_at: str) -> DataFrame:
+    """The changes to write once `batch` joins the `stored` changes of its keys: its changes not
+    stored yet, and the stored ones whose version columns it changes, each with the version
+    columns recomputed from every change of its key (`with_versions`).
 
-
-def version_changes(recomputed: DataFrame, stored: DataFrame, key: str) -> DataFrame:
-    """The recomputed changes to write: the new ones, and the stored ones whose version columns
-    changed.
+    `stored` holds the stored rows of the keys `batch` touches, with their version columns;
+    `batch` holds its changes with the other columns. A change already stored, or delivered
+    twice, counts once: the stored row wins, then the lowest content hash. Every row is placed
+    and compared with its stored self in one pass over the rows partitioned by `key`, so a
+    replayed batch that changes nothing gives no rows.
 
     The writer merges them on `key` and `_commit_sequence`: when matched, update the version
     columns; when not matched, insert the row.
     """
-    return changed_rows(recomputed, stored, (key, COMMIT_SEQUENCE), VERSION_COLUMNS)
+    columns = batch.columns
+    previous = stored.select(
+        *columns,
+        *(F.col(column).alias(f"__stored_{column}") for column in VERSION_COLUMNS),
+        F.lit(True).alias("__stored"),
+    )
+    incoming = batch.withColumn("__stored", F.lit(False))
+    rows = previous.unionByName(incoming, allowMissingColumns=True)
+    by_change = Window.partitionBy(key).orderBy(
+        COMMIT_SEQUENCE, F.col("__stored").desc(), CONTENT_HASH, IS_DELETED
+    )
+    repeated = F.lag(COMMIT_SEQUENCE).over(by_change).eqNullSafe(F.col(COMMIT_SEQUENCE))
+    changes = rows.withColumn("__repeat", repeated).where(~F.col("__repeat")).drop("__repeat")
+    differs = any_of(
+        [~F.col(column).eqNullSafe(F.col(f"__stored_{column}")) for column in VERSION_COLUMNS]
+    )
+    return (
+        with_versions(changes, key, starts_at)
+        .where(~F.col("__stored") | differs)
+        .select(*columns, *VERSION_COLUMNS)
+    )

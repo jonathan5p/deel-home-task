@@ -8,6 +8,7 @@ from tests.infra.gold_dimensions_setup import (
     RESNAPSHOT,
     SINGLE_VERSION,
     GoldRuns,
+    GoldState,
     by_key,
     current_counts,
     versions,
@@ -103,3 +104,15 @@ def test_neither_a_replay_nor_a_late_version_revives_a_deleted_row(gold_runs: Go
         ["9104", "100", "9.0000000000", at(100), "", "f", "f", "t"],
     ]
     assert [row[4] for row in by_key(gold_runs.late.public_products, DELETED)] == ["f", "f"]
+
+
+def test_the_gold_job_copies_the_seeded_dimensions(gold_runs: GoldRuns) -> None:
+    assert gold_runs.first.seeded == [["statuses", "5", "4"], ["days", "36525", "10436"]]
+
+
+def test_the_surrogate_keys_are_the_same_after_a_replay(gold_runs: GoldRuns) -> None:
+    def keys(state: GoldState) -> list[str]:
+        return [row[2] for row in (*state.products, *state.customers)]
+
+    assert keys(gold_runs.replayed) == keys(gold_runs.second)
+    assert len(set(keys(gold_runs.second))) == len(keys(gold_runs.second))

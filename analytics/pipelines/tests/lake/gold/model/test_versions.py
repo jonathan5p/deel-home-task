@@ -4,40 +4,56 @@ pytest.importorskip("pyspark")
 
 from pyspark.sql import SparkSession
 
-from analytics.pipelines.tests.lake.gold.model.model_samples import rows_of
-from pipelines.lake.gold.model.versions import changed_rows, new_changes
+from analytics.pipelines.tests.lake.gold.model.model_samples import at, rows_of
+from pipelines.lake.gold.model.versions import touched, version_changes
 
-ROWS = "id long, _commit_sequence long, _content_hash string, _is_deleted boolean, value long"
-
-
-def test_changed_rows_are_the_new_rows_and_those_with_other_values(spark: SparkSession) -> None:
-    before = spark.createDataFrame(
-        [(1, 1, "a", False, None), (2, 1, "a", False, 5), (3, 1, "a", False, 5)], ROWS
-    )
-    after = spark.createDataFrame(
-        [
-            (1, 1, "a", False, None),
-            (2, 1, "a", False, 6),
-            (3, 1, "a", False, None),
-            (4, 1, "a", False, 1),
-        ],
-        ROWS,
-    )
-
-    changed = changed_rows(after, before, ("id", "_commit_sequence"), ("value",))
-
-    assert rows_of(changed, "id", "value") == [(2, 6), (3, None), (4, 1)]
+ADDED = (
+    "id long, _commit_sequence long, _content_hash string, _is_deleted boolean,"
+    " _changed_at timestamp"
+)
+STORED = (
+    f"{ADDED}, _is_folded boolean, _version_number long, _valid_to timestamp, _is_current boolean"
+)
 
 
-def test_new_changes_skip_stored_changes_and_keep_one_of_each_repeated_change(
+def test_version_changes_are_the_new_rows_and_the_stored_ones_they_re_place(
     spark: SparkSession,
 ) -> None:
-    stored = spark.createDataFrame([(1, 1, "a", False, 0)], ROWS)
-    batch = spark.createDataFrame(
-        [(1, 1, "b", False, 1), (1, 2, "a", False, 2), (1, 2, "a", False, 2), (2, 1, "a", True, 3)],
-        ROWS,
+    stored = spark.createDataFrame(
+        [
+            (1, 1, "a", False, at(1), False, 1, None, True),
+            (2, 1, "a", False, at(1), False, 1, None, True),
+        ],
+        STORED,
     )
+    batch = spark.createDataFrame([(1, 2, "b", False, at(2))], ADDED)
 
-    added = new_changes(batch, stored, "id")
+    changes = version_changes(stored, batch, "id", "_changed_at")
 
-    assert rows_of(added, "id", "_commit_sequence", "value") == [(1, 2, 2), (2, 1, 3)]
+    assert rows_of(changes, "id", "_commit_sequence", "_valid_to", "_is_current") == [
+        (1, 1, at(2), False),
+        (1, 2, None, True),
+    ]
+
+
+def test_a_stored_change_delivered_again_keeps_the_stored_row(spark: SparkSession) -> None:
+    stored = spark.createDataFrame([(1, 1, "a", False, at(1), False, 1, None, True)], STORED)
+    batch = spark.createDataFrame([(1, 1, "changed", False, at(1))], ADDED)
+
+    assert version_changes(stored, batch, "id", "_changed_at").count() == 0
+
+
+def test_a_change_delivered_twice_counts_once_with_the_lowest_hash(spark: SparkSession) -> None:
+    stored = spark.createDataFrame([], STORED)
+    batch = spark.createDataFrame([(1, 1, "b", False, at(1)), (1, 1, "a", False, at(1))], ADDED)
+
+    changes = version_changes(stored, batch, "id", "_changed_at")
+
+    assert rows_of(changes, "id", "_content_hash", "_version_number") == [(1, "a", 1)]
+
+
+def test_touched_rows_are_the_stored_rows_of_the_batchs_keys(spark: SparkSession) -> None:
+    stored = spark.createDataFrame([(1, "a"), (2, "b")], "id long, value string")
+    batch = spark.createDataFrame([(2,), (2,), (3,)], "id long")
+
+    assert rows_of(touched(stored, batch, "id"), "id", "value") == [(2, "b")]

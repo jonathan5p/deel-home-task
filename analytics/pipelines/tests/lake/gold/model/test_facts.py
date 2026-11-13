@@ -5,72 +5,57 @@ pytest.importorskip("pyspark")
 from pyspark.sql import DataFrame, SparkSession
 
 from analytics.pipelines.tests.lake.gold.model.model_samples import (
-    CUSTOMER,
-    CUSTOMERS,
     ORDERS,
     Values,
     at,
-    by_sequence,
-    customer,
-    only,
+    merged,
     order,
     rows_of,
     seeded,
     staged,
     stored,
 )
-from pipelines.lake.gold.model.dimensions import dimension_versions
-from pipelines.lake.gold.model.facts import (
-    current_rows,
-    history_rows,
-    merged_current,
-    resolved_history,
-)
-from pipelines.lake.gold.model.versions import COMMIT_SEQUENCE, VERSION_COLUMNS, version_changes
+from pipelines.lake.gold.model.facts import current_rows, history_changes, looked_up
+from pipelines.lake.gold.model.versions import COMMIT_SEQUENCE, VERSION_COLUMNS
 
 VERSION = (COMMIT_SEQUENCE, *VERSION_COLUMNS)
 
 
-def customer_versions(
-    spark: SparkSession, rows: list[Values], table: DataFrame | None = None
-) -> DataFrame:
-    stored_rows = stored(spark, CUSTOMERS.table) if table is None else table
-    return dimension_versions(CUSTOMERS, staged(spark, CUSTOMERS, rows), stored_rows)
+def batch(spark: SparkSession, rows: list[Values]) -> DataFrame:
+    return looked_up(ORDERS, staged(spark, ORDERS, rows), seeded(spark))
 
 
-def history(
-    spark: SparkSession, rows: list[Values], customers: DataFrame, table: DataFrame | None = None
-) -> DataFrame:
+def history(spark: SparkSession, rows: list[Values], table: DataFrame | None = None) -> DataFrame:
     stored_rows = stored(spark, ORDERS.history) if table is None else table
-    return history_rows(
-        ORDERS,
-        staged(spark, ORDERS, rows),
-        stored_rows,
-        seeded(spark),
-        {"dim_customer": customers},
-    )
+    return history_changes(ORDERS, batch(spark, rows), stored_rows)
 
 
-def test_a_new_change_gets_its_status_date_and_customer_keys(spark: SparkSession) -> None:
-    customers = customer_versions(spark, [customer(1, 1, "Ada")])
-    customer_key = only(customers)["customer_key"]
+def history_after(spark: SparkSession, rows: list[Values], table: DataFrame) -> DataFrame:
+    written = history(spark, rows, table)
+    return merged(table, written, (ORDERS.key, COMMIT_SEQUENCE)).localCheckpoint()
 
-    rows = history(spark, [order(1, 10, "COMPLETED")], customers)
+
+def test_a_new_change_keeps_its_business_keys_and_gets_its_status_and_date_keys(
+    spark: SparkSession,
+) -> None:
+    rows = history(spark, [order(1, 10, "COMPLETED", customer_id=7)])
 
     assert rows_of(
-        rows, "order_id", "status_key", "customer_key", "order_date_key", "delivery_date_key"
-    ) == [(1, 4, customer_key, 20261101, 20261120)]
+        rows, "order_id", "customer_id", "status_key", "order_date_key", "delivery_date_key"
+    ) == [(1, 7, 4, 20261101, 20261120)]
+
+
+def test_the_history_holds_no_dimension_keys_or_attributes(spark: SparkSession) -> None:
+    columns = set(history(spark, [order(1, 10)]).columns)
+
+    assert columns.isdisjoint({"customer_key", "customer_name", "customer_address"})
 
 
 def test_history_rows_fold_repeats_and_end_each_version_at_the_next_one(
     spark: SparkSession,
 ) -> None:
-    customers = customer_versions(spark, [customer(1, 1, "Ada")])
-
     rows = history(
-        spark,
-        [order(1, 10, "PENDING"), order(1, 11, "PENDING"), order(1, 12, "COMPLETED")],
-        customers,
+        spark, [order(1, 10, "PENDING"), order(1, 11, "PENDING"), order(1, 12, "COMPLETED")]
     )
 
     assert rows_of(rows, *VERSION) == [
@@ -80,31 +65,24 @@ def test_history_rows_fold_repeats_and_end_each_version_at_the_next_one(
     ]
 
 
-def test_a_late_change_unfolds_the_next_one_and_keeps_the_stored_lookups(
+def test_a_late_change_unfolds_the_next_one_and_writes_the_rows_it_re_places(
     spark: SparkSession,
 ) -> None:
-    customers = customer_versions(spark, [customer(1, 1, "Ada")])
-    first = history(spark, [order(1, 10, "PENDING"), order(1, 12, "PENDING")], customers)
+    first = history_after(
+        spark, [order(1, 10, "PENDING"), order(1, 12, "PENDING")], stored(spark, ORDERS.history)
+    )
 
-    rows = history(spark, [order(1, 11, "COMPLETED")], customers, first)
+    written = history(spark, [order(1, 11, "COMPLETED")], first)
 
-    assert rows_of(rows, *VERSION) == [
+    assert rows_of(written, *VERSION) == [
         (10, False, 1, at(11), False),
         (11, False, 2, at(12), False),
         (12, False, 3, None, True),
     ]
-    assert rows_of(version_changes(rows, first, ORDERS.key), COMMIT_SEQUENCE) == [
-        (10,),
-        (11,),
-        (12,),
-    ]
-    assert by_sequence(rows)[12]["customer_key"] == by_sequence(first)[12]["customer_key"]
 
 
 def test_a_delete_is_the_last_history_row_and_is_never_current(spark: SparkSession) -> None:
-    customers = customer_versions(spark, [customer(1, 1, "Ada")])
-
-    rows = history(spark, [order(1, 10), order(1, 11, deleted=True)], customers)
+    rows = history(spark, [order(1, 10), order(1, 11, deleted=True)])
 
     assert rows_of(rows, COMMIT_SEQUENCE, "_is_current", "_valid_to") == [
         (10, False, at(11)),
@@ -113,46 +91,23 @@ def test_a_delete_is_the_last_history_row_and_is_never_current(spark: SparkSessi
 
 
 def test_a_replayed_history_batch_writes_nothing(spark: SparkSession) -> None:
-    customers = customer_versions(spark, [customer(1, 1, "Ada")])
-    batch = [order(1, 10, "PENDING"), order(1, 11, "COMPLETED")]
-    first = history(spark, batch, customers)
+    rows = [order(1, 10, "PENDING"), order(1, 11, "COMPLETED")]
+    first = history_after(spark, rows, stored(spark, ORDERS.history))
 
-    replayed = history(spark, batch, customers, first)
-
-    assert version_changes(replayed, first, ORDERS.key).count() == 0
+    assert history(spark, rows, first).count() == 0
 
 
-def test_a_late_dimension_version_re_resolves_only_the_history_rows_it_changes(
-    spark: SparkSession,
-) -> None:
-    customers = customer_versions(spark, [customer(1, 1, "Ada"), customer(2, 2, "Hedy")])
-    stored_history = history(
-        spark,
-        [order(1, 10, minute=10), order(1, 30, "COMPLETED", minute=30), order(2, 5, customer_id=2)],
-        customers,
-    )
+def test_a_batch_writes_only_the_history_of_the_orders_it_touches(spark: SparkSession) -> None:
+    first = history_after(spark, [order(1, 10), order(2, 11)], stored(spark, ORDERS.history))
 
-    late = customer_versions(spark, [customer(1, 20, "Grace", minute=20)], customers)
-    resolved = resolved_history(ORDERS, CUSTOMER, stored_history, late)
+    written = history(spark, [order(1, 12, "COMPLETED")], first)
 
-    assert rows_of(resolved, "order_id", COMMIT_SEQUENCE, "customer_key") == [
-        (1, 30, by_sequence(late)[20]["customer_key"])
-    ]
-
-
-def test_a_dimension_row_arriving_after_its_facts_fills_their_keys(spark: SparkSession) -> None:
-    stored_history = history(spark, [order(1, 10)], stored(spark, CUSTOMERS.table))
-
-    arrived = customer_versions(spark, [customer(1, 20, "Ada", minute=20)])
-    resolved = resolved_history(ORDERS, CUSTOMER, stored_history, arrived)
-
-    assert rows_of(stored_history, "customer_key") == [(None,)]
-    assert rows_of(resolved, "order_id", "customer_key") == [(1, only(arrived)["customer_key"])]
+    assert rows_of(written, "order_id", COMMIT_SEQUENCE) == [(1, 10), (1, 12)]
 
 
 def current(spark: SparkSession, rows: list[Values], table: DataFrame | None = None) -> DataFrame:
     stored_rows = stored(spark, ORDERS.current, versioned=False) if table is None else table
-    return current_rows(ORDERS, staged(spark, ORDERS, rows), stored_rows, seeded(spark))
+    return current_rows(ORDERS, batch(spark, rows), stored_rows)
 
 
 def test_the_current_state_takes_the_latest_change_and_only_when_it_is_newer(
@@ -189,18 +144,7 @@ def test_a_deleted_order_stays_deleted_when_an_older_change_arrives(spark: Spark
 
 
 def test_a_replayed_current_state_batch_writes_nothing(spark: SparkSession) -> None:
-    batch = [order(1, 5), order(2, 6)]
-    table = current(spark, batch)
+    rows = [order(1, 5), order(2, 6)]
+    table = current(spark, rows)
 
-    assert current(spark, batch, table).count() == 0
-
-
-def test_merged_current_replaces_the_upserted_rows_and_keeps_the_others(
-    spark: SparkSession,
-) -> None:
-    table = current(spark, [order(1, 5), order(2, 6)])
-    upserts = current(spark, [order(2, 7, "COMPLETED"), order(3, 8)], table)
-
-    after = merged_current(table, upserts, ORDERS.key)
-
-    assert rows_of(after, "order_id", COMMIT_SEQUENCE) == [(1, 5), (2, 7), (3, 8)]
+    assert current(spark, rows, table).count() == 0

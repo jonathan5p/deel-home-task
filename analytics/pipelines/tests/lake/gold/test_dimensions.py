@@ -34,7 +34,7 @@ def test_orders_and_order_items_are_the_history_facts_with_their_current_state()
     ]
 
 
-def test_order_columns_are_looked_up_in_the_status_date_and_customer_dimensions() -> None:
+def test_order_columns_are_looked_up_in_the_status_and_date_dimensions() -> None:
     orders = load_facts()["fact_order_history"]
 
     lookups = [(k.column, k.source, k.dimension.name, k.fallback) for k in orders.lookups]
@@ -45,16 +45,10 @@ def test_order_columns_are_looked_up_in_the_status_date_and_customer_dimensions(
         ("order_date_key", "order_date", "dim_date", None),
         ("delivery_date_key", "delivery_date", "dim_date", None),
     ]
-    assert [(a.dimension.name, a.business_key, a.columns) for a in orders.as_of] == [
-        ("dim_customer", "customer_id", (("customer_key", "customer_key"),))
-    ]
 
 
-def test_items_take_the_product_version_and_price_valid_when_they_changed() -> None:
-    (product,) = load_facts()["fact_order_item_history"].as_of
-
-    assert product.dimension.name == "dim_product"
-    assert product.fact_columns == ("product_key", "unit_price", "line_amount")
+def test_items_look_nothing_up() -> None:
+    assert load_facts()["fact_order_item_history"].lookups == ()
 
 
 def test_facts_can_be_loaded_from_another_schema_folder(schemas: SchemasTree) -> None:

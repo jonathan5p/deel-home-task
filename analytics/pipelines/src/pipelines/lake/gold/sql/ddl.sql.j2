@@ -8,145 +8,41 @@ CREATE SCHEMA IF NOT EXISTS gold_internal;
 CREATE SCHEMA IF NOT EXISTS gold;
 
 COMMENT ON SCHEMA gold_internal IS
-    'Gold tables written by the pipeline, with the metadata it needs to replay batches and order versions.';
+    'Serving copy of the gold tables the gold job writes to Iceberg, with the metadata it computes; filled by plain upserts.';
 COMMENT ON SCHEMA gold IS
-    'Gold star schema for consumers: views over gold_internal without the pipeline-only metadata.';
+    'Gold star schema for consumers: views over gold_internal without the pipeline-only metadata, resolving the dimension version valid at each fact change when read.';
 
--- The dimensions are only ever appended to; their *_versions views derive the fold flag, the
--- validity and the current version, and the (key, _commit_sequence) index serves their windows.
-CREATE TABLE IF NOT EXISTS gold_internal.dim_customer (
-{{ column_lines(tables.dim_customer, {"customer_key": "GENERATED ALWAYS AS IDENTITY"}) }}
-    PRIMARY KEY (customer_key),
-    UNIQUE (customer_id, _commit_sequence)
+-- Every table is a copy of its Iceberg table in the lake: the gold job computes the rows with
+-- Spark and copies them here with plain upserts, so no transformation runs in PostgreSQL.
+{% for table in stored %}
+{{ table_statement(table) }}
+
+{{ staging_statement(table) }}
+
+{% endfor %}
+-- The business-question views read only the open orders, so these partial indexes make them
+-- index scans; each one was chosen from the views' query plans.
+CREATE INDEX IF NOT EXISTS current_orders_open_delivery_idx
+    ON gold_internal.current_orders (delivery_date, status_key) WHERE is_open AND NOT _is_deleted;
+CREATE INDEX IF NOT EXISTS current_orders_open_customer_idx
+    ON gold_internal.current_orders (customer_id) WHERE is_open AND NOT _is_deleted;
+CREATE INDEX IF NOT EXISTS current_order_items_live_order_idx
+    ON gold_internal.current_order_items (order_id) INCLUDE (product_id, quantity)
+    WHERE NOT _is_deleted;
+
+COMMENT ON INDEX gold_internal.current_orders_open_delivery_idx IS
+    'Open orders by delivery date and status, for gold.open_orders_by_delivery_date_and_status and gold.top_delivery_dates_by_open_orders.';
+COMMENT ON INDEX gold_internal.current_orders_open_customer_idx IS
+    'Open orders by customer, for gold.top_customers_by_pending_orders.';
+COMMENT ON INDEX gold_internal.current_order_items_live_order_idx IS
+    'Items not deleted by order, for gold.pending_items_by_product, which looks up the items of each open order.';
+
+CREATE TABLE IF NOT EXISTS gold_internal.sync_state (
+{{ column_lines(sync_state) }}
+    PRIMARY KEY (table_name)
 );
 
-{{ describe_table(tables.dim_customer) }}
-
-CREATE UNLOGGED TABLE IF NOT EXISTS gold_internal.stage_dim_customer (
-{{ column_list(dimensions.dim_customer.staging_table) }}
-);
-
-{{ describe_table(dimensions.dim_customer.staging_table) }}
-
-CREATE OR REPLACE VIEW {{ dimensions.dim_customer.versions_relation }} AS
-{{ dimensions.dim_customer.versions_query() }};
-
-{{ describe_table(tables.dim_customer_versions, "VIEW") }}
-
-CREATE TABLE IF NOT EXISTS gold_internal.dim_product (
-{{ column_lines(tables.dim_product, {"product_key": "GENERATED ALWAYS AS IDENTITY"}) }}
-    PRIMARY KEY (product_key),
-    UNIQUE (product_id, _commit_sequence)
-);
-
-{{ describe_table(tables.dim_product) }}
-
-CREATE UNLOGGED TABLE IF NOT EXISTS gold_internal.stage_dim_product (
-{{ column_list(dimensions.dim_product.staging_table) }}
-);
-
-{{ describe_table(dimensions.dim_product.staging_table) }}
-
-CREATE OR REPLACE VIEW {{ dimensions.dim_product.versions_relation }} AS
-{{ dimensions.dim_product.versions_query() }};
-
-{{ describe_table(tables.dim_product_versions, "VIEW") }}
-
-CREATE TABLE IF NOT EXISTS gold_internal.dim_date (
-{{ column_lines(tables.dim_date, {"calendar_date": "UNIQUE"}) }}
-    PRIMARY KEY (date_key)
-);
-
-INSERT INTO gold_internal.dim_date (
-    date_key, calendar_date, year, quarter, month, day_of_month, day_of_week, is_weekend
-)
-SELECT
-    to_char(day, 'YYYYMMDD')::int,
-    day,
-    extract(YEAR FROM day)::int,
-    extract(QUARTER FROM day)::int,
-    extract(MONTH FROM day)::int,
-    extract(DAY FROM day)::int,
-    extract(ISODOW FROM day)::int,
-    extract(ISODOW FROM day) >= 6
-FROM generate_series(date '2000-01-01', date '2099-12-31', interval '1 day') AS days (moment)
-CROSS JOIN LATERAL (SELECT moment::date AS day) AS calendar
-ON CONFLICT (date_key) DO NOTHING;
-
-{{ describe_table(tables.dim_date) }}
-
-CREATE TABLE IF NOT EXISTS gold_internal.dim_order_status (
-{{ column_lines(tables.dim_order_status, {"status_code": "UNIQUE"}) }}
-    PRIMARY KEY (status_key)
-);
-
-INSERT INTO gold_internal.dim_order_status (status_key, status_code, is_open)
-VALUES
-    (1, 'PENDING', true),
-    (2, 'PROCESSING', true),
-    (3, 'REPROCESSING', true),
-    (4, 'COMPLETED', false),
-    (5, 'UNKNOWN', true)
-ON CONFLICT (status_key) DO NOTHING;
-
-{{ describe_table(tables.dim_order_status) }}
-
--- The partition column must be part of the primary key; a change always has the same
--- _changed_at, so the key still identifies one change.
-CREATE TABLE IF NOT EXISTS gold_internal.fact_order_history (
-{{ column_lines(tables.fact_order_history, {
-    "_change_op": "CHECK (_change_op IN ('snapshot', 'create', 'update', 'delete'))",
-    "status_key": "REFERENCES gold_internal.dim_order_status (status_key)",
-    "customer_key": "REFERENCES gold_internal.dim_customer (customer_key)",
-    "order_date_key": "REFERENCES gold_internal.dim_date (date_key)",
-    "delivery_date_key": "REFERENCES gold_internal.dim_date (date_key)",
-}) }}
-    PRIMARY KEY (order_id, _commit_sequence, _changed_at)
-) PARTITION BY RANGE (_changed_at);
-
-CREATE TABLE IF NOT EXISTS gold_internal.fact_order_history_default
-    PARTITION OF gold_internal.fact_order_history DEFAULT;
-
-CREATE INDEX IF NOT EXISTS fact_order_history_customer_idx
-    ON gold_internal.fact_order_history (customer_id);
-
-{{ describe_table(tables.fact_order_history) }}
-COMMENT ON TABLE gold_internal.fact_order_history_default IS
-    'Order history rows outside every monthly partition.';
-COMMENT ON INDEX gold_internal.fact_order_history_customer_idx IS
-    'Finds the changes of a customer''s orders, whose customer_key a dim_customer merge re-resolves.';
-
-CREATE UNLOGGED TABLE IF NOT EXISTS gold_internal.stage_fact_order_history (
-{{ column_list(facts.fact_order_history.staging_table) }}
-);
-
-{{ describe_table(facts.fact_order_history.staging_table) }}
-
-CREATE TABLE IF NOT EXISTS gold_internal.fact_order_item_history (
-{{ column_lines(tables.fact_order_item_history, {
-    "_change_op": "CHECK (_change_op IN ('snapshot', 'create', 'update', 'delete'))",
-    "product_key": "REFERENCES gold_internal.dim_product (product_key)",
-}) }}
-    PRIMARY KEY (order_item_id, _commit_sequence, _changed_at)
-) PARTITION BY RANGE (_changed_at);
-
-CREATE TABLE IF NOT EXISTS gold_internal.fact_order_item_history_default
-    PARTITION OF gold_internal.fact_order_item_history DEFAULT;
-
-CREATE INDEX IF NOT EXISTS fact_order_item_history_product_idx
-    ON gold_internal.fact_order_item_history (product_id);
-
-{{ describe_table(tables.fact_order_item_history) }}
-COMMENT ON TABLE gold_internal.fact_order_item_history_default IS
-    'Order item history rows outside every monthly partition.';
-COMMENT ON INDEX gold_internal.fact_order_item_history_product_idx IS
-    'Finds the changes of a product''s order items, whose product_key and price a dim_product merge re-resolves.';
-
-CREATE UNLOGGED TABLE IF NOT EXISTS gold_internal.stage_fact_order_item_history (
-{{ column_list(facts.fact_order_item_history.staging_table) }}
-);
-
-{{ describe_table(facts.fact_order_item_history.staging_table) }}
+{{ describe_table(sync_state) }}
 
 CREATE OR REPLACE FUNCTION gold_internal.ensure_history_partitions(
     months_ahead int DEFAULT 2,
@@ -161,7 +57,7 @@ DECLARE
     month_end date;
     partition_name text;
 BEGIN
-    FOREACH fact IN ARRAY ARRAY['fact_order_history', 'fact_order_item_history'] LOOP
+    FOREACH fact IN ARRAY ARRAY[{% for table in history %}'{{ table.name }}'{{ ', ' if not loop.last }}{% endfor %}] LOOP
         FOR month_start IN EXECUTE format(
             'SELECT (date_trunc(''month'', $1::timestamp) + make_interval(months => n))::date'
             ' FROM generate_series(0, $2) AS n'
@@ -223,7 +119,7 @@ BEGIN
             pg_get_expr(child.relpartbound, child.oid), 'TO \(''([^'']+)''\)'
         ) AS bound (upper_bound)
         WHERE n.nspname = 'gold_internal'
-          AND parent.relname IN ('fact_order_history', 'fact_order_item_history')
+          AND parent.relname IN ({% for table in history %}'{{ table.name }}'{{ ', ' if not loop.last }}{% endfor %})
           AND bound.upper_bound[1]::timestamp <= window_start
         ORDER BY parent.relname, child.relname
     LOOP
@@ -236,273 +132,10 @@ $$;
 COMMENT ON FUNCTION gold_internal.apply_history_retention(int, int, date) IS
     'Ensures the history partitions, then drops the monthly ones that end before keep_months months before the month of as_of; returns the dropped partitions. Current state and dimensions are never trimmed.';
 
-CREATE TABLE IF NOT EXISTS gold_internal.current_orders (
-{{ column_lines(tables.current_orders, {
-    "status_key": "REFERENCES gold_internal.dim_order_status (status_key)",
-    "order_date_key": "REFERENCES gold_internal.dim_date (date_key)",
-    "delivery_date_key": "REFERENCES gold_internal.dim_date (date_key)",
-    "_is_deleted": "DEFAULT false",
-}) }}
-    PRIMARY KEY (order_id)
-);
+{% for view in views %}
+{{ view }}
 
-CREATE INDEX IF NOT EXISTS current_orders_open_delivery_idx
-    ON gold_internal.current_orders (delivery_date, status_key) WHERE is_open AND NOT _is_deleted;
-CREATE INDEX IF NOT EXISTS current_orders_open_customer_idx
-    ON gold_internal.current_orders (customer_id) WHERE is_open AND NOT _is_deleted;
-
-{{ describe_table(tables.current_orders) }}
-COMMENT ON INDEX gold_internal.current_orders_open_delivery_idx IS
-    'Open orders by delivery date and status, for gold.open_orders_by_delivery_date_and_status and gold.top_delivery_dates_by_open_orders.';
-COMMENT ON INDEX gold_internal.current_orders_open_customer_idx IS
-    'Open orders by customer, for gold.top_customers_by_pending_orders.';
-
--- No foreign key to current_orders: an item can arrive before its order.
-CREATE TABLE IF NOT EXISTS gold_internal.current_order_items (
-{{ column_lines(tables.current_order_items, {"_is_deleted": "DEFAULT false"}) }}
-    PRIMARY KEY (order_item_id)
-);
-
-CREATE INDEX IF NOT EXISTS current_order_items_live_order_idx
-    ON gold_internal.current_order_items (order_id) INCLUDE (product_id, quantity)
-    WHERE NOT _is_deleted;
-
-{{ describe_table(tables.current_order_items) }}
-COMMENT ON INDEX gold_internal.current_order_items_live_order_idx IS
-    'Items not deleted by order, for gold.pending_items_by_product, which looks up the items of each open order.';
-
-CREATE OR REPLACE VIEW gold.dim_customer AS
-SELECT
-    customer_key,
-    customer_id,
-    customer_name,
-    customer_address,
-    is_active,
-    _valid_from,
-    _valid_to,
-    _is_current
-FROM {{ dimensions.dim_customer.versions_relation }}
-WHERE NOT _is_folded AND NOT _is_deleted;
-
-{{ describe_view(
-    tables.dim_customer,
-    tables.dim_customer_versions.column("_valid_to"),
-    tables.dim_customer_versions.column("_is_current"),
-) }}
-
-CREATE OR REPLACE VIEW gold.dim_product AS
-SELECT
-    product_key,
-    product_id,
-    product_name,
-    barcode,
-    unit_price,
-    is_active,
-    _valid_from,
-    _valid_to,
-    _is_current
-FROM {{ dimensions.dim_product.versions_relation }}
-WHERE NOT _is_folded AND NOT _is_deleted;
-
-{{ describe_view(
-    tables.dim_product,
-    tables.dim_product_versions.column("_valid_to"),
-    tables.dim_product_versions.column("_is_current"),
-) }}
-
-CREATE OR REPLACE VIEW gold.dim_date AS
-SELECT
-    date_key,
-    calendar_date,
-    year,
-    quarter,
-    month,
-    day_of_month,
-    day_of_week,
-    is_weekend
-FROM gold_internal.dim_date;
-
-{{ describe_view(tables.dim_date) }}
-
-CREATE OR REPLACE VIEW gold.dim_order_status AS
-SELECT status_key, status_code, is_open
-FROM gold_internal.dim_order_status;
-
-{{ describe_view(tables.dim_order_status) }}
-
--- A change whose content hash and deletion state equal the previous change's is folded away
--- here, at read time, rather than flagged in the table: a late change landing between two
--- equal ones turns the later one back into a real change without rewriting history.
-CREATE OR REPLACE VIEW gold.fact_order_history AS
-WITH changes AS (
-    SELECT
-        *,
-        (_content_hash, _is_deleted) IS NOT DISTINCT FROM
-            (lag(_content_hash) OVER by_order, lag(_is_deleted) OVER by_order) AS is_folded
-    FROM gold_internal.fact_order_history
-    WINDOW by_order AS (PARTITION BY order_id ORDER BY _commit_sequence)
-)
-SELECT
-    order_id,
-    _changed_at,
-    _change_op,
-    status_key,
-    customer_id,
-    customer_key,
-    order_date_key,
-    delivery_date_key,
-    lead(_changed_at) OVER versions AS _valid_to,
-    lead(_changed_at) OVER versions IS NULL AND NOT _is_deleted AS _is_current
-FROM changes
-WHERE NOT is_folded
-WINDOW versions AS (PARTITION BY order_id ORDER BY _commit_sequence);
-
-{{ describe_view(
-    tables.fact_order_history,
-    tables.dim_customer_versions.column("_valid_to"),
-    tables.dim_customer_versions.column("_is_current"),
-) }}
-
-CREATE OR REPLACE VIEW gold.fact_order_item_history AS
-WITH changes AS (
-    SELECT
-        *,
-        (_content_hash, _is_deleted) IS NOT DISTINCT FROM
-            (lag(_content_hash) OVER by_item, lag(_is_deleted) OVER by_item) AS is_folded
-    FROM gold_internal.fact_order_item_history
-    WINDOW by_item AS (PARTITION BY order_item_id ORDER BY _commit_sequence)
-)
-SELECT
-    order_item_id,
-    _changed_at,
-    _change_op,
-    order_id,
-    product_id,
-    product_key,
-    quantity,
-    unit_price,
-    line_amount,
-    lead(_changed_at) OVER versions AS _valid_to,
-    lead(_changed_at) OVER versions IS NULL AND NOT _is_deleted AS _is_current
-FROM changes
-WHERE NOT is_folded
-WINDOW versions AS (PARTITION BY order_item_id ORDER BY _commit_sequence);
-
-{{ describe_view(
-    tables.fact_order_item_history,
-    tables.dim_customer_versions.column("_valid_to"),
-    tables.dim_customer_versions.column("_is_current"),
-) }}
-
-CREATE OR REPLACE VIEW gold.current_orders AS
-SELECT
-    order_id,
-    status_key,
-    customer_id,
-    order_date,
-    delivery_date,
-    order_date_key,
-    delivery_date_key,
-    _changed_at
-FROM gold_internal.current_orders
-WHERE NOT _is_deleted;
-
-{{ describe_view(tables.current_orders, hidden=["is_open"]) }}
-
-CREATE OR REPLACE VIEW gold.open_orders AS
-SELECT
-    order_id,
-    status_key,
-    customer_id,
-    order_date,
-    delivery_date,
-    order_date_key,
-    delivery_date_key,
-    _changed_at
-FROM gold_internal.current_orders
-WHERE is_open AND NOT _is_deleted;
-
-{{ describe_view(tables.open_orders) }}
-
-CREATE OR REPLACE VIEW gold.current_order_items AS
-SELECT
-    order_item_id,
-    order_id,
-    product_id,
-    quantity,
-    _changed_at
-FROM gold_internal.current_order_items
-WHERE NOT _is_deleted;
-
-{{ describe_view(tables.current_order_items) }}
-
--- Measured from the data, so it ages while the source is idle even when the pipeline is healthy.
-CREATE OR REPLACE VIEW gold.data_freshness AS
-SELECT 'customers' AS entity, max(_valid_from) AS last_changed_at FROM gold_internal.dim_customer
-UNION ALL
-SELECT 'products', max(_valid_from) FROM gold_internal.dim_product
-UNION ALL
-SELECT 'orders', max(_changed_at) FROM gold_internal.current_orders
-UNION ALL
-SELECT 'order_items', max(_changed_at) FROM gold_internal.current_order_items;
-
-{{ describe_view(tables.data_freshness) }}
-
-CREATE OR REPLACE VIEW gold.open_orders_by_delivery_date_and_status AS
-SELECT
-    o.delivery_date,
-    s.status_code,
-    count(*) AS open_orders
-FROM gold.open_orders AS o
-JOIN gold.dim_order_status AS s ON s.status_key = o.status_key
-GROUP BY o.delivery_date, s.status_code;
-
-{{ describe_view(tables.open_orders_by_delivery_date_and_status) }}
-
-CREATE OR REPLACE VIEW gold.top_delivery_dates_by_open_orders AS
-SELECT delivery_date, open_orders
-FROM (
-    SELECT
-        o.delivery_date,
-        count(*) AS open_orders,
-        rank() OVER (ORDER BY count(*) DESC) AS place
-    FROM gold.open_orders AS o
-    GROUP BY o.delivery_date
-) AS ranked_dates
-WHERE place <= 3;
-
-{{ describe_view(tables.top_delivery_dates_by_open_orders) }}
-
-CREATE OR REPLACE VIEW gold.pending_items_by_product AS
-SELECT
-    i.product_id,
-    count(*) AS pending_items,
-    sum(i.quantity) AS pending_quantity
-FROM gold.current_order_items AS i
-JOIN gold.open_orders AS o ON o.order_id = i.order_id
-GROUP BY i.product_id;
-
-{{ describe_view(tables.pending_items_by_product) }}
-
-CREATE OR REPLACE VIEW gold.top_customers_by_pending_orders AS
-SELECT
-    top_customers.customer_id,
-    c.customer_name,
-    top_customers.pending_orders
-FROM (
-    SELECT
-        o.customer_id,
-        count(*) AS pending_orders,
-        rank() OVER (ORDER BY count(*) DESC) AS place
-    FROM gold.open_orders AS o
-    GROUP BY o.customer_id
-) AS top_customers
-LEFT JOIN gold.dim_customer AS c
-    ON c.customer_id = top_customers.customer_id AND c._is_current
-WHERE top_customers.place <= 3;
-
-{{ describe_view(tables.top_customers_by_pending_orders) }}
-
+{% endfor %}
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'gold_reader') THEN

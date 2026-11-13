@@ -40,7 +40,7 @@ def old_open_order(order_id: int, offset: int) -> list[str]:
     return [
         order_change(order_id, 10, in_month(offset)),
         "INSERT INTO gold_internal.current_orders (order_id, status_key, is_open, _commit_sequence,"
-        f" _changed_at) VALUES ({order_id}, 1, true, 10, {in_month(offset)});",
+        f" _changed_at, _is_deleted) VALUES ({order_id}, 1, true, 10, {in_month(offset)}, false);",
     ]
 
 

@@ -1,0 +1,6 @@
+SELECT
+    {{ columns | join(",\n    ") }}
+FROM {{ internal }}.{{ source }}
+{% if condition %}
+WHERE {{ condition }}
+{% endif %}

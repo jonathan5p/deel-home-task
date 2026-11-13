@@ -1,0 +1,8 @@
+SELECT
+    open_order.delivery_date,
+    status.status_code,
+    count(*) AS open_orders
+FROM {{ internal }}.current_orders AS open_order
+JOIN {{ internal }}.dim_order_status AS status ON status.status_key = open_order.status_key
+WHERE open_order.is_open AND NOT open_order._is_deleted
+GROUP BY open_order.delivery_date, status.status_code

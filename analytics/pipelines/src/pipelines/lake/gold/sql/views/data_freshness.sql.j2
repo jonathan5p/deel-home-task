@@ -1,0 +1,8 @@
+{# Measured from the data, so it ages while the source is idle even when the pipeline is healthy. #}
+SELECT 'customers' AS entity, max(_valid_from) AS last_changed_at FROM {{ internal }}.dim_customer
+UNION ALL
+SELECT 'products', max(_valid_from) FROM {{ internal }}.dim_product
+UNION ALL
+SELECT 'orders', max(_changed_at) FROM {{ internal }}.current_orders
+UNION ALL
+SELECT 'order_items', max(_changed_at) FROM {{ internal }}.current_order_items

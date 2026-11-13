@@ -7,8 +7,6 @@ from pipelines.schemas.gold_definitions import GoldTable
 ORDERS = load_facts()["fact_order_history"]
 ITEMS = load_facts()["fact_order_item_history"]
 (STATUS, IS_OPEN, ORDER_DATE, DELIVERY_DATE) = ORDERS.lookups
-(PRODUCT,) = ITEMS.as_of
-(CUSTOMER,) = ORDERS.as_of
 
 
 def without(table: GoldTable, name: str) -> GoldTable:

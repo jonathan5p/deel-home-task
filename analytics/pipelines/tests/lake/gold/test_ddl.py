@@ -4,10 +4,11 @@ from pathlib import Path
 
 import pytest
 
-from analytics.pipelines.tests.lake.gold.ddl_setup import THINGS, VALID_TO
+from analytics.pipelines.tests.lake.gold.ddl_setup import THINGS, stored
 from analytics.pipelines.tests.schemas.definitions_setup import SchemasTree
 from pipelines.lake.gold.ddl import (
-    PIPELINE_ONLY_COLUMNS,
+    PUBLIC_VIEWS,
+    PublicView,
     UnknownColumnError,
     column_lines,
     column_list,
@@ -16,9 +17,13 @@ from pipelines.lake.gold.ddl import (
     main,
     postgres_string,
     render,
+    staging_statement,
+    table_statement,
+    view_statement,
 )
-from pipelines.lake.gold.dimensions import DIMENSIONS
-from pipelines.schemas.gold_definitions import load_gold_tables
+from pipelines.lake.gold.dimensions import STORED
+from pipelines.lake.gold.public import PIPELINE_ONLY_COLUMNS
+from pipelines.lake.gold.stored import WriteMode
 
 QUESTION_VIEWS = (
     "open_orders_by_delivery_date_and_status",
@@ -26,7 +31,6 @@ QUESTION_VIEWS = (
     "pending_items_by_product",
     "top_customers_by_pending_orders",
 )
-VIEWS_WITHOUT_TABLE = ("open_orders", *QUESTION_VIEWS)
 
 
 def test_a_text_becomes_a_postgres_string_with_its_quotes_doubled() -> None:
@@ -73,17 +77,81 @@ def test_a_table_is_described_in_the_internal_schema_with_every_column() -> None
     ]
 
 
-def test_a_view_is_described_without_the_pipeline_only_columns_and_with_its_own() -> None:
-    assert describe_view(THINGS, VALID_TO).splitlines() == [
+def test_a_view_is_described_without_the_pipeline_only_columns() -> None:
+    assert describe_view(THINGS).splitlines() == [
         "COMMENT ON VIEW gold.things IS",
         "    'Things nobody deleted';",
         "COMMENT ON COLUMN gold.things.thing_id IS",
         "    'Thing identifier';",
         "COMMENT ON COLUMN gold.things.label IS",
         "    'The thing''s label';",
-        "COMMENT ON COLUMN gold.things._valid_to IS",
-        "    'Replaced at';",
     ]
+
+
+def test_a_view_selects_its_public_columns_from_its_table_with_its_condition() -> None:
+    statement = view_statement(PublicView("things", "NOT _is_deleted"), {"things": THINGS})
+
+    assert statement.split(";")[0].splitlines() == [
+        "CREATE OR REPLACE VIEW gold.things AS",
+        "SELECT",
+        "    thing_id,",
+        "    label",
+        "FROM gold_internal.things",
+        "WHERE NOT _is_deleted",
+    ]
+    assert "COMMENT ON VIEW gold.things IS" in statement
+
+
+def test_a_view_can_read_another_table_without_a_condition() -> None:
+    statement = view_statement(PublicView("things", table="all_things"), {"things": THINGS})
+
+    assert "FROM gold_internal.all_things;\n" in statement
+
+
+def test_a_merged_table_has_its_keys_as_primary_key() -> None:
+    statement = table_statement(stored(WriteMode.MERGE, ("thing_id", "_commit_sequence")))
+
+    assert statement.startswith("CREATE TABLE IF NOT EXISTS gold_internal.things (\n")
+    assert "    PRIMARY KEY (thing_id, _commit_sequence)\n);" in statement
+    assert "COMMENT ON TABLE gold_internal.things IS" in statement
+
+
+def test_a_merged_table_keeps_its_unique_columns_unique() -> None:
+    statement = table_statement(stored(WriteMode.MERGE, ("thing_id",), unique=("label",)))
+
+    assert "    PRIMARY KEY (thing_id),\n    UNIQUE (label)\n);" in statement
+
+
+@pytest.mark.parametrize(
+    ("dimension", "key"), [("dim_customer", "customer_key"), ("dim_product", "product_key")]
+)
+def test_a_dimension_refuses_two_versions_with_the_same_surrogate_key(
+    dimension: str, key: str
+) -> None:
+    statement = table_statement(STORED[dimension])
+
+    assert f"    UNIQUE ({key})\n);" in statement
+
+
+def test_a_history_table_is_partitioned_by_month_with_the_change_time_in_its_key() -> None:
+    statement = table_statement(stored(WriteMode.MERGE, ("thing_id",), history=True))
+
+    key = "    PRIMARY KEY (thing_id, _changed_at)\n) PARTITION BY RANGE (_changed_at);"
+
+    assert key in statement
+    assert (
+        "CREATE TABLE IF NOT EXISTS gold_internal.things_default\n"
+        "    PARTITION OF gold_internal.things DEFAULT;"
+    ) in statement
+    assert "COMMENT ON TABLE gold_internal.things_default IS" in statement
+
+
+def test_a_staging_table_is_unlogged_and_takes_nulls() -> None:
+    merged = staging_statement(stored(WriteMode.MERGE, ("thing_id",)))
+
+    assert merged.startswith("CREATE UNLOGGED TABLE IF NOT EXISTS gold_internal.stage_things (")
+    assert "    thing_id bigint,\n" in merged
+    assert "    _is_deleted boolean\n);" in merged
 
 
 def test_the_ddl_takes_its_descriptions_from_the_schemas(schemas: SchemasTree) -> None:
@@ -115,147 +183,96 @@ def test_main_writes_the_rendered_ddl_to_the_given_file(tmp_path: Path) -> None:
     assert output.read_text(encoding="utf-8") == render()
 
 
-@pytest.mark.parametrize("dimension", ["dim_customer", "dim_product"])
-def test_each_scd2_dimension_has_an_unlogged_staging_table_described_like_it(
-    dimension: str,
-) -> None:
+@pytest.mark.parametrize("name", list(STORED))
+def test_every_stored_table_has_its_table_and_staging_table(name: str) -> None:
     ddl = render()
 
-    assert f"CREATE UNLOGGED TABLE IF NOT EXISTS gold_internal.stage_{dimension} (" in ddl
-    assert f"COMMENT ON TABLE gold_internal.stage_{dimension} IS" in ddl
-    assert f"COMMENT ON COLUMN gold_internal.stage_{dimension}._valid_from IS" in ddl
-    assert f"COMMENT ON COLUMN gold_internal.stage_{dimension}._is_current IS" not in ddl
+    assert f"CREATE TABLE IF NOT EXISTS gold_internal.{name} (" in ddl
+    assert f"CREATE UNLOGGED TABLE IF NOT EXISTS gold_internal.stage_{name} (" in ddl
 
 
-@pytest.mark.parametrize("dimension", ["dim_customer", "dim_product"])
-def test_the_public_dimension_views_leave_out_folded_and_deleted_versions(dimension: str) -> None:
-    view = render().split(f"CREATE OR REPLACE VIEW gold.{dimension} AS", 1)[1]
-
-    assert view.split(";", 1)[0].endswith(
-        f"FROM gold_internal.{dimension}_versions\nWHERE NOT _is_folded AND NOT _is_deleted"
-    )
-
-
-@pytest.mark.parametrize("dimension", ["dim_customer", "dim_product"])
-def test_each_scd2_dimension_has_a_described_versions_view_with_its_query(dimension: str) -> None:
-    ddl = render()
-    (scd2,) = (d for d in DIMENSIONS if d.name == dimension)
-
-    assert f"CREATE OR REPLACE VIEW gold_internal.{dimension}_versions AS\n" in ddl
-    assert f"{scd2.versions_query()};\n" in ddl
-    assert f"COMMENT ON VIEW gold_internal.{dimension}_versions IS" in ddl
-    assert f"COMMENT ON COLUMN gold_internal.{dimension}_versions._is_folded IS" in ddl
-
-
-@pytest.mark.parametrize("dimension", ["dim_customer", "dim_product"])
-def test_the_dimension_tables_store_no_derived_flags_or_current_constraint(dimension: str) -> None:
-    table = render().split(f"CREATE TABLE IF NOT EXISTS gold_internal.{dimension} (", 1)[1]
-    definition = table.split(");", 1)[0]
-
-    assert "_is_folded" not in definition
-    assert "_is_current" not in definition
-    assert "CHECK" not in definition
-    assert f"{dimension}_current_idx" not in render()
-
-
-@pytest.mark.parametrize("fact", ["fact_order_history", "fact_order_item_history"])
-def test_each_history_fact_has_an_unlogged_staging_table_with_the_lookup_inputs(
-    fact: str,
-) -> None:
+def test_the_sync_state_records_one_snapshot_per_table() -> None:
     ddl = render()
 
-    assert f"CREATE UNLOGGED TABLE IF NOT EXISTS gold_internal.stage_{fact} (" in ddl
-    assert f"COMMENT ON TABLE gold_internal.stage_{fact} IS" in ddl
-    assert f"COMMENT ON COLUMN gold_internal.stage_{fact}._content_hash IS" in ddl
-    assert f"COMMENT ON COLUMN gold_internal.stage_{fact}._valid_to IS" not in ddl
+    assert "CREATE TABLE IF NOT EXISTS gold_internal.sync_state (" in ddl
+    assert "    PRIMARY KEY (table_name)\n);" in ddl
+    assert "COMMENT ON COLUMN gold_internal.sync_state.snapshot_id IS" in ddl
 
 
-def test_the_order_status_is_staged_with_its_source_description() -> None:
-    assert (
-        "COMMENT ON COLUMN gold_internal.stage_fact_order_history.status IS\n"
-        "    'Order status as recorded in the source, for example PENDING or COMPLETED';"
-    ) in render()
+def test_retention_partitions_and_drops_the_months_of_the_history_tables() -> None:
+    ddl = render()
+    history = "'fact_order_history', 'fact_order_item_history'"
+
+    assert f"FOREACH fact IN ARRAY ARRAY[{history}] LOOP" in ddl
+    assert f"AND parent.relname IN ({history})" in ddl
 
 
 @pytest.mark.parametrize(
-    ("fact", "key"),
-    [("fact_order_history", "order_id"), ("fact_order_item_history", "order_item_id")],
-)
-def test_the_public_history_views_fold_unchanged_changes_at_read_time(fact: str, key: str) -> None:
-    view = render().split(f"CREATE OR REPLACE VIEW gold.{fact} AS", 1)[1].split(";", 1)[0]
-
-    assert "(_content_hash, _is_deleted) IS NOT DISTINCT FROM" in view
-    assert "WHERE NOT is_folded\n" in view
-    assert "lead(_changed_at) OVER versions IS NULL AND NOT _is_deleted AS _is_current" in view
-    assert f"WINDOW versions AS (PARTITION BY {key} ORDER BY _commit_sequence)" in view
-
-
-@pytest.mark.parametrize(
-    ("index", "column"),
+    ("view", "condition"),
     [
-        ("fact_order_history_customer_idx", "fact_order_history (customer_id)"),
-        ("fact_order_item_history_product_idx", "fact_order_item_history (product_id)"),
+        ("dim_customer", "NOT _is_folded AND NOT _is_deleted"),
+        ("dim_product", "NOT _is_folded AND NOT _is_deleted"),
+        ("current_orders", "NOT _is_deleted"),
+        ("current_order_items", "NOT _is_deleted"),
     ],
 )
-def test_history_facts_are_indexed_by_the_dimension_key_they_are_re_resolved_by(
-    index: str, column: str
-) -> None:
-    ddl = render()
+def test_the_public_views_filter_the_stored_version_columns(view: str, condition: str) -> None:
+    body = render().split(f"CREATE OR REPLACE VIEW gold.{view} AS", 1)[1].split(";", 1)[0]
 
-    assert f"CREATE INDEX IF NOT EXISTS {index}\n    ON gold_internal.{column};" in ddl
-    assert f"COMMENT ON INDEX gold_internal.{index} IS" in ddl
+    assert body.endswith(f"FROM gold_internal.{view}\nWHERE {condition}")
+
+
+@pytest.mark.parametrize("view", QUESTION_VIEWS)
+def test_the_business_views_count_the_open_current_orders_when_read(view: str) -> None:
+    body = render().split(f"CREATE OR REPLACE VIEW gold.{view} AS", 1)[1].split(";", 1)[0]
+
+    assert "FROM gold_internal.current_" in body
+    assert "open_order.is_open AND NOT open_order._is_deleted" in body
 
 
 @pytest.mark.parametrize(
-    ("index", "definition"),
-    [
-        (
-            "current_orders_open_delivery_idx",
-            "current_orders (delivery_date, status_key) WHERE is_open AND NOT _is_deleted",
-        ),
-        (
-            "current_orders_open_customer_idx",
-            "current_orders (customer_id) WHERE is_open AND NOT _is_deleted",
-        ),
-        (
-            "current_order_items_live_order_idx",
-            "current_order_items (order_id) INCLUDE (product_id, quantity)\n"
-            "    WHERE NOT _is_deleted",
-        ),
-    ],
+    ("view", "dimension"),
+    [("fact_order_history", "dim_customer"), ("fact_order_item_history", "dim_product")],
 )
-def test_the_current_state_is_indexed_for_the_business_views(index: str, definition: str) -> None:
+def test_the_history_views_join_the_dimension_version_valid_at_each_change(
+    view: str, dimension: str
+) -> None:
+    body = render().split(f"CREATE OR REPLACE VIEW gold.{view} AS", 1)[1].split(";", 1)[0]
+
+    assert f"FROM gold_internal.{view} AS fact" in body
+    assert f"LEFT JOIN gold_internal.{dimension} AS " in body
+    assert "WHERE NOT fact._is_folded" in body
+
+
+def test_the_open_order_indexes_are_partial_and_described() -> None:
+    ddl = render()
+    open_rows = "WHERE is_open AND NOT _is_deleted;"
+
+    assert f"ON gold_internal.current_orders (delivery_date, status_key) {open_rows}" in ddl
+    assert f"ON gold_internal.current_orders (customer_id) {open_rows}" in ddl
+    assert "ON gold_internal.current_order_items (order_id) INCLUDE (product_id, quantity)" in ddl
+    for index in (
+        "current_orders_open_delivery_idx",
+        "current_orders_open_customer_idx",
+        "current_order_items_live_order_idx",
+    ):
+        assert f"COMMENT ON INDEX gold_internal.{index} IS" in ddl
+
+
+def test_no_table_is_transformed_in_postgresql() -> None:
     ddl = render()
 
-    assert f"CREATE INDEX IF NOT EXISTS {index}\n    ON gold_internal.{definition};" in ddl
-    assert f"COMMENT ON INDEX gold_internal.{index} IS" in ddl
+    for word in ("JOIN", "GROUP BY", "OVER (", "MERGE", "generate_series"):
+        assert word not in ddl.split("CREATE OR REPLACE FUNCTION")[0]
 
 
-def test_every_index_the_ddl_creates_is_described() -> None:
-    ddl = render()
-    created = re.findall(r"CREATE (?:UNIQUE )?INDEX IF NOT EXISTS (\w+)", ddl)
-
-    assert created
-    described = set(re.findall(r"COMMENT ON INDEX gold_internal\.(\w+) IS", ddl))
-    assert set(created) <= described
-
-
-def test_every_gold_relation_but_the_versions_views_is_described_as_a_public_view() -> None:
-    ddl = render()
-    versions_views = {dimension.versions_relation.split(".")[1] for dimension in DIMENSIONS}
-
-    for name in set(load_gold_tables()) - versions_views:
-        assert f"COMMENT ON VIEW gold.{name} IS" in ddl
-    for name in versions_views:
-        assert f"COMMENT ON VIEW gold.{name} IS" not in ddl
-
-
-@pytest.mark.parametrize("view", VIEWS_WITHOUT_TABLE)
-def test_a_business_view_has_no_internal_table(view: str) -> None:
+def test_every_gold_relation_with_a_public_view_is_described_as_one() -> None:
     ddl = render()
 
-    assert f"CREATE OR REPLACE VIEW gold.{view} AS" in ddl
-    assert f"gold_internal.{view}" not in ddl
+    for view in PUBLIC_VIEWS:
+        assert f"COMMENT ON VIEW gold.{view.name} IS" in ddl
+    assert "COMMENT ON VIEW gold.pending_orders_by_customer IS" not in ddl
+    assert "COMMENT ON VIEW gold.sync_state IS" not in ddl
 
 
 def test_the_public_current_orders_keep_the_open_flag_internal() -> None:
@@ -270,14 +287,6 @@ def test_open_orders_are_the_current_orders_open_and_not_deleted() -> None:
     view = render().split("CREATE OR REPLACE VIEW gold.open_orders AS", 1)[1].split(";", 1)[0]
 
     assert view.endswith("FROM gold_internal.current_orders\nWHERE is_open AND NOT _is_deleted")
-
-
-@pytest.mark.parametrize("view", QUESTION_VIEWS)
-def test_the_business_views_count_the_open_orders(view: str) -> None:
-    body = render().split(f"CREATE OR REPLACE VIEW gold.{view} AS", 1)[1].split(";", 1)[0]
-
-    assert "FROM gold.open_orders AS o" in body or "JOIN gold.open_orders AS o" in body
-    assert "gold.current_orders" not in body
 
 
 def test_a_view_cannot_hide_a_column_its_table_lacks() -> None:
