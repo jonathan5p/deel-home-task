@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+import time
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
@@ -15,10 +16,11 @@ from pipelines.lake.shared.tables import table_definition
 from pipelines.lake.shared.types import SPARK_TYPES
 from pipelines.lake.silver.views import refresh_views
 from pipelines.schemas.definitions import EntityDefinition
-from pipelines.settings import SilverSettings
+from pipelines.settings import GoldSettings, SilverSettings
 
 LAKE_CATALOG = "spark.sql.catalog.lake"
 LAKE_VIEWS = "--lake-views"
+STREAM = "--stream"
 COMPARED = "GOLD LAKE "
 
 
@@ -84,23 +86,52 @@ def compare_lake_views(spark: SparkSession) -> None:
         print(f"{COMPARED}{json.dumps({'view': name} | compared)}", flush=True)
 
 
+def stream_batches(
+    spark: SparkSession, catalog: str, key: str, pause: float, batches: list[str]
+) -> None:
+    """Start the gold job's streams after appending the first batch, then append each further
+    batch after `pause` seconds, so every batch after the first runs in a warm driver as the
+    long-running gold job does; stop the streams after the last one."""
+    gold = GoldSettings.from_env(os.environ)
+    first, *rest = batches
+    append_versions(spark, catalog, f"s3a://lake/{key}/silver/{first}")
+    writer, lake = job.gold_writer(spark, gold)
+    job.prepare(spark, writer, lake)
+    queries = job.run(spark, gold, job.writer_sinks(writer))
+    time.sleep(pause)
+    for name in rest:
+        append_versions(spark, catalog, f"s3a://lake/{key}/silver/{name}")
+        time.sleep(pause)
+    for query in queries:
+        query.stop()
+
+
 def main(argv: list[str]) -> None:
     """Append batches of silver versions to the fixture silver tables, if any are named, then
     run the gold job on them with --available-now; or, after --rebuild, run the rebuild job on
     them with the arguments that follow it; or, with --lake-views, compare the gold views in the
-    lake with PostgreSQL's.
+    lake with PostgreSQL's; or, with --stream and a pause in seconds, stream the batches into
+    the gold job one after the other (`stream_batches`).
 
     Arguments: the fixture folder's key in the lake bucket, then the batches' folder names or
-    --rebuild and the rebuild job's arguments, or --lake-views.
+    --rebuild and the rebuild job's arguments, or --lake-views, or --stream, the pause and the
+    batches' folder names.
     """
     key, *batch = argv
     catalog = os.environ["ICEBERG_CATALOG"]
-    spark = (
-        SparkSession.builder.appName("gold-from-silver")
-        .config("spark.sql.session.timeZone", "UTC")
-        .getOrCreate()
-    )
+    builder = SparkSession.builder.appName("gold-from-silver")
+    conf = job.session_conf(GoldSettings.from_env(os.environ))
+    for name, value in {**conf, "spark.sql.session.timeZone": "UTC"}.items():
+        builder = builder.config(name, value)
+    spark = builder.getOrCreate()
     register_fixture_catalog(spark, catalog, f"s3://lake/{key}/warehouse")
+    if batch[:1] == [STREAM]:
+        job.log_batches()
+        try:
+            stream_batches(spark, catalog, key, float(batch[1]), batch[2:])
+        finally:
+            spark.stop()
+        return
     if batch == [LAKE_VIEWS]:
         compare_lake_views(spark)
         spark.stop()
