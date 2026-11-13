@@ -1,88 +1,75 @@
 # Gold
 
-Gold is the dimensional model: a star schema that answers the four business questions with near-real-time current state and keeps the history of every change. Spark builds it from the silver history tables in the lake.
+Gold is the dimensional model: a star schema that answers the four business questions in near real time and keeps the history of every change.
 
-**Gold is computed once by Spark and stored twice.** The gold job runs four independent streams, one per silver table. In each micro-batch a stream computes its own gold tables with the Spark DataFrame API, merges them into Iceberg tables in `lake.gold_internal`, next to bronze and silver, and copies the rows it computed into PostgreSQL, the `analytics` database on the `analytics-db` service. PostgreSQL holds no business logic: it is a serving copy, with the same tables in `gold_internal`. Both stores expose the same public views, rendered from one set of SQL templates: `gold.*` in PostgreSQL and `lake.gold.*` in the lake.
+**Computed once by Spark, stored twice.** The gold job runs four independent streams, one per silver table. Each batch merges its rows into Iceberg tables in `lake.gold_internal` and copies the same rows into PostgreSQL `gold_internal`, a serving copy with no business logic. Both stores expose the same views, rendered from one set of templates: `lake.gold.*` and `gold.*`.
 
 ```mermaid
 flowchart LR
-    subgraph silver["lake.silver: append-only history, duplicates dropped"]
+    subgraph silver["Silver tables"]
         sc[("customers")]
         sp[("products")]
         so[("orders")]
         si[("order_items")]
     end
-    subgraph job["gold job: 4 independent streams, no lock"]
-        gc["customers stream<br/>SCD2 per touched key"]
-        gp["products stream<br/>SCD2 per touched key"]
-        go["orders stream<br/>history + newer-only current state"]
-        gi["order_items stream<br/>history + newer-only current state"]
+    subgraph streams["Gold job: 4 independent streams"]
+        gc["customers"]
+        gp["products"]
+        go["orders"]
+        gi["order_items"]
     end
-    subgraph ice["lake.gold_internal: Iceberg tables, full history"]
-        dc[("dim_customer")]
-        dp[("dim_product")]
-        fo[("fact_order_history<br/>current_orders")]
-        fi[("fact_order_item_history<br/>current_order_items")]
-        seeds[("dim_date, dim_order_status<br/>seeded")]
+    subgraph stores["Gold tables"]
+        ice[("lake.gold_internal<br/>Iceberg, full history")]
+        pg[("PostgreSQL gold_internal<br/>same rows, 36 months of history")]
     end
-    pg[("PostgreSQL gold_internal<br/>same tables and rows,<br/>36 months of history")]
-    tpl{{"one set of view templates<br/>point-in-time fact views,<br/>4 report views over the open orders,<br/>dimension and current-state views"}}
-    lv["lake.gold.* views"]
-    gv["gold.* views"]
-    lr["Spark SQL, DuckDB, Trino"]
-    sr["Analytics API, Grafana, psql"]
+    views{{"One set of views<br/>lake.gold.* and gold.*"}}
+    readers["API, Grafana, psql<br/>Spark SQL, DuckDB, Trino"]
 
-    sc --> gc -- "mergeInto" --> dc
-    sp --> gp -- "mergeInto" --> dp
-    so --> go -- "mergeInto" --> fo
-    si --> gi -- "mergeInto" --> fi
-    job -- "copy of each batch's computed rows,<br/>one transaction with sync_state" --> pg
-    ice --> lv
-    pg --> gv
-    tpl -. "rendered over lake.gold_internal" .-> lv
-    tpl -. "rendered over gold_internal" .-> gv
-    lv --> lr
-    gv --> sr
+    sc --> gc
+    sp --> gp
+    so --> go
+    si --> gi
+    streams -- "mergeInto" --> ice
+    streams -- "copy, one transaction<br/>per stream batch" --> pg
+    ice --> views
+    pg --> views
+    views --> readers
 ```
 
-The stored tables:
+| Stored tables | What they hold |
+| --- | --- |
+| `dim_customer`, `dim_product` | SCD2 versions with a deterministic surrogate key |
+| `dim_date`, `dim_order_status` | Seeded |
+| `fact_order_history`, `fact_order_item_history` | Every change, with its business keys |
+| `current_orders`, `current_order_items` | The newest change of each order and item |
 
-- **SCD2 dimensions** `dim_customer` and `dim_product`, with the version columns stored and a deterministic surrogate key per version, and the seeded `dim_date` and `dim_order_status`.
-- **History facts** `fact_order_history` and `fact_order_item_history`: every change, with its business keys (`customer_id`, `product_id`) and its own version columns.
-- **Current state** `current_orders` and `current_order_items`: the newest change of each order and item.
+The views resolve the rest when read:
 
-The public views resolve the rest when they are read:
+- **Point-in-time facts** join each change to the dimension version valid when it was committed: customer key, name and address, or product key, name, price and `line_amount`.
+- **The four business questions** are counted from the open rows of `current_orders`.
 
-- **Point-in-time facts:** `gold.fact_order_history` and `gold.fact_order_item_history` join each change to the dimension version valid when it was committed, so they show the customer key, name and address, or the product key, name, price and `line_amount`, as of the change.
-- **The four business questions** are counted from the open rows of `current_orders` when read, through partial indexes in PostgreSQL.
+Rules in short:
 
-In short:
+- **Open order:** current status other than `COMPLETED`, not deleted. Pending orders are the open orders; pending items are the items of open orders.
+- **Current state only moves forward:** a change replaces the current row only if its `_commit_sequence` is higher. Late events are still kept as history.
+- **No stream waits for another:** a fact never reads a dimension when written, so a late customer or product shows up in the facts as soon as it is stored.
+- **Top 3 questions keep ties**, so they can return more than three rows.
 
-- **Open order:** current status other than `COMPLETED`, not deleted; `gold.open_orders` lists them. **Pending orders** are open orders, and **pending items** are the items of open orders.
-- **Current state only moves forward:** a change replaces the current row only if its `_commit_sequence` is higher, so late or replayed events never overwrite newer state; they are still kept as history.
-- **No stream waits for another:** a fact keeps its business keys and never reads a dimension when it is written, so a customer or product that arrives late, or a late version, shows up in the facts as soon as it is stored.
-- **Top 3 questions include ties**, so more than three rows can come back.
-
-## How gold got here
-
-I first modelled gold in PostgreSQL, with Spark staging each batch and templated SQL doing the versions, the lookups and the merges, while the lake gold views recomputed the model from silver at read time. I moved the model to Spark so the two golds come from one computation and the lake's cluster does the work. A first Spark version linked facts to dimension versions at write time and kept report tables, behind one lock across the streams; it was slow, so I simplified it to the shape above, the usual lakehouse shape for SCD2 pipelines. The whole story, with the measurements, is in [D44](../../architecture/decisions.md#d44--gold-modelled-in-spark-on-iceberg-postgresql-as-serving-copy).
+I first modelled gold in PostgreSQL, then moved it to Spark so both copies come from one computation ([D44](../../architecture/decisions.md#d44--gold-modelled-in-spark-on-iceberg-postgresql-as-serving-copy)).
 
 ## PostgreSQL gold and the lake gold views
 
 | | PostgreSQL gold | Lake gold |
 | --- | --- | --- |
-| Where | Database `analytics`: tables in `gold_internal`, views in `gold` | Iceberg tables `lake.gold_internal.<table>`, views `lake.gold.<view>` |
-| Written by | The gold job, one transaction per stream and micro-batch, copying the rows it merged into Iceberg | The gold job, one Iceberg `MERGE` per table per micro-batch |
-| Consistent | Per stream and micro-batch: a fact's history and current state commit together | Per table: a reader can briefly see a fact's history before its current state ([consistency](writer.md#consistency-between-the-two-copies)) |
-| History | History facts keep 36 months by default (`GOLD_RETENTION_MONTHS`) | The full history |
-| Keys | Surrogate keys (`customer_key`, `product_key`) | The same surrogate keys: they are hashed from the business key and `_commit_sequence`, so both copies hold the same values |
-| Views | Rendered from `pipelines/lake/gold/sql/views/` over `gold_internal` | The same templates over `lake.gold_internal` |
-| Read by | The [analytics API](../../serving/api.md), [Grafana](../../serving/grafana.md), `psql` | Spark SQL, DuckDB, Trino ([querying the lake](../../serving/lake-access.md)) |
+| Where | Database `analytics`: tables in `gold_internal`, views in `gold` | Tables `lake.gold_internal.<table>`, views `lake.gold.<view>` |
+| Written by | The gold job: one transaction per stream batch | The gold job: one `mergeInto` per table per batch |
+| Consistent | Per stream batch | Per table ([consistency](writer.md#consistency-between-the-two-copies)) |
+| History | 36 months (`GOLD_RETENTION_MONTHS`) | Full |
+| Keys | Surrogate keys hashed from the business key and `_commit_sequence` | The same values |
+| Read by | [Analytics API](../../serving/api.md), [Grafana](../../serving/grafana.md), `psql` | Spark SQL, DuckDB, Trino ([querying the lake](../../serving/lake-access.md)) |
 
-I keep PostgreSQL for serving because the API and Grafana need low-latency reads, which the partial indexes on the open orders give; the Iceberg copy holds the whole model, full history included, for analytical engines.
+PostgreSQL serves the API and Grafana, which need fast reads; the Iceberg copy holds the full history for analytical engines. `make data-quality CHECK=gold` checks that both hold the same rows and give the same answers ([data quality checks](../data-quality.md#how-the-checks-run)).
 
-`make data-quality CHECK=gold` checks that PostgreSQL holds exactly the Iceberg rows at the snapshot it records, checks the model's invariants, and checks that the four business-question views return the same rows in both stores ([data quality checks](../data-quality.md#how-the-checks-run)).
-
-- [Gold model](model.md): the inputs from silver, the stored tables and public views, the star schema and the grain of every table, the versioning, the point-in-time views, the open-order rules, the business-question views and the things to know about the source data.
-- [Gold writer](writer.md): the gold job and how each stream computes and writes its micro-batches, the copy into PostgreSQL, current state and retention, rebuilding gold from silver, and gold in the lake.
-- [Table reference](../../reference/gold/index.md): every gold table and view, with its columns, types and descriptions.
+- [Gold model](model.md): the tables, grain, versioning, point-in-time views, business questions and things to know about the source data.
+- [Gold writer](writer.md): how each stream writes, the copy into PostgreSQL, retention, rebuilds and the lake views.
+- [Table reference](../../reference/gold/index.md): every gold table and view with its columns.
