@@ -27,7 +27,7 @@ Run it as a service with `make pipeline PIPELINE=silver` (see [Running the pipel
 
 The streaming job does not manage them. `refresh_views(spark, settings)` in `pipelines/lake/silver/views.py` creates them and updates them, and lake maintenance (see [Lake maintenance](../operations/maintenance-and-recovery.md#lake-maintenance)) and two commands run it:
 
-- **`make lake-views`** runs it once, as the one-shot job `silver/views_job.py`, against the running stack. Run it after changing a view's SQL or its descriptions. It prints how many silver views and how many gold views it created or replaced; 0 means all were up to date.
+- **`make lake-views`** runs it once, as the one-shot job `silver/views_job.py`, against the running stack. Run it after changing a view's SQL or its descriptions. It prints how many silver views and how many gold views it created or replaced; 0 means all were up to date. While the gold tables do not exist yet, it prints `GOLD VIEWS skipped: ...` instead: the gold job creates them, and their views, when it starts.
 - **`make pipeline PIPELINE=silver`** (or `all`) also starts the `lake-views` service, which runs the same job once. On a fresh stack the silver tables do not exist yet, so it fails with `MissingSilverTablesError`, before creating any view, and Compose restarts it (`restart: on-failure`) until the silver job has created every table. Then it creates the views and exits.
 
 In production, CI would run the same command (`make lake-views`, or the job on the production cluster) whenever a view definition changes.

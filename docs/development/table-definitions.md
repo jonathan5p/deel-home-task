@@ -10,7 +10,7 @@ sources/<table>.avsc              one source table of the operations schema (cus
 tables/<table>_template.avsc      one table or view a layer keeps per entity (bronze, bronze_quarantine, silver, silver_history,
                                   silver_current): its description, the column groups it includes and the full definition of the
                                   layer's own columns
-gold/<table>.avsc                 one gold table in PostgreSQL (dim_customer, ..., current_order_items), or a view without a table
+gold/<table>.avsc                 one gold table, in Iceberg and in PostgreSQL (dim_customer, ..., current_order_items), or a view without a table
                                   (data_freshness and the four business question views)
 definitions.py                    the loader
 gold_definitions.py               the loader of the gold schemas

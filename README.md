@@ -19,16 +19,18 @@
 ![ty](https://img.shields.io/badge/ty-0.0.98-261230)
 ![MkDocs Material](https://img.shields.io/badge/MkDocs%20Material-9.8.1-526CFE?logo=materialformkdocs&logoColor=white)
 
-A change data capture pipeline for Deel's data engineering take-home. Debezium streams every change of the supplied `finance_db` PostgreSQL database to Kafka. Spark Structured Streaming lands the changes in an Iceberg lake on SeaweedFS (landing, bronze, silver), computes a dimensional model from them (gold, also Iceberg tables in the lake) and copies it into a separate PostgreSQL for serving. The four business questions are answered by gold views, served over an HTTP API and a Grafana dashboard. Everything runs locally in Docker Compose.
+A change data capture pipeline for Deel's data engineering take-home. Debezium streams every change of the supplied `finance_db` PostgreSQL database to Kafka. Spark Structured Streaming lands the changes in an Iceberg lake on SeaweedFS (landing, bronze, silver), computes a dimensional model from them in four independent streams (gold, also Iceberg tables in the lake) and copies each batch into a separate PostgreSQL for serving. Both stores render the same gold views from one set of SQL templates; the four business questions are views counted from the open orders when read, served over an HTTP API and a Grafana dashboard. Everything runs locally in Docker Compose.
 
 ```mermaid
 flowchart LR
     source[("finance_db<br/>PostgreSQL")] -->|Debezium| kafka[Kafka]
     kafka --> landing[/"Landing<br/>raw Avro"/] --> bronze[("Bronze<br/>typed change log")] --> silver[("Silver<br/>version history")]
-    silver --> lakegold[("Gold<br/>Iceberg tables")]
-    lakegold -->|copied every micro-batch| gold[("Gold serving copy<br/>analytics PostgreSQL")]
-    gold --> api[Analytics API]
-    gold --> grafana[Grafana]
+    silver -->|4 independent gold streams| lakegold[("Gold<br/>Iceberg tables")]
+    lakegold -->|computed rows copied<br/>every micro-batch| gold[("Gold serving copy<br/>analytics PostgreSQL")]
+    lakegold --> lakeviews["lake.gold views"] --> engines[Spark SQL, DuckDB]
+    gold --> views["gold views<br/>same SQL"]
+    views --> api[Analytics API]
+    views --> grafana[Grafana]
 ```
 
 This README is the quick start. Every part of the project has its own guide in [`docs/`](docs/README.md), also published as the [docs site](https://jonathan5p.github.io/deel-home-task/) with the table reference; the [index](#documentation) below lists them.
