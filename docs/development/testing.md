@@ -21,7 +21,7 @@ make test       # unit tests with branch coverage; fails below 90%
 make lint       # ruff lint and format check
 make format     # format the code and apply safe lint fixes (files keep your ownership)
 make typecheck  # check types with ty; any diagnostic fails
-make schemas    # render the flat Avro schema of every lake table and view to the git-ignored target/schemas/, for reading (on the host, with uv)
+make schemas    # render every lake table and view as a flat Avro schema, for reading
 ```
 
 - **Unit tests** live next to each project and mirror its source tree (`analytics/<project>/tests/test_<module>.py`). The Grafana dashboard has its own tests in `tests/grafana/` ([Grafana](../serving/grafana.md)).
