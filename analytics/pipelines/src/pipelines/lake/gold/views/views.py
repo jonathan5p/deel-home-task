@@ -5,9 +5,9 @@ from typing import NamedTuple
 from jinja2 import Environment, StrictUndefined
 from pyspark.sql import SparkSession
 
-from pipelines.lake.gold.ddl import PIPELINE_ONLY_COLUMNS
 from pipelines.lake.gold.dimensions import DIMENSIONS, FACTS
-from pipelines.lake.gold.facts import AsOfLookup, ChangeFact, FactColumn, KeyLookup
+from pipelines.lake.gold.facts import ChangeFact, FactColumn, KeyLookup
+from pipelines.lake.gold.public import PIPELINE_ONLY_COLUMNS
 from pipelines.lake.gold.scd2 import Scd2Column, Scd2Dimension
 from pipelines.lake.shared.columns import MetadataColumn
 from pipelines.lake.shared.tables import TABLE_TEMPLATES, sql_string
@@ -59,6 +59,45 @@ class AsOfJoin(NamedTuple):
     columns: tuple[tuple[str, str], ...]
 
 
+class PointInTime(NamedTuple):
+    """Fact columns taken from the version of `dimension` valid when the change was committed,
+    as (fact column, dimension column) pairs, matched on the fact's `business_key`; `amount`
+    is a (column, factor, price) triple computed as factor times the looked-up price."""
+
+    dimension: str
+    business_key: str
+    columns: tuple[tuple[str, str], ...]
+    amount: tuple[str, str, str] | None = None
+
+    @property
+    def fact_columns(self) -> tuple[str, ...]:
+        amount = () if self.amount is None else (self.amount[0],)
+        return (*(fact for fact, _ in self.columns), *amount)
+
+
+POINT_IN_TIME: Mapping[str, PointInTime] = {
+    "fact_order_history": PointInTime(
+        "dim_customer",
+        "customer_id",
+        (
+            ("customer_key", "customer_key"),
+            ("customer_name", "customer_name"),
+            ("customer_address", "customer_address"),
+        ),
+    ),
+    "fact_order_item_history": PointInTime(
+        "dim_product",
+        "product_id",
+        (
+            ("product_key", "product_key"),
+            ("product_name", "product_name"),
+            ("unit_price", "unit_price"),
+        ),
+        amount=("line_amount", "quantity", "unit_price"),
+    ),
+}
+
+
 class GoldLakeViews:
     def __init__(
         self,
@@ -73,6 +112,7 @@ class GoldLakeViews:
         self.lake = lake
         self.tables = tables if tables is not None else load_gold_tables()
         self.dimensions = tuple(dimensions)
+        self.dimensions_by_name = {dimension.name: dimension for dimension in self.dimensions}
         self.facts = tuple(facts)
         self.relation = relation or lake.table
         self.surrogate_keys = frozenset(d.surrogate_key for d in self.dimensions)
@@ -152,20 +192,22 @@ class GoldLakeViews:
     ) -> tuple[list[AsOfJoin], dict[str, str]]:
         joins: list[AsOfJoin] = []
         expressions: dict[str, str] = {}
-        for lookup in (lookup for lookup in fact.as_of if set(lookup.fact_columns) & names):
-            join = self._as_of_join(fact, lookup)
-            joins.append(join)
-            expressions |= {column: f"{join.name}.{column}" for column, _ in join.columns}
-            for multiplied in lookup.multiplied:
-                expressions[multiplied.column] = (
-                    f"CAST(CAST({join.name}.{multiplied.looked_up} AS DECIMAL(27, 10))"
-                    f" * change.{fact.silver_columns[multiplied.factor]} AS DECIMAL(38, 10))"
-                    f" AS {multiplied.column}"
-                )
+        lookup = POINT_IN_TIME.get(fact.name)
+        if lookup is None or not set(lookup.fact_columns) & names:
+            return joins, expressions
+        join = self._as_of_join(fact, lookup)
+        joins.append(join)
+        expressions |= {column: f"{join.name}.{column}" for column, _ in join.columns}
+        if lookup.amount is not None:
+            column, factor, price = lookup.amount
+            expressions[column] = (
+                f"CAST(CAST({join.name}.{price} AS DECIMAL(27, 10))"
+                f" * change.{fact.silver_columns[factor]} AS DECIMAL(38, 10)) AS {column}"
+            )
         return joins, expressions
 
-    def _as_of_join(self, fact: ChangeFact, lookup: AsOfLookup) -> AsOfJoin:
-        dimension = lookup.dimension
+    def _as_of_join(self, fact: ChangeFact, lookup: PointInTime) -> AsOfJoin:
+        dimension = self.dimensions_by_name[lookup.dimension]
         sources = dict(dimension.silver_columns) | {dimension.surrogate_key: COMMIT_SEQUENCE}
         columns = tuple(
             (fact_column, sources[column])
@@ -214,7 +256,8 @@ class GoldLakeViews:
         return self._definition(table, columns, query)
 
     def history(self, fact: ChangeFact) -> ViewDefinition:
-        return self._fact(fact, fact.history, self.public_columns(fact.history), latest=False)
+        table = self.tables[fact.history.name]
+        return self._fact(fact, table, self.public_columns(table), latest=False)
 
     def current(self, fact: ChangeFact) -> ViewDefinition:
         return self._fact(fact, fact.current, self.public_columns(fact.current), latest=True)

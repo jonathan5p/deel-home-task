@@ -21,12 +21,17 @@ STORED_TABLES = {
     "fact_order_item_history",
     "current_orders",
     "current_order_items",
-    "pending_orders_by_customer",
-    *BUSINESS_VIEWS,
 }
 INTERNAL_TABLES = STORED_TABLES | {"sync_state"}
 STAGING_TABLES = {f"stage_{name}" for name in STORED_TABLES}
-PUBLIC_VIEWS = (STORED_TABLES - {"pending_orders_by_customer"}) | {"open_orders", "data_freshness"}
+VIEWS_WITHOUT_TABLE = ("open_orders", *BUSINESS_VIEWS)
+PUBLIC_VIEWS = STORED_TABLES | {"data_freshness", *VIEWS_WITHOUT_TABLE}
+CURRENT_STATE_INDEXES = """
+SELECT indexname, indexdef
+FROM pg_indexes
+WHERE schemaname = 'gold_internal' AND tablename IN ('current_orders', 'current_order_items')
+ORDER BY 1;
+"""
 
 UNDESCRIBED_RELATIONS = """
 SELECT n.nspname || '.' || c.relname
@@ -121,63 +126,101 @@ ORDER BY 1;
 VERSION_VALUES = "false, 1, NULL, true"
 STATUS_KEYS = {"PENDING": 1, "PROCESSING": 2, "REPROCESSING": 3, "COMPLETED": 4, "UNKNOWN": 5}
 
-# Report rows as the gold job writes them, with a null delivery date and product, a tie for first
-# place and a customer missing from dim_customer; the current-state rows include deleted ones.
+# The seeded statuses, which the gold job copies; a test stack may not have run it.
+ORDER_STATUSES = """
+INSERT INTO gold_internal.dim_order_status (status_key, status_code, is_open)
+VALUES (1, 'PENDING', true), (2, 'PROCESSING', true), (3, 'REPROCESSING', true),
+    (4, 'COMPLETED', false), (5, 'UNKNOWN', true)
+ON CONFLICT (status_key) DO NOTHING;
+"""
+
+# Customer 1 has an older version, customer 4 is missing from dim_customer; order 108 is
+# completed, order 110 deleted, and item 1007 belongs to an order gold does not hold.
 CURRENT_STATE = f"""
+{ORDER_STATUSES}
 INSERT INTO gold_internal.dim_customer (
     customer_key, customer_id, customer_name, customer_address, is_active, _commit_sequence,
     _content_hash, _is_deleted, _valid_from, _is_folded, _version_number, _valid_to, _is_current
 )
 VALUES
+    (9000, 1, 'Ada', 'Old Street 1', true, 100, 'a1', false, '2026-11-01 08:00',
+        false, 1, '2026-11-05 08:00', false),
     (9001, 1, 'Ada Lovelace', 'New Street 2', true, 300, 'a2', false, '2026-11-05 08:00',
-        {VERSION_VALUES}),
+        false, 2, NULL, true),
     (9002, 2, 'Grace Hopper', 'Main Street 3', true, 110, 'g1', false, '2026-11-01 08:00',
+        {VERSION_VALUES}),
+    (9003, 3, 'Alan Turing', 'Side Street 4', true, 120, 't1', false, '2026-11-01 08:00',
         {VERSION_VALUES});
 
 INSERT INTO gold_internal.current_orders (
     order_id, status_key, is_open, customer_id, order_date, delivery_date,
     order_date_key, delivery_date_key, _commit_sequence, _changed_at, _is_deleted
 )
-VALUES
-    (101, 1, true, 1, date '2026-11-09', date '2026-11-10', 20261109, 20261110, 501,
-        timestamp '2026-11-09 09:00', false),
-    (110, 1, true, 4, date '2026-11-09', date '2026-11-14', 20261109, 20261114, 510,
-        timestamp '2026-11-09 09:30', true);
+SELECT
+    o.order_id, s.status_key, s.is_open, o.customer_id, date '2026-11-09', o.delivery_date,
+    20261109, to_char(o.delivery_date, 'YYYYMMDD')::int, 400 + o.order_id,
+    timestamp '2026-11-09 09:00', o.is_deleted
+FROM (
+    VALUES
+        (101, 'PENDING', 1, date '2026-11-10', false),
+        (102, 'PROCESSING', 1, date '2026-11-10', false),
+        (103, 'UNKNOWN', 1, date '2026-11-10', false),
+        (104, 'PENDING', 2, date '2026-11-10', false),
+        (105, 'PENDING', 2, date '2026-11-11', false),
+        (106, 'REPROCESSING', 2, date '2026-11-11', false),
+        (107, 'PENDING', 3, date '2026-11-12', false),
+        (108, 'COMPLETED', 3, date '2026-11-12', false),
+        (109, 'PROCESSING', 4, date '2026-11-13', false),
+        (110, 'PENDING', 4, date '2026-11-14', true)
+) AS o (order_id, status_code, customer_id, delivery_date, is_deleted)
+JOIN gold_internal.dim_order_status AS s ON s.status_code = o.status_code;
 
 INSERT INTO gold_internal.current_order_items (
     order_item_id, order_id, product_id, quantity, _commit_sequence, _changed_at, _is_deleted
 )
-VALUES
-    (1001, 101, 10, 4, 601, timestamp '2026-11-09 09:01', false),
-    (1006, 110, 20, 3, 606, timestamp '2026-11-09 09:01', true);
-
-INSERT INTO gold_internal.open_orders_by_delivery_date_and_status
-    (delivery_date, status_code, open_orders)
-VALUES
-    (date '2026-11-10', 'PENDING', 2),
-    (date '2026-11-10', 'UNKNOWN', 1),
-    (date '2026-11-11', 'REPROCESSING', 1),
-    (NULL, 'PENDING', 1);
-
-INSERT INTO gold_internal.top_delivery_dates_by_open_orders (delivery_date, open_orders)
-VALUES (date '2026-11-10', 3), (date '2026-11-11', 1), (NULL, 1);
-
-INSERT INTO gold_internal.pending_items_by_product (product_id, pending_items, pending_quantity)
-VALUES (10, 2, 10), (30, 1, 8), (NULL, 1, NULL);
-
-INSERT INTO gold_internal.top_customers_by_pending_orders
-    (customer_id, customer_name, pending_orders)
-VALUES (1, 'Ada Lovelace', 3), (2, 'Grace Hopper', 3), (4, NULL, 1);
+SELECT
+    i.order_item_id, i.order_id, i.product_id, i.quantity,
+    600 + i.order_item_id, timestamp '2026-11-09 09:01', i.is_deleted
+FROM (
+    VALUES
+        (1001, 101, 10, 4, false),
+        (1002, 101, 10, 6, false),
+        (1003, 108, 10, 5, false),
+        (1004, 110, 20, 7, false),
+        (1005, 105, 20, 2, false),
+        (1006, 105, 20, 3, true),
+        (1007, 999, 30, 1, false),
+        (1008, 103, 30, 8, false)
+) AS i (order_item_id, order_id, product_id, quantity, is_deleted);
 """
 
 REMOVE_CURRENT_STATE = """
-DELETE FROM gold_internal.dim_customer WHERE customer_key IN (9001, 9002);
-DELETE FROM gold_internal.current_orders WHERE order_id IN (101, 110);
-DELETE FROM gold_internal.current_order_items WHERE order_item_id IN (1001, 1006);
-DELETE FROM gold_internal.open_orders_by_delivery_date_and_status;
-DELETE FROM gold_internal.top_delivery_dates_by_open_orders;
-DELETE FROM gold_internal.pending_items_by_product;
-DELETE FROM gold_internal.top_customers_by_pending_orders;
+DELETE FROM gold_internal.dim_customer WHERE customer_key BETWEEN 9000 AND 9003;
+DELETE FROM gold_internal.current_orders WHERE order_id BETWEEN 101 AND 110;
+DELETE FROM gold_internal.current_order_items WHERE order_item_id BETWEEN 1001 AND 1008;
+"""
+
+# Two delivery dates and two customers tie for first place with 3 open orders, then one with 2
+# and one with 1: ranked with gaps, the tie takes places 1 and 2, so the single third place
+# is the one with 2, and the one with 1 (fourth) is left out.
+TIES_AT_THE_TOP = f"""
+{ORDER_STATUSES}
+INSERT INTO gold_internal.current_orders (
+    order_id, status_key, is_open, customer_id, order_date, delivery_date,
+    order_date_key, delivery_date_key, _commit_sequence, _changed_at, _is_deleted
+)
+SELECT
+    o.order_id, s.status_key, s.is_open, o.customer_id, date '2026-11-09', o.delivery_date,
+    20261109, to_char(o.delivery_date, 'YYYYMMDD')::int, 800 + o.order_id,
+    timestamp '2026-11-09 09:00', false
+FROM (
+    VALUES
+        (201, 11, date '2026-12-01'), (202, 11, date '2026-12-01'), (203, 11, date '2026-12-01'),
+        (204, 12, date '2026-12-02'), (205, 12, date '2026-12-02'), (206, 12, date '2026-12-02'),
+        (207, 13, date '2026-12-03'), (208, 13, date '2026-12-03'),
+        (209, 14, date '2026-12-04')
+) AS o (order_id, customer_id, delivery_date)
+JOIN gold_internal.dim_order_status AS s ON s.status_code = 'PENDING';
 """
 
 
@@ -256,6 +299,28 @@ VALUES (
 def rolled_back(*statements: str) -> str:
     """Wrap statements in a transaction that is rolled back, so a test leaves no rows behind."""
     return "\n".join(["BEGIN;", *statements, "ROLLBACK;"])
+
+
+def answer(stack: Stack, query_file: str, fixture: str = CURRENT_STATE) -> list[list[str]]:
+    """Run one of the business-question queries on a current-state fixture."""
+    query = (GOLD_QUERIES / query_file).read_text()
+    return rows(stack, rolled_back(fixture, query))
+
+
+def explained(stack: Stack, view: str, fixture: str = CURRENT_STATE) -> str:
+    """The plan PostgreSQL picks for a whole gold view on a fixture, with sequential scans
+    off as they would be on a table too large to scan, so only an index the plan can use
+    takes their place."""
+    plan = rows(
+        stack,
+        rolled_back(
+            fixture,
+            "ANALYZE gold_internal.current_orders, gold_internal.current_order_items;",
+            "SET LOCAL enable_seqscan = off;",
+            f"EXPLAIN (COSTS OFF) SELECT * FROM gold.{view};",
+        ),
+    )
+    return "\n".join(line[0] for line in plan)
 
 
 FRESHNESS_FIXTURE = f"""

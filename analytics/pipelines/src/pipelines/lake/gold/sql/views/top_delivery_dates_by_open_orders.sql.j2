@@ -1,0 +1,11 @@
+SELECT delivery_date, open_orders
+FROM (
+    SELECT
+        open_order.delivery_date,
+        count(*) AS open_orders,
+        rank() OVER (ORDER BY count(*) DESC) AS place
+    FROM {{ internal }}.current_orders AS open_order
+    WHERE open_order.is_open AND NOT open_order._is_deleted
+    GROUP BY open_order.delivery_date
+) AS ranked_dates
+WHERE place <= 3

@@ -17,19 +17,24 @@ from pipelines.schemas.definitions import (
 )
 
 GOLD_RECORD_PROPERTIES = RECORD_PROPERTIES | {"public_doc"}
-GOLD_FIELD_PROPERTIES = FIELD_PROPERTIES | {"from"}
+GOLD_FIELD_PROPERTIES = FIELD_PROPERTIES | {"from", "view_only"}
 GOLD = "gold"
 
 
 @dataclass(frozen=True, slots=True)
 class GoldTable:
-    """A gold relation: a table in gold_internal with its public view in gold, or a view only."""
+    """A gold relation: a table in gold_internal with its public view in gold, or a view only.
+
+    `view_only` names the columns only the public view has, which it computes when it is read,
+    such as the attributes of the dimension version valid when a fact changed.
+    """
 
     name: str
     description: str
     columns: tuple[ColumnDefinition, ...]
     public_description: str | None = None
     references: tuple[tuple[str, str], ...] = ()
+    view_only: tuple[str, ...] = ()
 
     @property
     def view_description(self) -> str:
@@ -37,6 +42,13 @@ class GoldTable:
 
     def column(self, name: str) -> ColumnDefinition:
         return {column.name: column for column in self.columns}[name]
+
+    def stored(self) -> GoldTable:
+        """The relation as the table holds it, without the view-only columns."""
+        hidden = set(self.view_only)
+        columns = tuple(column for column in self.columns if column.name not in hidden)
+        references = tuple((name, ref) for name, ref in self.references if name not in hidden)
+        return replace(self, columns=columns, references=references, view_only=())
 
     def reference(self, name: str) -> str | None:
         """The `from` of a column: `<source table>.<lake name>` or `gold.<table>.<column>`."""
@@ -47,6 +59,7 @@ class GoldTable:
 class _Field:
     column: ColumnDefinition
     reference: str | None
+    view_only: bool = False
 
 
 def _field(source: str, field: object) -> _Field:
@@ -56,10 +69,13 @@ def _field(source: str, field: object) -> _Field:
         raise DefinitionError(source, f"{owner} needs either a doc or a from, not both")
     reference = _text(source, properties, "from", owner) if "from" in properties else None
     description = "" if reference else _text(source, properties, "doc", owner)
+    view_only = properties.get("view_only", False)
+    if not isinstance(view_only, bool):
+        raise DefinitionError(source, f"view_only of {owner} must be true or false")
     column = ColumnDefinition(
         name=typed.name, type=typed.type, description=description, not_null=not typed.nullable
     )
-    return _Field(column=column, reference=reference)
+    return _Field(column=column, reference=reference, view_only=view_only)
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,6 +99,7 @@ def _gold_record(file: Traversable) -> _GoldRecord:
         description=_text(source, properties, "doc", owner),
         columns=tuple(field.column for field in fields),
         public_description=public,
+        view_only=tuple(field.column.name for field in fields if field.view_only),
     )
     return _GoldRecord(source=source, table=table, fields=fields)
 

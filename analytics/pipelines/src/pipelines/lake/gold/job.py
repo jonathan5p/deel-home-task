@@ -1,3 +1,4 @@
+import logging
 import os
 import sys
 from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -11,6 +12,7 @@ from pipelines.lake.gold.batch import GoldBatches
 from pipelines.lake.gold.dimensions import DIMENSIONS, FACTS, STORED
 from pipelines.lake.gold.facts import ChangeFact
 from pipelines.lake.gold.lake import IcebergGold
+from pipelines.lake.gold.metrics import LOGGER, spark_jobs
 from pipelines.lake.gold.model.seeds import calendar_days, order_statuses
 from pipelines.lake.gold.postgres import connection_factory
 from pipelines.lake.gold.retention import retained_from
@@ -23,7 +25,7 @@ from pipelines.lake.shared.streams import await_queries, wants_available_now
 from pipelines.settings import GoldSettings
 
 SHUFFLE_PARTITIONS = "spark.sql.shuffle.partitions"
-SESSION_CONF: Mapping[str, str] = {SHUFFLE_PARTITIONS: "4"}
+SESSION_CONF: Mapping[str, str] = {SHUFFLE_PARTITIONS: "4", "spark.scheduler.mode": "FAIR"}
 
 type SilverReader = Callable[[SparkSession, str], DataFrame]
 type SinkFactory = Callable[[GoldLoad], BatchWriter]
@@ -59,6 +61,12 @@ def iceberg_gold(
     return IcebergGold(spark, tables, relations)
 
 
+def seeded_rows(spark: SparkSession) -> dict[str, DataFrame]:
+    """The rows of the seeded dimensions, built in memory: the facts look their keys up in them
+    without reading the Iceberg tables in every batch."""
+    return {"dim_order_status": order_statuses(spark), "dim_date": calendar_days(spark)}
+
+
 def postgres_serving(settings: GoldSettings, today: Today = utc_today) -> PostgresServing:
     def window() -> datetime:
         return retained_from(settings.retention_months, today())
@@ -78,16 +86,15 @@ def gold_writer(
     """The gold writer on the lake's gold tables, copying into PostgreSQL when `serve`."""
     lake = iceberg_gold(spark, settings)
     serving = postgres_serving(settings) if serve else None
-    return GoldWriter(GoldBatches(STORED, dimensions, facts), lake, serving), lake
+    batches = GoldBatches(STORED, dimensions, facts, seeded_rows(spark))
+    return GoldWriter(batches, lake, serving, jobs=spark_jobs(spark.sparkContext)), lake
 
 
 def prepare(spark: SparkSession, writer: GoldWriter, lake: IcebergGold) -> None:
     """Create the gold tables that are missing, merge the seeded rows, then copy into
     PostgreSQL every table it does not hold the latest snapshot of."""
     lake.ensure()
-    writer.write_seeds(
-        {"dim_order_status": order_statuses(spark), "dim_date": calendar_days(spark)}
-    )
+    writer.write_seeds(seeded_rows(spark))
     writer.sync()
 
 
@@ -140,14 +147,21 @@ def run(
     available_now: bool = False,
 ) -> list[StreamingQuery]:
     """Start one stream per SCD2 dimension and one per history fact, each from its silver
-    table to its gold tables."""
+    table to its own gold tables, so they run at the same time."""
     loads: list[GoldLoad] = [*dimensions, *facts]
     streams = [gold_stream(spark, settings, load, read, sink) for load in loads]
     return [start_stream(stream, settings, available_now=available_now) for stream in streams]
 
 
+def log_batches() -> None:
+    """Log every gold batch's line to stderr, and only warnings from the other loggers."""
+    logging.basicConfig(level=logging.WARNING, format="%(asctime)s %(levelname)s %(message)s")
+    logging.getLogger(LOGGER).setLevel(logging.INFO)
+
+
 def main(argv: Sequence[str]) -> None:
     available_now = wants_available_now(argv, prog="gold")
+    log_batches()
     settings = GoldSettings.from_env(os.environ)
     builder = SparkSession.builder.appName("gold")
     for key, value in session_conf(settings).items():

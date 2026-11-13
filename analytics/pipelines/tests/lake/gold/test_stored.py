@@ -2,7 +2,7 @@ from pipelines.lake.gold.dimensions import STORED
 from pipelines.lake.gold.stored import WriteMode
 
 
-def test_a_batch_writes_the_dimensions_before_the_facts_and_current_state_before_reports() -> None:
+def test_the_stored_tables_are_the_dimensions_and_each_facts_history_and_current_state() -> None:
     assert list(STORED) == [
         "dim_order_status",
         "dim_date",
@@ -12,22 +12,15 @@ def test_a_batch_writes_the_dimensions_before_the_facts_and_current_state_before
         "fact_order_item_history",
         "current_orders",
         "current_order_items",
-        "open_orders_by_delivery_date_and_status",
-        "pending_orders_by_customer",
-        "pending_items_by_product",
-        "top_delivery_dates_by_open_orders",
-        "top_customers_by_pending_orders",
     ]
 
 
-def test_each_table_is_written_as_its_rows_change() -> None:
+def test_each_table_is_merged_as_its_rows_change() -> None:
     modes = {name: table.mode for name, table in STORED.items()}
 
     assert modes["dim_customer"] is WriteMode.MERGE
     assert modes["fact_order_history"] is WriteMode.MERGE
     assert modes["current_orders"] is WriteMode.MERGE_NEWER
-    assert modes["pending_items_by_product"] is WriteMode.RECOUNT
-    assert modes["top_customers_by_pending_orders"] is WriteMode.REPLACE
 
 
 def test_versions_are_keyed_by_their_business_key_and_commit_sequence() -> None:
@@ -44,14 +37,17 @@ def test_a_history_table_keeps_its_change_time_in_the_postgresql_key() -> None:
     assert STORED["current_orders"].postgres_key == ("order_id",)
 
 
-def test_a_recounted_table_stages_its_removed_flag_and_every_staged_column_takes_nulls() -> None:
-    staging = STORED["pending_orders_by_customer"].staging_table
+def test_a_history_table_stores_none_of_its_view_only_columns() -> None:
+    columns = STORED["fact_order_item_history"].columns
 
-    assert staging.name == "stage_pending_orders_by_customer"
-    assert [column.name for column in staging.columns] == [
-        "customer_id",
-        "pending_orders",
-        "_is_removed",
-    ]
+    assert "product_id" in columns
+    assert not {"product_key", "product_name", "unit_price", "line_amount"} & set(columns)
+
+
+def test_every_staged_column_takes_nulls() -> None:
+    staging = STORED["current_orders"].staging_table
+
+    assert staging.name == "stage_current_orders"
+    assert [column.name for column in staging.columns] == list(STORED["current_orders"].columns)
     assert not any(column.not_null for column in staging.columns)
-    assert "gold_internal.pending_orders_by_customer" in staging.description
+    assert "gold_internal.current_orders" in staging.description

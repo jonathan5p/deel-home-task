@@ -10,6 +10,7 @@ from pipelines.lake.gold.serving import StageWriter
 from pipelines.schemas.definitions import EntityDefinition
 
 POSTGRES_DRIVER = "org.postgresql.Driver"
+SCHEDULER_POOL = "spark.scheduler.pool"
 
 type BatchWriter = Callable[[DataFrame, int], None]
 
@@ -30,7 +31,7 @@ class GoldLoad(Protocol):
 
 
 class BatchLoader(Protocol):
-    def write_batch(self, load: str, batch: DataFrame) -> None: ...
+    def write_batch(self, load: str, batch: DataFrame, batch_id: int | None = None) -> None: ...
 
 
 def staged_rows(silver: DataFrame, load: GoldLoad) -> DataFrame:
@@ -62,10 +63,13 @@ def jdbc_stage(settings: AnalyticsDbSettings) -> StageWriter:
 
 @dataclass(frozen=True, slots=True)
 class GoldSink:
-    """The foreachBatch function of a load's stream: hands each micro-batch to the writer."""
+    """The foreachBatch function of a load's stream: hands each micro-batch to the writer. The
+    batch's jobs run in a scheduler pool named after the load, so under fair scheduling the
+    streams share the executors instead of queueing behind each other's jobs."""
 
     load: GoldLoad
     writer: BatchLoader
 
     def __call__(self, batch: DataFrame, batch_id: int) -> None:
-        self.writer.write_batch(self.load.name, batch)
+        batch.sparkSession.sparkContext.setLocalProperty(SCHEDULER_POOL, self.load.name)
+        self.writer.write_batch(self.load.name, batch, batch_id)

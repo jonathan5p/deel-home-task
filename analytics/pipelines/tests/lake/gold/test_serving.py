@@ -9,22 +9,21 @@ from pyspark.sql import DataFrame, SparkSession
 
 from analytics.pipelines.tests.lake.gold.postgres_setup import FakeConnection, StatementFailedError
 from analytics.pipelines.tests.lake.gold.serving_setup import (
-    BY_PRODUCT,
     HISTORY,
+    ITEMS,
     SEED_SCHEMA,
     SEEDS,
-    TOP,
     history_rows,
-    report_rows,
+    item_rows,
 )
-from pipelines.lake.gold.postgres import WRITER_LOCK
+from pipelines.lake.gold.postgres import COPY_LOCK
 from pipelines.lake.gold.serving import (
     SYNC_STATE_QUERY,
     Change,
     Copy,
     PostgresServing,
     copy_statements,
-    delete_removed_statement,
+    insert_statement,
     staged,
     sync_statement,
     upsert_statement,
@@ -49,50 +48,27 @@ def test_a_history_upsert_conflicts_on_the_key_with_the_change_time() -> None:
 
 
 def test_a_table_whose_columns_are_all_keys_is_upserted_without_updates() -> None:
-    statement = upsert_statement(replace(BY_PRODUCT, keys=BY_PRODUCT.columns))
+    statement = upsert_statement(replace(SEEDS, keys=SEEDS.columns))
 
     assert statement.endswith(" DO NOTHING")
 
 
-def test_removed_report_rows_are_deleted_by_their_key_nulls_matching() -> None:
-    assert delete_removed_statement(BY_PRODUCT) == (
-        "DELETE FROM gold_internal.pending_items_by_product AS target"
-        " USING gold_internal.stage_pending_items_by_product AS staged"
-        " WHERE staged._is_removed AND target.product_id IS NOT DISTINCT FROM staged.product_id"
+def test_an_upsert_copies_the_staged_rows_with_one_statement(spark: SparkSession) -> None:
+    statements = copy_statements(Change(ITEMS, spark.range(0).toDF("id")))
+
+    assert statements == [upsert_statement(ITEMS)]
+
+
+def test_a_reload_empties_the_table_then_inserts_every_staged_row(spark: SparkSession) -> None:
+    statements = copy_statements(Change(ITEMS, spark.range(0).toDF("id"), Copy.RELOAD))
+
+    assert statements == ["TRUNCATE gold_internal.current_order_items", insert_statement(ITEMS)]
+    assert statements[1] == (
+        "INSERT INTO gold_internal.current_order_items"
+        " (order_item_id, order_id, product_id, quantity, _commit_sequence, _changed_at,"
+        " _is_deleted) SELECT order_item_id, order_id, product_id, quantity, _commit_sequence,"
+        " _changed_at, _is_deleted FROM gold_internal.stage_current_order_items"
     )
-
-
-@pytest.mark.parametrize(
-    ("copy", "first"),
-    [
-        (Copy.UPSERT, "INSERT INTO gold_internal.pending_items_by_product"),
-        (Copy.RECOUNT, "DELETE FROM gold_internal.pending_items_by_product AS target"),
-        (Copy.REPLACE, "DELETE FROM gold_internal.pending_items_by_product"),
-        (Copy.RELOAD, "TRUNCATE gold_internal.pending_items_by_product"),
-    ],
-)
-def test_each_copy_starts_with_its_statement(spark: SparkSession, copy: Copy, first: str) -> None:
-    statements = copy_statements(Change(BY_PRODUCT, spark.range(0).toDF("id"), copy))
-
-    assert statements[0].startswith(first)
-
-
-def test_a_recount_upserts_only_the_rows_not_removed(spark: SparkSession) -> None:
-    _, upsert = copy_statements(Change(BY_PRODUCT, spark.range(0).toDF("id"), Copy.RECOUNT))
-
-    assert upsert == upsert_statement(BY_PRODUCT, "NOT _is_removed")
-    assert " WHERE NOT _is_removed ON CONFLICT (product_id) " in upsert
-
-
-def test_a_replace_and_a_reload_insert_every_staged_row(spark: SparkSession) -> None:
-    for copy in (Copy.REPLACE, Copy.RELOAD):
-        _, insert = copy_statements(Change(TOP, spark.range(0).toDF("id"), copy))
-
-        assert insert == (
-            "INSERT INTO gold_internal.top_delivery_dates_by_open_orders"
-            " (delivery_date, open_orders) SELECT delivery_date, open_orders"
-            " FROM gold_internal.stage_top_delivery_dates_by_open_orders"
-        )
 
 
 def test_the_sync_state_records_each_snapshot_or_none() -> None:
@@ -113,16 +89,11 @@ def test_history_older_than_the_retention_window_is_not_staged(spark: SparkSessi
 
 
 def test_staged_rows_take_the_columns_of_the_staging_table(spark: SparkSession) -> None:
-    rows = report_rows(spark, [(5, 2, 7)])
+    rows = item_rows(spark, [(5, 7)]).selectExpr("'extra' AS extra", "*")
 
-    (row,) = staged(Change(BY_PRODUCT, rows, Copy.RELOAD), WINDOW).collect()
+    (row,) = staged(Change(ITEMS, rows, Copy.RELOAD), WINDOW).collect()
 
-    assert row.asDict() == {
-        "product_id": 5,
-        "pending_items": 2,
-        "pending_quantity": 7,
-        "_is_removed": False,
-    }
+    assert list(row.asDict()) == list(ITEMS.columns)
 
 
 def test_the_synced_snapshots_are_read_from_the_sync_state() -> None:
@@ -137,20 +108,19 @@ def test_the_changes_are_staged_then_copied_in_one_transaction_with_their_snapsh
 ) -> None:
     log: list[str] = []
     connection = FakeConnection(log=log)
-    rows = report_rows(spark, [(5, 2, 7)])
+    rows = item_rows(spark, [(5, 7)])
 
     def stage(staged_rows: DataFrame, table: str) -> None:
         log.append(f"stage {table} {staged_rows.count()}")
 
     serving = PostgresServing(stage, lambda: connection, lambda: WINDOW)
-    serving.apply([Change(BY_PRODUCT, rows, Copy.RECOUNT)], {"pending_items_by_product": 9})
+    serving.apply([Change(ITEMS, rows)], {"current_order_items": 9})
 
     assert log == [
-        "stage gold_internal.stage_pending_items_by_product 1",
-        f"execute {WRITER_LOCK}",
-        f"execute {delete_removed_statement(BY_PRODUCT)}",
-        f"execute {upsert_statement(BY_PRODUCT, 'NOT _is_removed')}",
-        f"execute {sync_statement({'pending_items_by_product': 9})}",
+        "stage gold_internal.stage_current_order_items 1",
+        f"execute {COPY_LOCK}",
+        f"execute {upsert_statement(ITEMS)}",
+        f"execute {sync_statement({'current_order_items': 9})}",
         "commit",
         "close",
     ]

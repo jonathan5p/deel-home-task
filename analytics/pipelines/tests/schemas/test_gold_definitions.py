@@ -24,7 +24,6 @@ GOLD_TABLES = {
     "open_orders",
     "open_orders_by_delivery_date_and_status",
     "pending_items_by_product",
-    "pending_orders_by_customer",
     "sync_state",
     "top_customers_by_pending_orders",
     "top_delivery_dates_by_open_orders",
@@ -170,3 +169,51 @@ def test_a_broken_gold_schema_is_refused_naming_its_file(
         load_gold_tables(schemas.root)
 
     assert problem in str(error.value)
+
+
+def test_view_only_columns_are_left_out_of_the_stored_table(schemas: SchemasTree) -> None:
+    write_fact(schemas, ("fields", 2, "view_only"), True)
+
+    fact = load_gold_tables(schemas.root)["fact_things"]
+
+    assert fact.view_only == ("thing_name",)
+    assert [column.name for column in fact.columns] == [
+        "thing_key",
+        "thing_id",
+        "thing_name",
+        "_commit_sequence",
+        "same_key",
+    ]
+    assert [column.name for column in fact.stored().columns] == [
+        "thing_key",
+        "thing_id",
+        "_commit_sequence",
+        "same_key",
+    ]
+    assert fact.stored().reference("thing_name") is None
+    assert fact.stored().view_only == ()
+
+
+def test_a_view_only_flag_that_is_not_a_boolean_is_refused(schemas: SchemasTree) -> None:
+    write_fact(schemas, ("fields", 2, "view_only"), "yes")
+
+    with pytest.raises(
+        DefinitionError, match="view_only of field thing_name must be true or false"
+    ):
+        load_gold_tables(schemas.root)
+
+
+def test_the_history_facts_resolve_the_dimension_attributes_only_in_their_views() -> None:
+    tables = load_gold_tables()
+
+    assert tables["fact_order_history"].view_only == (
+        "customer_key",
+        "customer_name",
+        "customer_address",
+    )
+    assert tables["fact_order_item_history"].view_only == (
+        "product_key",
+        "product_name",
+        "unit_price",
+        "line_amount",
+    )

@@ -5,13 +5,13 @@ pytest.importorskip("pyspark")
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
-from analytics.pipelines.tests.lake.gold.batch_setup import MemoryGold
+from analytics.pipelines.tests.lake.gold.batch_setup import MemoryGold, batches
 from analytics.pipelines.tests.lake.gold.model.model_samples import (
     CUSTOMERS,
-    DELIVERY_DATE,
     ITEMS,
     ORDERS,
     PRODUCTS,
+    Values,
     customer,
     item,
     order,
@@ -19,10 +19,9 @@ from analytics.pipelines.tests.lake.gold.model.model_samples import (
     rows_of,
     staged,
 )
-from pipelines.lake.gold.batch import GoldBatches, Write, merged, recounted, with_resolved
-from pipelines.lake.gold.dimensions import DIMENSIONS, FACTS, STORED
-
-BATCHES = GoldBatches(STORED, DIMENSIONS, FACTS)
+from pipelines.lake.gold.batch import GoldBatches, Write
+from pipelines.lake.gold.facts import ChangeFact
+from pipelines.lake.gold.scd2 import Scd2Dimension
 
 
 def names(writes: list[Write]) -> list[str]:
@@ -34,19 +33,28 @@ def rows(writes: list[Write], name: str, *columns: str) -> list[tuple[object, ..
     return rows_of(write.rows, *columns)
 
 
-def test_a_customer_batch_writes_its_versions_then_the_orders_and_the_top_customers(
-    spark: SparkSession,
-) -> None:
-    gold = MemoryGold(spark)
-    batch = staged(spark, CUSTOMERS, [customer(1, 10, "Ada")])
+LOADS: dict[str, Scd2Dimension | ChangeFact] = {
+    "dim_customer": CUSTOMERS,
+    "dim_product": PRODUCTS,
+    "fact_order_history": ORDERS,
+    "fact_order_item_history": ITEMS,
+}
 
-    writes = gold.apply(BATCHES.writes("dim_customer", batch, gold.read))
 
-    assert names(writes) == [
-        "dim_customer",
-        "fact_order_history",
-        "top_customers_by_pending_orders",
-    ]
+def written(
+    spark: SparkSession, gold: MemoryGold, batch_of: GoldBatches, load: str, changes: list[Values]
+) -> list[Write]:
+    batch = batch_of.staged(load, staged(spark, LOADS[load], changes))
+    return gold.apply(batch_of.writes(load, batch, gold.read))
+
+
+def test_a_customer_batch_writes_only_its_versions(spark: SparkSession) -> None:
+    gold, batch_of = MemoryGold(spark), batches(spark)
+
+    writes = written(spark, gold, batch_of, "dim_customer", [customer(1, 10, "Ada")])
+
+    assert names(writes) == ["dim_customer"]
+    assert gold.reads == ["dim_customer"]
     hashed = F.xxhash64(F.lit(1).cast("long"), F.lit(10).cast("long"))
     ((key,),) = spark.range(1).select(hashed).collect()
     assert rows(writes, "dim_customer", "customer_id", "customer_key", "_is_current") == [
@@ -54,162 +62,80 @@ def test_a_customer_batch_writes_its_versions_then_the_orders_and_the_top_custom
     ]
 
 
-def test_a_product_batch_writes_its_versions_then_the_items_it_re_resolves(
+def test_a_product_batch_writes_only_its_versions(spark: SparkSession) -> None:
+    gold, batch_of = MemoryGold(spark), batches(spark)
+
+    writes = written(spark, gold, batch_of, "dim_product", [product(1, 10, "2.50")])
+
+    assert names(writes) == ["dim_product"]
+
+
+def test_an_order_batch_writes_its_history_and_current_state_from_its_own_tables(
     spark: SparkSession,
 ) -> None:
-    gold = MemoryGold(spark)
-    batch = staged(spark, PRODUCTS, [product(1, 10, "2.50")])
+    gold, batch_of = MemoryGold(spark), batches(spark)
+    changes = [order(7, 10), order(7, 20, "PROCESSING"), order(8, 30)]
 
-    writes = gold.apply(BATCHES.writes("dim_product", batch, gold.read))
+    writes = written(spark, gold, batch_of, "fact_order_history", changes)
 
-    assert names(writes) == ["dim_product", "fact_order_item_history"]
-
-
-def test_an_order_batch_writes_history_and_current_state_then_recounts_and_ranks_the_reports(
-    spark: SparkSession,
-) -> None:
-    gold = MemoryGold(spark)
-    batch = staged(spark, ORDERS, [order(7, 10), order(7, 20, "PROCESSING"), order(8, 30)])
-
-    writes = gold.apply(BATCHES.writes("fact_order_history", batch, gold.read))
-
-    assert names(writes) == [
-        "fact_order_history",
-        "current_orders",
-        "open_orders_by_delivery_date_and_status",
-        "pending_orders_by_customer",
-        "pending_items_by_product",
-        "top_delivery_dates_by_open_orders",
-        "top_customers_by_pending_orders",
+    assert names(writes) == ["fact_order_history", "current_orders"]
+    assert sorted(set(gold.reads)) == ["current_orders", "fact_order_history"]
+    assert rows(writes, "fact_order_history", "order_id", "_commit_sequence", "status_key") == [
+        (7, 10, 1),
+        (7, 20, 2),
+        (8, 30, 1),
     ]
-    assert rows(writes, "fact_order_history", "order_id", "_commit_sequence", "_is_current") == [
-        (7, 10, False),
-        (7, 20, True),
-        (8, 30, True),
-    ]
-    assert rows(writes, "current_orders", "order_id", "status_key") == [(7, 2), (8, 1)]
-    assert rows(
-        writes, "open_orders_by_delivery_date_and_status", "status_code", "open_orders"
-    ) == [("PENDING", 1), ("PROCESSING", 1)]
-    assert rows(writes, "pending_orders_by_customer", "customer_id", "pending_orders") == [(1, 2)]
-    assert rows(writes, "pending_items_by_product", "product_id") == []
-    assert rows(writes, "top_delivery_dates_by_open_orders", "delivery_date", "open_orders") == [
-        (DELIVERY_DATE, 2)
-    ]
-    assert rows(writes, "top_customers_by_pending_orders", "customer_id", "pending_orders") == [
-        (1, 2)
+    assert rows(writes, "current_orders", "order_id", "status_key", "is_open") == [
+        (7, 2, True),
+        (8, 1, True),
     ]
 
 
-def test_closing_an_order_recounts_its_old_keys_to_removed(spark: SparkSession) -> None:
-    gold = MemoryGold(spark)
-    gold.apply(
-        BATCHES.writes("fact_order_history", staged(spark, ORDERS, [order(7, 10)]), gold.read)
-    )
+def test_an_item_batch_writes_its_history_and_current_state(spark: SparkSession) -> None:
+    gold, batch_of = MemoryGold(spark), batches(spark)
+    changes = [item(5, 20, quantity=3), item(6, 30, product_id=2)]
 
-    closed = staged(spark, ORDERS, [order(7, 20, "COMPLETED")])
-    writes = gold.apply(BATCHES.writes("fact_order_history", closed, gold.read))
+    writes = written(spark, gold, batch_of, "fact_order_item_history", changes)
 
-    assert rows(writes, "pending_orders_by_customer", "customer_id", "_is_removed") == [(1, True)]
-    assert rows_of(gold.read("pending_orders_by_customer"), "customer_id") == []
-    assert rows_of(gold.read("top_customers_by_pending_orders"), "customer_id") == []
-
-
-def test_an_item_batch_recounts_the_pending_items_of_its_products(spark: SparkSession) -> None:
-    gold = MemoryGold(spark)
-    gold.apply(
-        BATCHES.writes("fact_order_history", staged(spark, ORDERS, [order(1, 10)]), gold.read)
-    )
-    batch = staged(spark, ITEMS, [item(5, 20, quantity=3), item(6, 30, product_id=2)])
-
-    writes = gold.apply(BATCHES.writes("fact_order_item_history", batch, gold.read))
-
-    assert names(writes) == [
-        "fact_order_item_history",
-        "current_order_items",
-        "pending_items_by_product",
-    ]
-    assert rows(
-        writes, "pending_items_by_product", "product_id", "pending_items", "pending_quantity"
-    ) == [
-        (1, 1, 3),
-        (2, 1, 2),
+    assert names(writes) == ["fact_order_item_history", "current_order_items"]
+    assert rows(writes, "current_order_items", "order_item_id", "product_id", "quantity") == [
+        (5, 1, 3),
+        (6, 2, 2),
     ]
 
 
-def test_an_order_arriving_after_its_items_recounts_their_products(spark: SparkSession) -> None:
-    gold = MemoryGold(spark)
-    gold.apply(
-        BATCHES.writes("fact_order_item_history", staged(spark, ITEMS, [item(5, 10)]), gold.read)
-    )
+def test_a_late_customer_writes_nothing_to_the_orders(spark: SparkSession) -> None:
+    gold, batch_of = MemoryGold(spark), batches(spark)
+    written(spark, gold, batch_of, "fact_order_history", [order(7, 20)])
+    orders = gold.read("fact_order_history").collect()
 
-    batch = staged(spark, ORDERS, [order(1, 20)])
-    gold.apply(BATCHES.writes("fact_order_history", batch, gold.read))
+    writes = written(spark, gold, batch_of, "dim_customer", [customer(1, 10, "Ada")])
 
-    assert rows_of(gold.read("pending_items_by_product"), "product_id", "pending_items") == [(1, 1)]
-
-
-def test_a_late_customer_re_resolves_its_orders_and_names_the_top_customer(
-    spark: SparkSession,
-) -> None:
-    gold = MemoryGold(spark)
-    gold.apply(
-        BATCHES.writes("fact_order_history", staged(spark, ORDERS, [order(7, 20)]), gold.read)
-    )
-
-    batch = staged(spark, CUSTOMERS, [customer(1, 10, "Ada")])
-    writes = gold.apply(BATCHES.writes("dim_customer", batch, gold.read))
-
-    (version,) = gold.read("dim_customer").collect()
-    assert rows(writes, "fact_order_history", "order_id", "customer_key") == [
-        (7, version.customer_key)
-    ]
-    assert rows(writes, "top_customers_by_pending_orders", "customer_id", "customer_name") == [
-        (1, "Ada")
-    ]
-    assert rows_of(gold.read("fact_order_history"), "order_id", "_is_current") == [(7, True)]
+    assert names(writes) == ["dim_customer"]
+    assert gold.read("fact_order_history").collect() == orders
 
 
-def test_a_replayed_batch_writes_no_versions(spark: SparkSession) -> None:
-    gold = MemoryGold(spark)
-    batch = staged(spark, ORDERS, [order(7, 10)])
-    gold.apply(BATCHES.writes("fact_order_history", batch, gold.read))
+def test_a_replayed_batch_writes_nothing(spark: SparkSession) -> None:
+    gold, batch_of = MemoryGold(spark), batches(spark)
+    written(spark, gold, batch_of, "fact_order_history", [order(7, 10)])
 
-    writes = BATCHES.writes("fact_order_history", batch, gold.read)
+    writes = written(spark, gold, batch_of, "fact_order_history", [order(7, 10)])
 
     assert rows(writes, "fact_order_history", "order_id") == []
     assert rows(writes, "current_orders", "order_id") == []
 
 
-def test_merged_rows_replace_the_stored_rows_with_the_same_keys(spark: SparkSession) -> None:
-    stored = spark.createDataFrame([(1, "a"), (2, "b")], "id long, name string")
-    upserts = spark.createDataFrame([(2, "c"), (3, "d")], "id long, name string")
+def test_each_load_writes_only_its_own_tables(spark: SparkSession) -> None:
+    batch_of = batches(spark)
 
-    assert rows_of(merged(stored, upserts, ("id",)), "id", "name") == [
-        (1, "a"),
-        (2, "c"),
-        (3, "d"),
-    ]
-
-
-def test_a_recount_replaces_its_keys_and_deletes_the_removed_ones_nulls_matching(
-    spark: SparkSession,
-) -> None:
-    stored = spark.createDataFrame([(None, 1), (1, 2), (2, 3)], "id long, total long")
-    recount = spark.createDataFrame(
-        [(None, 5, False), (1, None, True)], "id long, total long, _is_removed boolean"
+    assert batch_of.tables_of("dim_customer") == ("dim_customer",)
+    assert batch_of.tables_of("fact_order_item_history") == (
+        "fact_order_item_history",
+        "current_order_items",
     )
 
-    assert rows_of(recounted(stored, recount, ("id",)), "id", "total") == [(None, 5), (2, 3)]
 
+def test_a_dimension_batch_is_staged_as_it_comes(spark: SparkSession) -> None:
+    batch = staged(spark, CUSTOMERS, [customer(1, 10, "Ada")])
 
-def test_resolved_history_rows_keep_their_other_columns(spark: SparkSession) -> None:
-    history = spark.createDataFrame(
-        [(7, 10, None, "x"), (7, 20, None, "y")],
-        "order_id long, _commit_sequence long, customer_key long, other string",
-    )
-    resolved = spark.createDataFrame(
-        [(7, 20, 99)], "order_id long, _commit_sequence long, customer_key long"
-    )
-
-    assert rows_of(with_resolved(history, resolved, ORDERS), *history.columns) == [(7, 20, 99, "y")]
+    assert batches(spark).staged("dim_customer", batch) is batch

@@ -1,0 +1,8 @@
+SELECT
+    item.product_id,
+    count(*) AS pending_items,
+    sum(item.quantity) AS pending_quantity
+FROM {{ internal }}.current_order_items AS item
+JOIN {{ internal }}.current_orders AS open_order ON open_order.order_id = item.order_id
+WHERE NOT item._is_deleted AND open_order.is_open AND NOT open_order._is_deleted
+GROUP BY item.product_id

@@ -8,15 +8,14 @@ from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 
 from pipelines.lake.gold.facts import FactColumn
-from pipelines.lake.gold.model.columns import IS_REMOVED
 from pipelines.lake.gold.postgres import (
-    WRITER_LOCK,
+    COPY_LOCK,
     ConnectionFactory,
     run_in_transaction,
     transaction,
 )
 from pipelines.lake.gold.scd2 import INTERNAL_SCHEMA, postgres_string
-from pipelines.lake.gold.stored import StoredTable, WriteMode
+from pipelines.lake.gold.stored import StoredTable
 
 SYNC_STATE = f"{INTERNAL_SCHEMA}.sync_state"
 SYNC_STATE_QUERY = f"SELECT table_name, snapshot_id FROM {SYNC_STATE}"
@@ -29,20 +28,8 @@ class Copy(StrEnum):
 
     UPSERT = "upsert"
     """Insert, or update every column of the row with the same key."""
-    RECOUNT = "recount"
-    """Delete the rows marked `_is_removed`, upsert the others."""
-    REPLACE = "replace"
-    """Delete every row, then insert the staged ones."""
     RELOAD = "reload"
     """Truncate the table, then insert the staged ones."""
-
-
-COPIES: Mapping[WriteMode, Copy] = {
-    WriteMode.MERGE: Copy.UPSERT,
-    WriteMode.MERGE_NEWER: Copy.UPSERT,
-    WriteMode.RECOUNT: Copy.RECOUNT,
-    WriteMode.REPLACE: Copy.REPLACE,
-}
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,40 +38,27 @@ class Change:
 
     table: StoredTable
     rows: DataFrame
-    copy: Copy
+    copy: Copy = Copy.UPSERT
 
 
 def _columns(names: Sequence[str]) -> str:
     return ", ".join(names)
 
 
-def insert_statement(table: StoredTable, where: str | None = None) -> str:
+def insert_statement(table: StoredTable) -> str:
     columns = _columns(table.columns)
-    condition = f" WHERE {where}" if where else ""
     return (
-        f"INSERT INTO {table.relation} ({columns})"
-        f" SELECT {columns} FROM {table.staging_relation}{condition}"
+        f"INSERT INTO {table.relation} ({columns}) SELECT {columns} FROM {table.staging_relation}"
     )
 
 
-def upsert_statement(table: StoredTable, where: str | None = None) -> str:
+def upsert_statement(table: StoredTable) -> str:
     """Insert the staged rows, updating every other column of a row whose key is stored."""
     key = table.postgres_key
     updated = [column for column in table.columns if column not in key]
     assignments = ", ".join(f"{column} = EXCLUDED.{column}" for column in updated)
     action = f"DO UPDATE SET {assignments}" if updated else "DO NOTHING"
-    return f"{insert_statement(table, where)} ON CONFLICT ({_columns(key)}) {action}"
-
-
-def delete_removed_statement(table: StoredTable) -> str:
-    """Delete the rows whose key a staged row marked `_is_removed` holds, nulls matching."""
-    matched = " AND ".join(
-        f"target.{key} IS NOT DISTINCT FROM staged.{key}" for key in table.postgres_key
-    )
-    return (
-        f"DELETE FROM {table.relation} AS target USING {table.staging_relation} AS staged"
-        f" WHERE staged.{IS_REMOVED} AND {matched}"
-    )
+    return f"{insert_statement(table)} ON CONFLICT ({_columns(key)}) {action}"
 
 
 def copy_statements(change: Change) -> list[str]:
@@ -92,10 +66,6 @@ def copy_statements(change: Change) -> list[str]:
     table = change.table
     if change.copy is Copy.UPSERT:
         return [upsert_statement(table)]
-    if change.copy is Copy.RECOUNT:
-        return [delete_removed_statement(table), upsert_statement(table, f"NOT {IS_REMOVED}")]
-    if change.copy is Copy.REPLACE:
-        return [f"DELETE FROM {table.relation}", insert_statement(table)]
     return [f"TRUNCATE {table.relation}", insert_statement(table)]
 
 
@@ -114,18 +84,18 @@ def sync_statement(snapshots: Mapping[str, int | None]) -> str:
 
 def staged(change: Change, retained_from: datetime) -> DataFrame:
     """The rows of a change as its staging table holds them. History older than the retention
-    window is left out, so a change re-resolved later never brings a dropped month back."""
+    window is left out, so a late change re-versioning an old one never brings a dropped month
+    back."""
     rows = change.rows
     if change.table.history:
         rows = rows.where(F.col(FactColumn.CHANGED_AT) >= F.lit(retained_from))
-    if change.table.mode is WriteMode.RECOUNT and IS_REMOVED not in rows.columns:
-        rows = rows.withColumn(IS_REMOVED, F.lit(False))
     return rows.select(*(column.name for column in change.table.staging_table.columns))
 
 
 class PostgresServing:
     """The serving copy of gold in PostgreSQL: every change is staged by Spark's JDBC writer,
-    then copied into gold_internal in one transaction, with the Iceberg snapshots it holds."""
+    then copied into gold_internal in one transaction, with the Iceberg snapshots it holds.
+    Each load copies only its own tables, so the loads copy at the same time."""
 
     def __init__(
         self,
@@ -146,12 +116,13 @@ class PostgresServing:
         }
 
     def apply(self, changes: Sequence[Change], snapshots: Mapping[str, int | None]) -> None:
+        """Copy the changes and record the snapshots they hold, in one transaction."""
         if not snapshots:
             return
         retained_from = self.retained_from()
         for change in changes:
             self.stage(staged(change, retained_from), change.table.staging_relation)
-        statements = [WRITER_LOCK]
+        statements = [COPY_LOCK]
         for change in changes:
             statements += copy_statements(change)
         statements.append(sync_statement(snapshots))

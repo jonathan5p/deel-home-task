@@ -1,0 +1,16 @@
+SELECT
+    ranked_customers.customer_id,
+    customer.customer_name,
+    ranked_customers.pending_orders
+FROM (
+    SELECT
+        open_order.customer_id,
+        count(*) AS pending_orders,
+        rank() OVER (ORDER BY count(*) DESC) AS place
+    FROM {{ internal }}.current_orders AS open_order
+    WHERE open_order.is_open AND NOT open_order._is_deleted
+    GROUP BY open_order.customer_id
+) AS ranked_customers
+LEFT JOIN {{ internal }}.dim_customer AS customer
+    ON customer.customer_id = ranked_customers.customer_id AND customer._is_current
+WHERE ranked_customers.place <= 3

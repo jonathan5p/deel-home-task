@@ -1,0 +1,47 @@
+{#
+  The customer version valid when each change was committed: not folded, not deleted, with the
+  change's _changed_at in [_valid_from, _valid_to); the first version also covers earlier times,
+  because the source snapshots each table at a slightly different time. Clock skew between
+  commits can make two ranges overlap, so the version committed last wins.
+#}
+SELECT
+    order_id,
+    _changed_at,
+    _change_op,
+    status_key,
+    customer_id,
+    customer_key,
+    customer_name,
+    customer_address,
+    order_date_key,
+    delivery_date_key,
+    _valid_to,
+    _is_current
+FROM (
+    SELECT
+        fact.order_id,
+        fact._changed_at,
+        fact._change_op,
+        fact.status_key,
+        fact.customer_id,
+        customer.customer_key,
+        customer.customer_name,
+        customer.customer_address,
+        fact.order_date_key,
+        fact.delivery_date_key,
+        fact._valid_to,
+        fact._is_current,
+        row_number() OVER (
+            PARTITION BY fact.order_id, fact._commit_sequence
+            ORDER BY customer._commit_sequence DESC
+        ) AS customer_match
+    FROM {{ internal }}.fact_order_history AS fact
+    LEFT JOIN {{ internal }}.dim_customer AS customer
+        ON customer.customer_id = fact.customer_id
+        AND NOT customer._is_folded
+        AND NOT customer._is_deleted
+        AND (customer._valid_from <= fact._changed_at OR customer._version_number = 1)
+        AND (customer._valid_to IS NULL OR fact._changed_at < customer._valid_to)
+    WHERE NOT fact._is_folded
+) AS matched
+WHERE customer_match = 1

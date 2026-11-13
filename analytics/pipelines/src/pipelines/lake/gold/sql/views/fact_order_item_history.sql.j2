@@ -1,0 +1,46 @@
+{#
+  The product version valid when each change was committed, matched as the customer version of
+  fact_order_history is; line_amount is computed at the lake's decimal type.
+#}
+SELECT
+    order_item_id,
+    _changed_at,
+    _change_op,
+    order_id,
+    product_id,
+    product_key,
+    product_name,
+    quantity,
+    unit_price,
+    line_amount,
+    _valid_to,
+    _is_current
+FROM (
+    SELECT
+        fact.order_item_id,
+        fact._changed_at,
+        fact._change_op,
+        fact.order_id,
+        fact.product_id,
+        product.product_key,
+        product.product_name,
+        fact.quantity,
+        product.unit_price,
+        CAST(CAST(product.unit_price AS DECIMAL(27, 10)) * fact.quantity AS DECIMAL(38, 10))
+            AS line_amount,
+        fact._valid_to,
+        fact._is_current,
+        row_number() OVER (
+            PARTITION BY fact.order_item_id, fact._commit_sequence
+            ORDER BY product._commit_sequence DESC
+        ) AS product_match
+    FROM {{ internal }}.fact_order_item_history AS fact
+    LEFT JOIN {{ internal }}.dim_product AS product
+        ON product.product_id = fact.product_id
+        AND NOT product._is_folded
+        AND NOT product._is_deleted
+        AND (product._valid_from <= fact._changed_at OR product._version_number = 1)
+        AND (product._valid_to IS NULL OR fact._changed_at < product._valid_to)
+    WHERE NOT fact._is_folded
+) AS matched
+WHERE product_match = 1

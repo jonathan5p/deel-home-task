@@ -4,7 +4,7 @@ from enum import StrEnum
 from typing import NoReturn
 
 from pipelines.lake.gold.model.columns import VERSION_COLUMNS
-from pipelines.lake.gold.scd2 import INTERNAL_SCHEMA, Scd2Dimension, silver_column
+from pipelines.lake.gold.scd2 import INTERNAL_SCHEMA, silver_column
 from pipelines.schemas.definitions import ColumnDefinition, EntityDefinition
 from pipelines.schemas.gold_definitions import GoldTable
 
@@ -44,54 +44,23 @@ class KeyLookup:
 
 
 @dataclass(frozen=True, slots=True)
-class Multiplied:
-    """A fact column computed as a staged column times a column an as-of lookup fills in."""
-
-    column: str
-    factor: str
-    looked_up: str
-
-
-@dataclass(frozen=True, slots=True)
-class AsOfLookup:
-    """History fact columns taken from the version of an SCD2 dimension valid when the change
-    was committed: not folded, not deleted, and with the change's `_changed_at` in
-    [`_valid_from`, `_valid_to`). A change older than the key's first version takes that
-    version, because the source snapshots each table at a slightly different time, so an
-    order or item can be snapshotted just before its customer or product. They are null when
-    the key has no version yet, or the version at that time is a delete.
-
-    `business_key` is the fact column holding the dimension's key, and `columns` pairs each
-    fact column with the dimension column it takes.
-    """
-
-    dimension: Scd2Dimension
-    business_key: str
-    columns: tuple[tuple[str, str], ...]
-    multiplied: tuple[Multiplied, ...] = ()
-
-    @property
-    def fact_columns(self) -> tuple[str, ...]:
-        return (*(fact for fact, _ in self.columns), *(m.column for m in self.multiplied))
-
-
-@dataclass(frozen=True, slots=True)
 class ChangeFact:
     """The history fact and the current-state table of one source entity, both written from
-    its silver table: every change is stored in `history` with its version columns, and the
-    latest change of each key replaces its `current` row if it is newer.
+    its silver table alone: every change is stored in `history` with its business keys and
+    version columns, and the latest change of each key replaces its `current` row if it is
+    newer. Neither holds another entity's attributes or surrogate keys: the public views join
+    the dimension version valid at each change when they are read.
 
     A column is loaded from the silver column its `from` names (`<entity>.<lake name>`), a
-    metadata column from the silver column of the same name; `lookups` and `as_of` fill the
-    other columns. The staged columns also hold the silver columns the lookups read that
-    neither table keeps, such as the order status behind `status_key`.
+    metadata column from the silver column of the same name; `lookups` fill the other columns
+    from the seeded dimensions. The staged columns also hold the silver columns the lookups
+    read that neither table keeps, such as the order status behind `status_key`.
     """
 
     history: GoldTable
     current: GoldTable
     entity: EntityDefinition
     lookups: tuple[KeyLookup, ...] = ()
-    as_of: tuple[AsOfLookup, ...] = ()
 
     def __post_init__(self) -> None:
         for table, required in ((self.history, HISTORY_COLUMNS), (self.current, CURRENT_COLUMNS)):
@@ -104,8 +73,6 @@ class ChangeFact:
             self._fail(f"lookups fill columns neither table has: {', '.join(unknown)}")
         for lookup in self.lookups:
             self._check_key_lookup(lookup)
-        for lookup in self.as_of:
-            self._check_as_of(lookup)
         self._key()
 
     def _fail(self, problem: str) -> NoReturn:
@@ -116,22 +83,6 @@ class ChangeFact:
         if missing:
             self._fail(f"{lookup.dimension.name} has no columns named {', '.join(missing)}")
         self._staged_name(lookup.source)
-
-    def _check_as_of(self, lookup: AsOfLookup) -> None:
-        outside = sorted(set(lookup.fact_columns) - _names(self.history))
-        if outside:
-            history = self.history.name
-            self._fail(f"as-of lookups fill columns {history} does not have: {', '.join(outside)}")
-        dimension = lookup.dimension.table
-        missing = sorted({column for _, column in lookup.columns} - _names(dimension))
-        if missing:
-            self._fail(f"{dimension.name} has no columns named {', '.join(missing)}")
-        looked_up = {fact for fact, _ in lookup.columns}
-        unfilled = sorted({m.looked_up for m in lookup.multiplied} - looked_up)
-        if unfilled:
-            self._fail(f"a multiplied column needs a looked-up column: {', '.join(unfilled)}")
-        for column in (lookup.business_key, *(m.factor for m in lookup.multiplied)):
-            self._staged_name(column)
 
     @property
     def name(self) -> str:
@@ -149,9 +100,7 @@ class ChangeFact:
     def derived(self) -> frozenset[str]:
         """The columns the gold job computes, which are never loaded from silver: the looked-up
         ones and the version columns."""
-        looked_up = (column for lookup in self.as_of for column in lookup.fact_columns)
-        lookups = (lookup.column for lookup in self.lookups)
-        return frozenset({*lookups, *looked_up, *VERSION_COLUMNS})
+        return frozenset({*(lookup.column for lookup in self.lookups), *VERSION_COLUMNS})
 
     def _table_columns(self) -> list[tuple[GoldTable, ColumnDefinition]]:
         """The columns of both tables loaded from silver, each once, with the table naming it
@@ -166,13 +115,7 @@ class ChangeFact:
         return columns
 
     def _inputs(self) -> list[str]:
-        lookups = (lookup.source for lookup in self.lookups)
-        as_of = (
-            column
-            for lookup in self.as_of
-            for column in (lookup.business_key, *(m.factor for m in lookup.multiplied))
-        )
-        return [*lookups, *as_of]
+        return [lookup.source for lookup in self.lookups]
 
     def _extra_inputs(self) -> list[ColumnDefinition]:
         """The silver columns the lookups read that neither table keeps, under their lake name."""

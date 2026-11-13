@@ -4,7 +4,7 @@ pytest.importorskip("pyspark")
 
 from pyspark.sql import SparkSession
 
-from analytics.pipelines.tests.lake.gold.writer_setup import BY_PRODUCT, SEEDS, TOP, report, seeds
+from analytics.pipelines.tests.lake.gold.writer_setup import SEEDS, seeds
 from pipelines.lake.gold.dimensions import STORED
 from pipelines.lake.gold.lake import IcebergGold, described_schema
 
@@ -100,44 +100,6 @@ def test_a_current_row_is_only_replaced_by_a_newer_change(
     assert [(row[0], row[3]) for row in rows_of(lake, CURRENT.name)] == [(1, 2), (2, 9)]
 
 
-def test_a_recount_deletes_removed_rows_and_upserts_the_others_nulls_matching(
-    spark: SparkSession, lake: IcebergGold
-) -> None:
-    lake.write(
-        BY_PRODUCT, report(spark, (None, 1, 1), (5, 1, 1)).selectExpr("*", "false AS _is_removed")
-    )
-    recount = spark.createDataFrame(
-        [(None, 2, 3, False), (5, None, None, True), (6, 1, 4, False), (7, None, None, True)],
-        "product_id long, pending_items long, pending_quantity long, _is_removed boolean",
-    )
-
-    lake.write(BY_PRODUCT, recount)
-
-    assert rows_of(lake, BY_PRODUCT.name) == [(6, 1, 4), (None, 2, 3)]
-
-
-def test_a_replace_keeps_only_the_new_rows(spark: SparkSession, lake: IcebergGold) -> None:
-    lake.write(TOP, spark.sql("SELECT DATE'2026-11-10' AS delivery_date, 3L AS open_orders"))
-
-    lake.write(TOP, spark.sql("SELECT DATE'2026-11-11' AS delivery_date, 4L AS open_orders"))
-
-    assert [row[1] for row in rows_of(lake, TOP.name)] == [4]
-
-
-def test_a_write_is_unchanged_when_empty_or_replacing_equal_rows(
-    spark: SparkSession, lake: IcebergGold
-) -> None:
-    top = spark.sql("SELECT DATE'2026-11-10' AS delivery_date, 3L AS open_orders")
-    lake.write(TOP, top)
-
-    assert lake.unchanged(SEEDS, seeds(spark))
-    assert not lake.unchanged(SEEDS, seeds(spark, (1, "PENDING", True)))
-    assert lake.unchanged(TOP, top)
-    assert not lake.unchanged(
-        TOP, spark.sql("SELECT DATE'2026-11-10' AS delivery_date, 4L AS open_orders")
-    )
-
-
 def test_each_write_makes_a_snapshot_that_can_be_read_back(
     spark: SparkSession, lake: IcebergGold
 ) -> None:
@@ -151,6 +113,20 @@ def test_each_write_makes_a_snapshot_that_can_be_read_back(
     assert at_first is not None
     assert [tuple(row) for row in at_first.collect()] == [(1, "PENDING", True)]
     assert lake.read_snapshot("dim_order_status", 12345) is None
+
+
+def test_a_snapshot_id_is_read_from_the_table_properties_without_a_spark_job(
+    spark: SparkSession, lake: IcebergGold
+) -> None:
+    tracker = spark.sparkContext.statusTracker()
+    lake.write(SEEDS, seeds(spark, (1, "PENDING", True)))
+    before = set(tracker.getJobIdsForGroup(None))
+
+    snapshot = lake.snapshot("dim_order_status")
+
+    assert set(tracker.getJobIdsForGroup(None)) == before
+    snapshots = spark.table(f"{lake.relation['dim_order_status']}.snapshots")
+    assert snapshot == snapshots.orderBy("committed_at").collect()[-1]["snapshot_id"]
 
 
 def test_drop_removes_every_table(spark: SparkSession, lake: IcebergGold) -> None:

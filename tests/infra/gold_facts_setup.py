@@ -161,12 +161,15 @@ BATCHES: Batches = {
 }
 SILVER = SilverFixture("test-fixtures/gold-facts", "gold_facts_fixture", BATCHES)
 
-# Surrogate keys are generated, so a looked-up version is shown by its _commit_sequence.
+# Surrogate keys are generated, so the dimension version a public view resolves for a change is
+# shown by its _commit_sequence; a folded change has no public row, so it resolves none.
 ORDER_HISTORY = """
 SELECT f.order_id, f._commit_sequence, f._changed_at, f._change_op, f.status_key,
     c._commit_sequence, f.order_date_key, f.delivery_date_key, f._is_deleted
 FROM gold_internal.fact_order_history AS f
-LEFT JOIN gold_internal.dim_customer AS c ON c.customer_key = f.customer_key
+LEFT JOIN gold.fact_order_history AS v
+    ON v.order_id = f.order_id AND v._changed_at = f._changed_at AND NOT f._is_folded
+LEFT JOIN gold_internal.dim_customer AS c ON c.customer_key = v.customer_key
 WHERE f.order_id IN ({orders})
 ORDER BY 1, 2;
 """
@@ -195,9 +198,11 @@ PUBLIC_CURRENT_ORDERS = """
 SELECT order_id FROM gold.current_orders WHERE order_id IN ({orders}) ORDER BY 1;
 """
 ITEM_HISTORY = """
-SELECT i.order_item_id, i._commit_sequence, p._commit_sequence, i.unit_price, i.line_amount
+SELECT i.order_item_id, i._commit_sequence, p._commit_sequence, v.unit_price, v.line_amount
 FROM gold_internal.fact_order_item_history AS i
-LEFT JOIN gold_internal.dim_product AS p ON p.product_key = i.product_key
+LEFT JOIN gold.fact_order_item_history AS v
+    ON v.order_item_id = i.order_item_id AND v._changed_at = i._changed_at AND NOT i._is_folded
+LEFT JOIN gold_internal.dim_product AS p ON p.product_key = v.product_key
 WHERE i.order_item_id IN ({items})
 ORDER BY 1, 2;
 """
@@ -263,8 +268,8 @@ def run_fact_scenario(stack: Stack) -> FactRuns:
 
 
 def remove_fact_rows(stack: Stack) -> None:
-    """Remove the scenario's rows, its reports and the copy's sync state, so the next run copies
-    every table it reads again."""
+    """Remove the scenario's rows and the copy's sync state, so the next run copies every table
+    it reads again."""
     rows(
         stack,
         f"DELETE FROM gold_internal.fact_order_item_history WHERE order_item_id IN ({keys(ITEMS)});"
@@ -273,11 +278,7 @@ def remove_fact_rows(stack: Stack) -> None:
         f" DELETE FROM gold_internal.current_orders WHERE order_id IN ({keys(ORDERS)});"
         f" DELETE FROM gold_internal.dim_product WHERE product_id IN ({keys(PRODUCTS)});"
         f" DELETE FROM gold_internal.dim_customer WHERE customer_id IN ({keys(CUSTOMERS)});"
-        " TRUNCATE gold_internal.pending_items_by_product,"
-        " gold_internal.pending_orders_by_customer,"
-        " gold_internal.open_orders_by_delivery_date_and_status,"
-        " gold_internal.top_delivery_dates_by_open_orders,"
-        " gold_internal.top_customers_by_pending_orders, gold_internal.sync_state;",
+        " TRUNCATE gold_internal.sync_state;",
     )
 
 

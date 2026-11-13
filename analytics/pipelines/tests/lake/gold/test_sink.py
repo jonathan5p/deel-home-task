@@ -15,7 +15,7 @@ from common.settings import AnalyticsDbSettings
 from pipelines.lake.gold.dimensions import load_dimensions, load_facts
 from pipelines.lake.gold.facts import FactDefinitionError
 from pipelines.lake.gold.scd2 import Scd2DefinitionError
-from pipelines.lake.gold.sink import GoldSink, jdbc_options, staged_rows
+from pipelines.lake.gold.sink import SCHEDULER_POOL, GoldSink, jdbc_options, staged_rows
 
 PRODUCTS = load_dimensions()["dim_product"]
 ITEMS = load_facts()["fact_order_item_history"]
@@ -87,17 +87,18 @@ def test_the_staging_table_is_emptied_and_reloaded_but_kept() -> None:
     }
 
 
-def test_each_micro_batch_is_handed_to_the_writer_under_its_load_name(
+def test_each_micro_batch_is_handed_to_the_writer_under_its_load_name_and_id(
     spark: SparkSession,
 ) -> None:
-    handed: list[tuple[str, DataFrame]] = []
+    handed: list[tuple[str, DataFrame, int | None]] = []
 
     class Writer:
-        def write_batch(self, load: str, batch: DataFrame) -> None:
-            handed.append((load, batch))
+        def write_batch(self, load: str, batch: DataFrame, batch_id: int | None = None) -> None:
+            handed.append((load, batch, batch_id))
 
     batch = spark.createDataFrame([], silver_schema(PRODUCTS.entity))
 
     GoldSink(PRODUCTS, Writer())(batch, 7)
 
-    assert handed == [("dim_product", batch)]
+    assert handed == [("dim_product", batch, 7)]
+    assert spark.sparkContext.getLocalProperty(SCHEDULER_POOL) == "dim_product"

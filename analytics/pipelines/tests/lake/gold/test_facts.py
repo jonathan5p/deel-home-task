@@ -3,15 +3,13 @@ from dataclasses import replace
 import pytest
 
 from analytics.pipelines.tests.lake.gold.facts_setup import (
-    CUSTOMER,
     ITEMS,
     ORDERS,
-    PRODUCT,
     STATUS,
     with_column,
     without,
 )
-from pipelines.lake.gold.facts import FactDefinitionError, Multiplied
+from pipelines.lake.gold.facts import FactDefinitionError
 
 
 def test_staging_holds_the_silver_columns_of_both_tables_then_the_lookup_inputs() -> None:
@@ -69,10 +67,9 @@ def test_the_lookups_and_the_version_columns_are_the_derived_columns() -> None:
         "is_open",
         "order_date_key",
         "delivery_date_key",
-        "customer_key",
         *versions,
     }
-    assert ITEMS.derived == {"product_key", "unit_price", "line_amount", *versions}
+    assert ITEMS.derived == versions
 
 
 def test_silver_input_with_every_source_column_is_accepted() -> None:
@@ -121,27 +118,6 @@ def test_a_lookup_of_an_input_silver_does_not_have_is_refused() -> None:
         replace(ORDERS, lookups=(lookup, *ORDERS.lookups[1:]))
 
 
-def test_an_as_of_lookup_must_fill_history_columns() -> None:
-    lookup = replace(CUSTOMER, columns=(("customer_key", "customer_key"), ("label", "x")))
-
-    with pytest.raises(FactDefinitionError, match="does not have: label"):
-        replace(ORDERS, as_of=(lookup,))
-
-
-def test_an_as_of_lookup_of_a_column_the_dimension_lacks_is_refused() -> None:
-    lookup = replace(CUSTOMER, columns=(("customer_key", "key"),))
-
-    with pytest.raises(FactDefinitionError, match="dim_customer has no columns named key"):
-        replace(ORDERS, as_of=(lookup,))
-
-
-def test_a_product_of_a_column_the_lookup_does_not_fill_is_refused() -> None:
-    lookup = replace(PRODUCT, multiplied=(Multiplied("line_amount", "quantity", "price"),))
-
-    with pytest.raises(FactDefinitionError, match="needs a looked-up column: price"):
-        replace(ITEMS, as_of=(lookup,))
-
-
 def test_a_column_without_a_silver_column_or_a_lookup_is_refused() -> None:
     with pytest.raises(FactDefinitionError, match="no silver column of order_items for label"):
         replace(ITEMS, current=with_column(ITEMS.current, "label"))
@@ -156,3 +132,13 @@ def test_the_open_flag_is_kept_only_with_the_current_state() -> None:
     assert "is_open" in {column.name for column in ORDERS.current.columns}
     assert "is_open" not in {column.name for column in ORDERS.history.columns}
     assert "is_open" not in {column.name for column in ORDERS.staged_columns}
+
+
+def test_the_facts_hold_their_business_keys_and_no_dimension_columns() -> None:
+    orders = {column.name for column in ORDERS.history.columns}
+    items = {column.name for column in ITEMS.history.columns}
+
+    assert {"order_id", "customer_id"} <= orders
+    assert {"order_item_id", "order_id", "product_id"} <= items
+    assert orders.isdisjoint({"customer_key", "customer_name", "customer_address"})
+    assert items.isdisjoint({"product_key", "product_name", "unit_price", "line_amount"})

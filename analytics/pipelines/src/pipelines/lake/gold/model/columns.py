@@ -1,8 +1,6 @@
 from collections.abc import Iterable
 from enum import StrEnum
 
-IS_REMOVED = "_is_removed"
-
 
 class VersionColumn(StrEnum):
     IS_FOLDED = "_is_folded"

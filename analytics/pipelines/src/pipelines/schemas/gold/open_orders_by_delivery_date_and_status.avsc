@@ -2,8 +2,7 @@
   "type": "record",
   "name": "open_orders_by_delivery_date_and_status",
   "namespace": "gold",
-  "doc": "Open orders by delivery date and status, recounted by the gold job for the delivery dates and statuses each batch of orders touches; a total that drops to zero is deleted",
-  "public_doc": "Number of open orders by delivery date and status: one row per delivery date and open status with at least one open order",
+  "doc": "Number of open orders by delivery date and status: one row per delivery date and open status with at least one open order",
   "fields": [
     {
       "name": "delivery_date",

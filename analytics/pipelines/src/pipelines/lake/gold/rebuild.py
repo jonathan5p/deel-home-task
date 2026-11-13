@@ -70,8 +70,9 @@ def run(
     read: SilverReader = read_silver_table,
 ) -> list[str]:
     """Recreate the gold tables, write every silver change up to `to_time` with the gold job's
-    writer, one batch per load and the dimensions first, then copy every table into
-    PostgreSQL; returns the partitions retention dropped afterwards."""
+    writer, one batch per load, then copy every table into PostgreSQL; returns the partitions
+    retention dropped afterwards. Each load reads only its own silver table and writes only
+    its own gold tables, so their order does not matter."""
     recreate()
     loads: list[GoldLoad] = [*dimensions, *facts]
     for load in loads:

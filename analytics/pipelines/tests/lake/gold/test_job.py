@@ -27,6 +27,7 @@ from pipelines.lake.gold.job import (
     postgres_serving,
     prepare,
     run,
+    seeded_rows,
     session_conf,
     writer_sinks,
 )
@@ -173,8 +174,11 @@ def test_the_job_keeps_running_on_its_processing_time_trigger(
             query.stop()
 
 
-def test_each_load_hands_its_batches_to_the_shared_writer(settings: GoldSettings) -> None:
-    writer = GoldWriter(GoldBatches(STORED, DIMENSIONS, FACTS), FakeLake({}, []), None)
+def test_each_load_hands_its_batches_to_the_shared_writer(
+    spark: SparkSession, settings: GoldSettings
+) -> None:
+    batches = GoldBatches(STORED, DIMENSIONS, FACTS, seeded_rows(spark))
+    writer = GoldWriter(batches, FakeLake({}, []), None)
 
     sink = writer_sinks(writer)(PRODUCTS)
 
@@ -190,9 +194,12 @@ def test_the_gold_tables_are_named_in_the_gold_namespace_apart_from_its_views(
     assert set(lake.relation) == set(STORED)
 
 
-def test_a_gold_session_never_caches_the_catalog_tables(settings: GoldSettings) -> None:
+def test_a_gold_session_shares_its_executors_fairly_and_never_caches_the_catalog_tables(
+    settings: GoldSettings,
+) -> None:
     assert session_conf(settings) == {
         "spark.sql.shuffle.partitions": "4",
+        "spark.scheduler.mode": "FAIR",
         "spark.sql.catalog.catalog.cache-enabled": "false",
     }
 
@@ -214,7 +221,7 @@ def test_the_job_writes_gold_to_iceberg_and_copies_each_batch(
     log: list[str] = []
     serving = FakeServing(log)
     lake = iceberg_gold(spark, iceberg_settings)
-    writer = GoldWriter(GoldBatches(STORED, DIMENSIONS, FACTS), lake, serving)
+    writer = GoldWriter(GoldBatches(STORED, DIMENSIONS, FACTS, seeded_rows(spark)), lake, serving)
 
     prepare(spark, writer, lake)
     queries = run(
@@ -229,7 +236,8 @@ def test_the_job_writes_gold_to_iceberg_and_copies_each_batch(
     assert lake.read("dim_order_status").count() == 5
     assert lake.read("dim_date").count() == 36525
     assert [row.product_id for row in lake.read("dim_product").collect()] == [3, 3]
-    assert [tuple(row) for row in lake.read("pending_items_by_product").collect()] == [(3, 1, 2)]
+    items = lake.read("current_order_items").collect()
+    assert [(row.product_id, row.quantity) for row in items] == [(3, 2)]
     assert serving.synced_snapshots == {name: lake.snapshot(name) for name in STORED}
     assert len(log) >= 5
 

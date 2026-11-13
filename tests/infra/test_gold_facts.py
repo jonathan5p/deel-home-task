@@ -103,14 +103,14 @@ def test_an_item_arriving_before_its_order_counts_once_the_order_arrives(
     assert by_key(fact_runs.second.pending_items, EARLY_ITEM_PRODUCT) == [["9303", "1", "4"]]
 
 
-def test_an_order_arriving_before_its_customer_gets_the_key_once_the_customer_arrives(
+def test_an_order_arriving_before_its_customer_sees_it_once_the_customer_arrives(
     fact_runs: FactRuns,
 ) -> None:
     assert by_key(fact_runs.first.order_history, CUSTOMER_LATER)[0][5] == ""
     assert by_key(fact_runs.second.order_history, CUSTOMER_LATER)[0][5] == "290"
 
 
-def test_a_late_dimension_version_re_resolves_the_facts_it_moves_to_another_version(
+def test_a_late_dimension_version_moves_the_facts_it_covers_to_that_version_when_read(
     fact_runs: FactRuns,
 ) -> None:
     first, second = fact_runs.first, fact_runs.second

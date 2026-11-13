@@ -5,7 +5,6 @@ from pyspark.sql import functions as F
 from pyspark.sql.functions import partitioning
 from pyspark.sql.types import StructField, StructType
 
-from pipelines.lake.gold.model.columns import IS_REMOVED
 from pipelines.lake.gold.model.versions import COMMIT_SEQUENCE, all_of
 from pipelines.lake.gold.stored import StoredTable, WriteMode
 from pipelines.lake.shared.snapshots import read_snapshot
@@ -26,7 +25,8 @@ TABLE_PROPERTIES: Mapping[str, str] = {
     "write.update.mode": "merge-on-read",
     "write.merge.mode": "merge-on-read",
 }
-MAIN_BRANCH = "main"
+CURRENT_SNAPSHOT = "current-snapshot-id"
+NO_SNAPSHOT = "none"
 
 
 def described_schema(table: GoldTable) -> StructType:
@@ -51,7 +51,7 @@ def _source(column: str) -> Column:
 
 class IcebergGold:
     """The gold tables in the lake: one Iceberg table per stored gold table, named by
-    `relation`, written with `mergeInto` as each table's mode says."""
+    `relation`, written with one `mergeInto` per batch as each table's mode says."""
 
     def __init__(
         self,
@@ -115,28 +115,17 @@ class IcebergGold:
         return read_snapshot(self.spark, relation, snapshot_id)
 
     def snapshot(self, name: str) -> int | None:
-        """The id of the table's current snapshot, or None when it has none."""
-        refs = self.spark.table(f"{self.relation[name]}.refs")
-        main = refs.where(F.col("name") == MAIN_BRANCH).select("snapshot_id").first()
-        return None if main is None else int(main["snapshot_id"])
-
-    def unchanged(self, table: StoredTable, rows: DataFrame) -> bool:
-        """Whether writing `rows` would change nothing: there are none, or they replace equal
-        rows."""
-        if table.mode is not WriteMode.REPLACE:
-            return rows.isEmpty()
-        stored = self.read(table.name).select(*table.columns)
-        new = rows.select(*table.columns)
-        return new.exceptAll(stored).isEmpty() and stored.exceptAll(new).isEmpty()
+        """The id of the table's current snapshot, or None when it has none. Iceberg reports it
+        as a table property, which the driver reads from the table's metadata without running
+        a Spark job."""
+        query = f"SHOW TBLPROPERTIES {self.relation[name]} ('{CURRENT_SNAPSHOT}')"
+        row = self.spark.sql(query).first()
+        if row is None or row["value"] == NO_SNAPSHOT:
+            return None
+        return int(row["value"])
 
     def write(self, table: StoredTable, rows: DataFrame) -> None:
         relation = self.relation[table.name]
-        if table.mode is WriteMode.REPLACE:
-            rows.select(*table.columns).writeTo(relation).overwrite(F.lit(True))
-            return
-        if table.mode is WriteMode.RECOUNT:
-            self._recount(table, relation, rows)
-            return
         matched = all_of([_source(key) == F.col(f"{relation}.{key}") for key in table.keys])
         merge = rows.select(*table.columns).alias(SOURCE).mergeInto(relation, matched)
         if table.mode is WriteMode.MERGE_NEWER:
@@ -145,23 +134,3 @@ class IcebergGold:
         else:
             merge = merge.whenMatched().updateAll()
         merge.whenNotMatched().insertAll().merge()
-
-    def _recount(self, table: StoredTable, relation: str, rows: DataFrame) -> None:
-        keys = set(table.keys)
-        matched = all_of(
-            [_source(key).eqNullSafe(F.col(f"{relation}.{key}")) for key in table.keys]
-        )
-        totals = {column: _source(column) for column in table.columns if column not in keys}
-        removed = _source(IS_REMOVED)
-        (
-            rows.select(*table.columns, IS_REMOVED)
-            .alias(SOURCE)
-            .mergeInto(relation, matched)
-            .whenMatched(removed)
-            .delete()
-            .whenMatched()
-            .update(totals)
-            .whenNotMatched(~removed)
-            .insert({column: _source(column) for column in table.columns})
-            .merge()
-        )

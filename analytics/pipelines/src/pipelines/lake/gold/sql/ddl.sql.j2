@@ -10,7 +10,7 @@ CREATE SCHEMA IF NOT EXISTS gold;
 COMMENT ON SCHEMA gold_internal IS
     'Serving copy of the gold tables the gold job writes to Iceberg, with the metadata it computes; filled by plain upserts.';
 COMMENT ON SCHEMA gold IS
-    'Gold star schema for consumers: views over gold_internal without the pipeline-only metadata.';
+    'Gold star schema for consumers: views over gold_internal without the pipeline-only metadata, resolving the dimension version valid at each fact change when read.';
 
 -- Every table is a copy of its Iceberg table in the lake: the gold job computes the rows with
 -- Spark and copies them here with plain upserts, so no transformation runs in PostgreSQL.
@@ -20,6 +20,23 @@ COMMENT ON SCHEMA gold IS
 {{ staging_statement(table) }}
 
 {% endfor %}
+-- The business-question views read only the open orders, so these partial indexes make them
+-- index scans; each one was chosen from the views' query plans.
+CREATE INDEX IF NOT EXISTS current_orders_open_delivery_idx
+    ON gold_internal.current_orders (delivery_date, status_key) WHERE is_open AND NOT _is_deleted;
+CREATE INDEX IF NOT EXISTS current_orders_open_customer_idx
+    ON gold_internal.current_orders (customer_id) WHERE is_open AND NOT _is_deleted;
+CREATE INDEX IF NOT EXISTS current_order_items_live_order_idx
+    ON gold_internal.current_order_items (order_id) INCLUDE (product_id, quantity)
+    WHERE NOT _is_deleted;
+
+COMMENT ON INDEX gold_internal.current_orders_open_delivery_idx IS
+    'Open orders by delivery date and status, for gold.open_orders_by_delivery_date_and_status and gold.top_delivery_dates_by_open_orders.';
+COMMENT ON INDEX gold_internal.current_orders_open_customer_idx IS
+    'Open orders by customer, for gold.top_customers_by_pending_orders.';
+COMMENT ON INDEX gold_internal.current_order_items_live_order_idx IS
+    'Items not deleted by order, for gold.pending_items_by_product, which looks up the items of each open order.';
+
 CREATE TABLE IF NOT EXISTS gold_internal.sync_state (
 {{ column_lines(sync_state) }}
     PRIMARY KEY (table_name)
@@ -119,18 +136,6 @@ COMMENT ON FUNCTION gold_internal.apply_history_retention(int, int, date) IS
 {{ view }}
 
 {% endfor %}
--- Measured from the data, so it ages while the source is idle even when the pipeline is healthy.
-CREATE OR REPLACE VIEW gold.data_freshness AS
-SELECT 'customers' AS entity, max(_valid_from) AS last_changed_at FROM gold_internal.dim_customer
-UNION ALL
-SELECT 'products', max(_valid_from) FROM gold_internal.dim_product
-UNION ALL
-SELECT 'orders', max(_changed_at) FROM gold_internal.current_orders
-UNION ALL
-SELECT 'order_items', max(_changed_at) FROM gold_internal.current_order_items;
-
-{{ describe_view(tables.data_freshness) }}
-
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'gold_reader') THEN

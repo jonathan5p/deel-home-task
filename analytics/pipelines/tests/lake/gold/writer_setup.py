@@ -1,6 +1,6 @@
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from types import TracebackType
+from datetime import datetime
 
 from pyspark.sql import DataFrame, SparkSession
 
@@ -10,11 +10,15 @@ from pipelines.lake.gold.serving import Change
 from pipelines.lake.gold.stored import StoredTable
 
 SEEDS = STORED["dim_order_status"]
-BY_PRODUCT = STORED["pending_items_by_product"]
-TOP = STORED["top_delivery_dates_by_open_orders"]
-TABLES = {table.name: table for table in (SEEDS, BY_PRODUCT, TOP)}
+ITEMS = STORED["current_order_items"]
+OTHER = STORED["dim_customer"]
+TABLES = {table.name: table for table in (SEEDS, ITEMS, OTHER)}
 SEED_SCHEMA = "status_key int, status_code string, is_open boolean"
-REPORT_SCHEMA = "product_id long, pending_items long, pending_quantity long"
+ITEM_SCHEMA = (
+    "order_item_id long, order_id long, product_id long, quantity int, _commit_sequence long,"
+    " _changed_at timestamp, _is_deleted boolean"
+)
+CHANGED_AT = datetime(2026, 11, 1, 10, 0)
 CONFLICT = "org.apache.iceberg.exceptions.CommitFailedException: Cannot commit changes"
 
 
@@ -26,8 +30,11 @@ def seeds(spark: SparkSession, *rows: tuple[int, str, bool]) -> DataFrame:
     return spark.createDataFrame(list(rows), SEED_SCHEMA)
 
 
-def report(spark: SparkSession, *rows: tuple[int | None, int, int]) -> DataFrame:
-    return spark.createDataFrame(list(rows), REPORT_SCHEMA)
+def items(spark: SparkSession, *rows: tuple[int, int]) -> DataFrame:
+    """Current order item rows, each an (order_item_id, quantity) pair."""
+    return spark.createDataFrame(
+        [(key, 1, 1, quantity, key, CHANGED_AT, False) for key, quantity in rows], ITEM_SCHEMA
+    )
 
 
 @dataclass
@@ -48,9 +55,6 @@ class FakeLake:
 
     def snapshot(self, name: str) -> int | None:
         return self.snapshots.get(name)
-
-    def unchanged(self, table: StoredTable, rows: DataFrame) -> bool:
-        return rows.isEmpty()
 
     def write(self, table: StoredTable, rows: DataFrame) -> None:
         self.log.append(f"lake write {table.name} {rows.count()}")
@@ -87,23 +91,13 @@ class FakeBatches:
     log: list[str]
     tables: Mapping[str, StoredTable] = field(default_factory=lambda: TABLES)
 
-    def writes(self, load: str, batch: DataFrame, read: Reader) -> list[Write]:
+    def tables_of(self, load: str) -> tuple[str, ...]:
+        return (SEEDS.name, ITEMS.name)
+
+    def staged(self, load: str, batch: DataFrame) -> DataFrame:
+        self.log.append(f"stage {load}")
+        return batch
+
+    def writes(self, load: str, staged: DataFrame, read: Reader) -> list[Write]:
         self.log.append(f"compute {load}")
         return [Write(self.tables[name], rows) for name, rows in self.planned]
-
-
-@dataclass
-class RecordingLock:
-    log: list[str]
-
-    def __enter__(self) -> object:
-        self.log.append("lock")
-        return self
-
-    def __exit__(
-        self,
-        kind: type[BaseException] | None,
-        error: BaseException | None,
-        traceback: TracebackType | None,
-    ) -> None:
-        self.log.append("unlock")

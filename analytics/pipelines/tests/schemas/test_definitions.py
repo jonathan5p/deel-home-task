@@ -50,7 +50,6 @@ def test_the_schemas_folder_holds_the_shared_sources_tables_and_gold_schemas() -
         "gold/open_orders.avsc",
         "gold/open_orders_by_delivery_date_and_status.avsc",
         "gold/pending_items_by_product.avsc",
-        "gold/pending_orders_by_customer.avsc",
         "gold/sync_state.avsc",
         "gold/top_customers_by_pending_orders.avsc",
         "gold/top_delivery_dates_by_open_orders.avsc",

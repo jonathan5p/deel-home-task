@@ -3,7 +3,8 @@ import pytest
 from analytics.pipelines.tests.lake.gold.postgres_setup import FakeConnection, StatementFailedError
 from common.settings import AnalyticsDbSettings
 from pipelines.lake.gold.postgres import (
-    WRITER_LOCK,
+    COPY_LOCK,
+    RETENTION_LOCK,
     Connection,
     connection_factory,
     conninfo,
@@ -81,5 +82,8 @@ def test_a_transaction_whose_block_fails_rolls_back_and_raises() -> None:
     assert connection.log == ["execute first", "execute second", "rollback", "close"]
 
 
-def test_every_gold_writer_takes_the_same_transaction_lock() -> None:
-    assert WRITER_LOCK == "SELECT pg_advisory_xact_lock(hashtextextended('gold_internal', 0))"
+def test_copies_share_the_gold_lock_and_retention_takes_it_alone() -> None:
+    assert COPY_LOCK == (
+        "SELECT pg_advisory_xact_lock_shared(hashtextextended('gold_internal', 0))"
+    )
+    assert RETENTION_LOCK == "SELECT pg_advisory_xact_lock(hashtextextended('gold_internal', 0))"

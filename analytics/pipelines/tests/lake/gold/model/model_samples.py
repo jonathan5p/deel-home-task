@@ -19,8 +19,6 @@ CUSTOMERS = load_dimensions()["dim_customer"]
 PRODUCTS = load_dimensions()["dim_product"]
 ORDERS = load_facts()["fact_order_history"]
 ITEMS = load_facts()["fact_order_item_history"]
-(CUSTOMER,) = ORDERS.as_of
-(PRODUCT,) = ITEMS.as_of
 
 START = datetime(2026, 11, 8, 12, 0)  # Spark returns naive timestamps in UTC
 ORDER_DATE = date(2026, 11, 1)

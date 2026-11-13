@@ -4,7 +4,7 @@ import pytest
 
 from analytics.pipelines.tests.lake.gold.postgres_setup import FakeConnection, StatementFailedError
 from analytics.pipelines.tests.lake.gold.retention_setup import AS_OF, DATABASE, QUERY, SETTINGS
-from pipelines.lake.gold.postgres import WRITER_LOCK, Connection
+from pipelines.lake.gold.postgres import RETENTION_LOCK, Connection
 from pipelines.lake.gold.retention import apply_retention, main, retained_from, retention_query
 
 
@@ -17,7 +17,7 @@ def test_retention_takes_the_gold_writer_lock_first_and_commits() -> None:
 
     apply_retention(lambda: connection, SETTINGS, AS_OF)
 
-    assert connection.log == [f"execute {WRITER_LOCK}", f"execute {QUERY}", "commit", "close"]
+    assert connection.log == [f"execute {RETENTION_LOCK}", f"execute {QUERY}", "commit", "close"]
 
 
 def test_retention_returns_the_partitions_it_dropped() -> None:

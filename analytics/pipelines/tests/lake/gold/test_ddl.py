@@ -7,7 +7,6 @@ import pytest
 from analytics.pipelines.tests.lake.gold.ddl_setup import THINGS, stored
 from analytics.pipelines.tests.schemas.definitions_setup import SchemasTree
 from pipelines.lake.gold.ddl import (
-    PIPELINE_ONLY_COLUMNS,
     PUBLIC_VIEWS,
     PublicView,
     UnknownColumnError,
@@ -23,6 +22,7 @@ from pipelines.lake.gold.ddl import (
     view_statement,
 )
 from pipelines.lake.gold.dimensions import STORED
+from pipelines.lake.gold.public import PIPELINE_ONLY_COLUMNS
 from pipelines.lake.gold.stored import WriteMode
 
 QUESTION_VIEWS = (
@@ -133,20 +133,6 @@ def test_a_dimension_refuses_two_versions_with_the_same_surrogate_key(
     assert f"    UNIQUE ({key})\n);" in statement
 
 
-def test_a_recounted_table_has_a_unique_key_whose_nulls_match() -> None:
-    statement = table_statement(stored(WriteMode.RECOUNT, ("label",)))
-
-    assert "    UNIQUE NULLS NOT DISTINCT (label)\n);" in statement
-    assert "PRIMARY KEY" not in statement
-
-
-def test_a_replaced_table_has_no_key() -> None:
-    statement = table_statement(stored(WriteMode.REPLACE))
-
-    assert "    _is_deleted boolean NOT NULL\n);" in statement
-    assert "KEY" not in statement
-
-
 def test_a_history_table_is_partitioned_by_month_with_the_change_time_in_its_key() -> None:
     statement = table_statement(stored(WriteMode.MERGE, ("thing_id",), history=True))
 
@@ -160,15 +146,12 @@ def test_a_history_table_is_partitioned_by_month_with_the_change_time_in_its_key
     assert "COMMENT ON TABLE gold_internal.things_default IS" in statement
 
 
-def test_a_staging_table_is_unlogged_takes_nulls_and_flags_removed_report_rows() -> None:
+def test_a_staging_table_is_unlogged_and_takes_nulls() -> None:
     merged = staging_statement(stored(WriteMode.MERGE, ("thing_id",)))
-    recounted = staging_statement(stored(WriteMode.RECOUNT, ("label",)))
 
     assert merged.startswith("CREATE UNLOGGED TABLE IF NOT EXISTS gold_internal.stage_things (")
-    assert "_is_removed" not in merged
     assert "    thing_id bigint,\n" in merged
-    assert "    _is_removed boolean\n);" in recounted
-    assert "COMMENT ON COLUMN gold_internal.stage_things._is_removed IS" in recounted
+    assert "    _is_deleted boolean\n);" in merged
 
 
 def test_the_ddl_takes_its_descriptions_from_the_schemas(schemas: SchemasTree) -> None:
@@ -229,8 +212,6 @@ def test_retention_partitions_and_drops_the_months_of_the_history_tables() -> No
     [
         ("dim_customer", "NOT _is_folded AND NOT _is_deleted"),
         ("dim_product", "NOT _is_folded AND NOT _is_deleted"),
-        ("fact_order_history", "NOT _is_folded"),
-        ("fact_order_item_history", "NOT _is_folded"),
         ("current_orders", "NOT _is_deleted"),
         ("current_order_items", "NOT _is_deleted"),
     ],
@@ -242,13 +223,43 @@ def test_the_public_views_filter_the_stored_version_columns(view: str, condition
 
 
 @pytest.mark.parametrize("view", QUESTION_VIEWS)
-def test_the_business_views_read_their_report_table_as_it_is(view: str) -> None:
+def test_the_business_views_count_the_open_current_orders_when_read(view: str) -> None:
     body = render().split(f"CREATE OR REPLACE VIEW gold.{view} AS", 1)[1].split(";", 1)[0]
 
-    assert body.endswith(f"FROM gold_internal.{view}")
+    assert "FROM gold_internal.current_" in body
+    assert "open_order.is_open AND NOT open_order._is_deleted" in body
 
 
-def test_no_transformation_runs_in_postgresql() -> None:
+@pytest.mark.parametrize(
+    ("view", "dimension"),
+    [("fact_order_history", "dim_customer"), ("fact_order_item_history", "dim_product")],
+)
+def test_the_history_views_join_the_dimension_version_valid_at_each_change(
+    view: str, dimension: str
+) -> None:
+    body = render().split(f"CREATE OR REPLACE VIEW gold.{view} AS", 1)[1].split(";", 1)[0]
+
+    assert f"FROM gold_internal.{view} AS fact" in body
+    assert f"LEFT JOIN gold_internal.{dimension} AS " in body
+    assert "WHERE NOT fact._is_folded" in body
+
+
+def test_the_open_order_indexes_are_partial_and_described() -> None:
+    ddl = render()
+    open_rows = "WHERE is_open AND NOT _is_deleted;"
+
+    assert f"ON gold_internal.current_orders (delivery_date, status_key) {open_rows}" in ddl
+    assert f"ON gold_internal.current_orders (customer_id) {open_rows}" in ddl
+    assert "ON gold_internal.current_order_items (order_id) INCLUDE (product_id, quantity)" in ddl
+    for index in (
+        "current_orders_open_delivery_idx",
+        "current_orders_open_customer_idx",
+        "current_order_items_live_order_idx",
+    ):
+        assert f"COMMENT ON INDEX gold_internal.{index} IS" in ddl
+
+
+def test_no_table_is_transformed_in_postgresql() -> None:
     ddl = render()
 
     for word in ("JOIN", "GROUP BY", "OVER (", "MERGE", "generate_series"):

@@ -78,7 +78,7 @@ class RecordingWriter:
         self.fail = fail
         self.batches: dict[str, list[Row]] = {}
 
-    def write_batch(self, load: str, batch: DataFrame) -> None:
+    def write_batch(self, load: str, batch: DataFrame, batch_id: int | None = None) -> None:
         if self.fail:
             raise RuntimeError(f"cannot write {load}")
         self.log.append(f"write {load}")

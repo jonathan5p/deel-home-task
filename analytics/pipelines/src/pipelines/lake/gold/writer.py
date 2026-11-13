@@ -1,16 +1,13 @@
-import threading
+import time
 from collections.abc import Mapping, Sequence
-from contextlib import AbstractContextManager
 from typing import Protocol
 
 from pyspark.sql import DataFrame
-from pyspark.sql import functions as F
 
 from pipelines.lake.gold.batch import Reader, Write
-from pipelines.lake.gold.model.columns import IS_REMOVED
-from pipelines.lake.gold.model.versions import all_of
-from pipelines.lake.gold.serving import COPIES, Change, Copy
-from pipelines.lake.gold.stored import StoredTable, WriteMode
+from pipelines.lake.gold.metrics import BatchRun, Clock, JobIds, no_jobs
+from pipelines.lake.gold.serving import Change, Copy
+from pipelines.lake.gold.stored import StoredTable
 
 MAX_RETRIES = 3
 COMMIT_FAILED = "CommitFailedException"
@@ -23,7 +20,11 @@ class Batches(Protocol):
     @property
     def tables(self) -> Mapping[str, StoredTable]: ...
 
-    def writes(self, load: str, batch: DataFrame, read: Reader) -> list[Write]: ...
+    def tables_of(self, load: str) -> tuple[str, ...]: ...
+
+    def staged(self, load: str, batch: DataFrame) -> DataFrame: ...
+
+    def writes(self, load: str, staged: DataFrame, read: Reader) -> list[Write]: ...
 
 
 class Lake(Protocol):
@@ -34,8 +35,6 @@ class Lake(Protocol):
     def read_snapshot(self, name: str, snapshot_id: int) -> DataFrame | None: ...
 
     def snapshot(self, name: str) -> int | None: ...
-
-    def unchanged(self, table: StoredTable, rows: DataFrame) -> bool: ...
 
     def write(self, table: StoredTable, rows: DataFrame) -> None: ...
 
@@ -55,47 +54,35 @@ def is_commit_conflict(error: BaseException) -> bool:
     return COMMIT_FAILED in message or all(part in message for part in CONFLICTING_FILES)
 
 
-def materialized(rows: DataFrame) -> DataFrame:
-    """The rows computed now, so writing one table never changes what another write reads."""
-    return rows.localCheckpoint(eager=True)
+def computed(rows: DataFrame) -> tuple[DataFrame, int]:
+    """The rows computed once, and how many there are, in one Spark job. Their lineage is cut,
+    so the merge and the copy read the same rows even after the merge changes the stored
+    table they were computed from."""
+    rows = rows.localCheckpoint(eager=False)
+    return rows, rows.count()
 
 
 def difference(table: StoredTable, before: DataFrame, after: DataFrame) -> Change:
-    """The change that turns a copy of `before` into `after`: the rows added or updated, and
-    for a recounted table the keys no longer there."""
-    if table.mode is WriteMode.REPLACE:
-        return Change(table, after, Copy.REPLACE)
+    """The change that turns a copy of `before` into `after`: the rows added or updated. No
+    write removes a row, so none is ever missing from `after`."""
     columns = list(table.columns)
-    added = after.select(*columns).exceptAll(before.select(*columns))
-    if table.mode is not WriteMode.RECOUNT:
-        return Change(table, added, Copy.UPSERT)
-    keys = table.keys
-    current = after.select(*(F.col(key).alias(f"__after_{key}") for key in keys))
-    matching = all_of([F.col(key).eqNullSafe(F.col(f"__after_{key}")) for key in keys])
-    gone = before.join(current, matching, "left_anti").select(*columns)
-    return Change(
-        table,
-        added.withColumn(IS_REMOVED, F.lit(False)).unionByName(
-            gone.withColumn(IS_REMOVED, F.lit(True))
-        ),
-        Copy.RECOUNT,
-    )
+    return Change(table, after.select(*columns).exceptAll(before.select(*columns)))
 
 
 class GoldWriter:
-    """Writes each micro-batch of every gold load to Iceberg, then copies what it wrote into
-    the serving copy, one batch at a time.
+    """Writes each micro-batch of a gold load to its Iceberg tables, one `mergeInto` per table,
+    then copies the rows it merged into the serving copy, in one transaction with the
+    snapshots they came from.
 
-    One lock is held for a whole batch, from reading the stored tables to the copy's commit, so
-    a fact batch never resolves against dimension versions another batch is changing and no two
-    batches merge into the same table at once. A batch whose Iceberg commit conflicts with
-    another commit is computed and written again, up to `max_retries` times: every write
-    depends only on the stored rows and the batch, so a replay is idempotent.
+    A load writes only its own tables, so the loads' streams run at the same time without a
+    lock. A batch whose Iceberg commit conflicts with another commit, such as the lake's
+    maintenance, is computed and written again, up to `max_retries` times: every write depends
+    only on the stored rows and the batch, so a replay is idempotent.
 
     The copy holds the Iceberg snapshot of each table it copied. A table written to Iceberg but
-    not copied yet, because its batch failed, is copied before anything else: from the
-    difference between the two snapshots, or whole when the copy has no snapshot of the table
-    or its snapshot is gone.
+    not copied yet, because its batch failed, is caught up before the load's next batch, and
+    every table when the job starts: from the difference between the two snapshots, or whole
+    when the copy has no snapshot of the table or its snapshot is gone.
     """
 
     def __init__(
@@ -104,14 +91,16 @@ class GoldWriter:
         lake: Lake,
         serving: Serving | None,
         *,
-        lock: AbstractContextManager[object] | None = None,
         max_retries: int = MAX_RETRIES,
+        jobs: JobIds = no_jobs,
+        clock: Clock = time.perf_counter,
     ) -> None:
         self.batches = batches
         self.lake = lake
         self.serving = serving
-        self.lock = lock or threading.Lock()
         self.max_retries = max_retries
+        self.jobs = jobs
+        self.clock = clock
         self.unsynced: set[str] = set()
 
     @property
@@ -120,19 +109,17 @@ class GoldWriter:
 
     def write_seeds(self, seeds: Mapping[str, DataFrame]) -> None:
         """Merge the rows of the seeded tables that changed, then copy them."""
-        writes = [Write(self.tables[name], rows) for name, rows in seeds.items()]
-        with self.lock:
-            self._apply([Write(w.table, self._seed_changes(w)) for w in writes])
-
-    def _seed_changes(self, write: Write) -> DataFrame:
-        stored = self.lake.read(write.table.name).select(*write.table.columns)
-        return materialized(write.rows.select(*write.table.columns).exceptAll(stored))
+        writes = []
+        for name, rows in seeds.items():
+            table = self.tables[name]
+            stored = self.lake.read(name).select(*table.columns)
+            writes.append(Write(table, rows.select(*table.columns).exceptAll(stored)))
+        self._apply(writes, BatchRun("seeds", None, self.jobs, self.clock))
 
     def sync(self, names: Sequence[str] | None = None, *, reload: bool = False) -> list[str]:
         """Copy every table whose Iceberg snapshot the copy does not hold yet; with `reload`,
         copy each whole. Returns the tables copied."""
-        with self.lock:
-            return self._sync(list(names or self.tables), reload=reload)
+        return self._sync(list(names or self.tables), reload=reload)
 
     def _sync(self, names: Sequence[str], *, reload: bool) -> list[str]:
         if self.serving is None or not names:
@@ -158,38 +145,51 @@ class GoldWriter:
             return Change(table, current, Copy.RELOAD)
         snapshot = synced[table.name]
         if snapshot is None:
-            return difference(table, current.limit(0), current)
+            return Change(table, current)
         before = self.lake.read_snapshot(table.name, snapshot)
         if before is None:
             return Change(table, current, Copy.RELOAD)
         return difference(table, before, current)
 
-    def write_batch(self, load: str, batch: DataFrame) -> None:
-        """Write one micro-batch of `load`, and copy what it wrote, under the gold lock."""
-        with self.lock:
+    def write_batch(self, load: str, batch: DataFrame, batch_id: int | None = None) -> None:
+        """Write one micro-batch of `load` and copy what it wrote; logs one line with the time
+        and Spark jobs of each step."""
+        run = BatchRun(load, batch_id, self.jobs, self.clock)
+        staged = self.batches.staged(load, batch).persist()
+        try:
             attempt = 0
             while True:
                 try:
-                    self._sync(sorted(self.unsynced), reload=False)
-                    self._apply(self.batches.writes(load, batch, self.lake.read))
-                    return
+                    with run.step("catch-up"):
+                        own = self.batches.tables_of(load)
+                        self._sync([name for name in own if name in self.unsynced], reload=False)
+                    self._apply(self.batches.writes(load, staged, self.lake.read), run)
+                    break
                 except Exception as error:
                     if attempt >= self.max_retries or not is_commit_conflict(error):
                         raise
                     attempt += 1
+        finally:
+            staged.unpersist()
+        run.log()
 
-    def _apply(self, writes: Sequence[Write]) -> None:
-        computed = [Write(write.table, materialized(write.rows)) for write in writes]
+    def _apply(self, writes: Sequence[Write], run: BatchRun) -> None:
         written: list[Write] = []
-        for write in computed:
-            if self.lake.unchanged(write.table, write.rows):
+        for write in writes:
+            name = write.table.name
+            with run.step(f"compute {name}"):
+                rows, count = computed(write.rows)
+            run.written[name] = count
+            if count == 0:
                 continue
-            self.unsynced.add(write.table.name)
-            self.lake.write(write.table, write.rows)
-            written.append(write)
+            self.unsynced.add(name)
+            with run.step(f"merge {name}"):
+                self.lake.write(write.table, rows)
+            written.append(Write(write.table, rows))
         if self.serving is None or not written:
             return
-        snapshots = {write.table.name: self.lake.snapshot(write.table.name) for write in written}
-        changes = [Change(w.table, w.rows, COPIES[w.table.mode]) for w in written]
-        self.serving.apply(changes, snapshots)
+        with run.step("snapshots"):
+            snapshots = {w.table.name: self.lake.snapshot(w.table.name) for w in written}
+        with run.step("copy"):
+            self.serving.apply([Change(w.table, w.rows) for w in written], snapshots)
         self.unsynced -= set(snapshots)

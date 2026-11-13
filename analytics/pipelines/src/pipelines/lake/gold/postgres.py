@@ -7,7 +7,11 @@ import psycopg
 from common.settings import AnalyticsDbSettings
 
 JDBC_PREFIX = "jdbc:"
-WRITER_LOCK = "SELECT pg_advisory_xact_lock(hashtextextended('gold_internal', 0))"
+GOLD_LOCK = "hashtextextended('gold_internal', 0)"
+# The copies of different tables share the lock, so they run at the same time; retention takes
+# it alone, so it never drops a month while a copy is writing to it.
+COPY_LOCK = f"SELECT pg_advisory_xact_lock_shared({GOLD_LOCK})"
+RETENTION_LOCK = f"SELECT pg_advisory_xact_lock({GOLD_LOCK})"
 
 
 class Cursor(Protocol):

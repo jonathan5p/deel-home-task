@@ -2,8 +2,8 @@
   "type": "record",
   "name": "fact_order_item_history",
   "namespace": "gold",
-  "doc": "Order item history: one row per change to an order item from silver, unchanged versions and deletes included, with its fold flag, version number, validity and current flag recomputed from all changes of the item; partitioned by month of _changed_at in PostgreSQL",
-  "public_doc": "Order item history: one row per change to an order item, without unchanged versions, with the range in which it was the latest version; a delete is the last row and is never current",
+  "doc": "Order item history: one row per change to an order item from silver, unchanged versions and deletes included, with its business keys and its fold flag, version number, validity and current flag recomputed from all changes of the item; partitioned by month of _changed_at in PostgreSQL",
+  "public_doc": "Order item history: one row per change to an order item, without unchanged versions, with the range in which it was the latest version and the product version valid when it changed; a delete is the last row and is never current",
   "fields": [
     {
       "name": "order_item_id",
@@ -41,7 +41,15 @@
       "name": "product_key",
       "type": ["null", "long"],
       "default": null,
-      "doc": "Product version valid at _changed_at, or the product's first version for an earlier change (dim_product key); null while the product is not known yet, or once it is deleted"
+      "doc": "Product version valid at _changed_at, or the product's first version for an earlier change (dim_product key), resolved when the view is read; null while the product is not known yet, or once it is deleted",
+      "view_only": true
+    },
+    {
+      "name": "product_name",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Name of the product version product_key names",
+      "view_only": true
     },
     {
       "name": "quantity",
@@ -53,13 +61,15 @@
       "name": "unit_price",
       "type": ["null", {"type": "bytes", "logicalType": "decimal", "precision": 38, "scale": 10}],
       "default": null,
-      "doc": "Unit price of the product version valid at _changed_at, or of the product's first version for an earlier change: the price the order was placed at"
+      "doc": "Unit price of the product version product_key names: the price the order was placed at",
+      "view_only": true
     },
     {
       "name": "line_amount",
       "type": ["null", {"type": "bytes", "logicalType": "decimal", "precision": 38, "scale": 10}],
       "default": null,
-      "doc": "quantity × unit_price"
+      "doc": "quantity × unit_price",
+      "view_only": true
     },
     {
       "name": "_content_hash",

@@ -6,7 +6,7 @@ from typing import LiteralString, cast
 import psycopg
 
 from pipelines.lake.gold.postgres import (
-    WRITER_LOCK,
+    RETENTION_LOCK,
     Connect,
     ConnectionFactory,
     connection_factory,
@@ -34,7 +34,7 @@ def apply_retention(
 ) -> list[str]:
     """The history partitions this run dropped."""
     with transaction(connect) as connection:
-        connection.execute(WRITER_LOCK)
+        connection.execute(RETENTION_LOCK)
         dropped = connection.execute(
             cast("LiteralString", retention_query(settings, as_of))
         ).fetchall()

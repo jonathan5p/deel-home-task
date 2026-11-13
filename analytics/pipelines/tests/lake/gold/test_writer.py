@@ -1,3 +1,5 @@
+import json
+import logging
 from collections.abc import Sequence
 
 import pytest
@@ -6,19 +8,20 @@ pytest.importorskip("pyspark")
 
 from pyspark.sql import DataFrame, SparkSession
 
+from analytics.pipelines.tests.lake.gold.metrics_setup import FakeJobs, Ticks
 from analytics.pipelines.tests.lake.gold.writer_setup import (
-    BY_PRODUCT,
     CONFLICT,
+    ITEMS,
+    OTHER,
     SEEDS,
-    TOP,
     ConflictError,
     FakeBatches,
     FakeLake,
     FakeServing,
-    RecordingLock,
-    report,
+    items,
     seeds,
 )
+from pipelines.lake.gold.metrics import BATCH_PREFIX, LOGGER
 from pipelines.lake.gold.serving import Copy
 from pipelines.lake.gold.writer import GoldWriter, difference, is_commit_conflict
 
@@ -31,112 +34,105 @@ def writer(
     conflicts: dict[str, int] | None = None,
     serving: FakeServing | None = None,
     max_retries: int = 3,
-) -> tuple[GoldWriter, FakeLake, FakeServing | None]:
+) -> tuple[GoldWriter, FakeLake]:
     lake = FakeLake(
         tables={
-            "dim_order_status": seeds(spark),
-            "pending_items_by_product": report(spark),
-            "top_delivery_dates_by_open_orders": spark.createDataFrame(
-                [], "delivery_date date, open_orders long"
-            ),
+            SEEDS.name: seeds(spark),
+            ITEMS.name: items(spark),
+            OTHER.name: spark.createDataFrame([], "customer_id long"),
         },
         log=log,
         conflicts=conflicts or {},
     )
     batches = FakeBatches(list(planned), log)
-    gold = GoldWriter(batches, lake, serving, lock=RecordingLock(log), max_retries=max_retries)
-    return gold, lake, serving
+    return GoldWriter(batches, lake, serving, max_retries=max_retries), lake
 
 
-def test_a_batch_is_written_to_iceberg_in_order_then_copied_in_one_go(
-    spark: SparkSession,
-) -> None:
+def test_a_batch_merges_each_table_once_then_copies_them_in_one_go(spark: SparkSession) -> None:
     log: list[str] = []
-    planned = [
-        ("dim_order_status", seeds(spark, (1, "PENDING", True))),
-        ("pending_items_by_product", report(spark, (5, 1, 2))),
-    ]
-    gold, _, _ = writer(spark, log, planned, serving=FakeServing(log))
+    planned = [(SEEDS.name, seeds(spark, (1, "PENDING", True))), (ITEMS.name, items(spark, (5, 2)))]
+    gold, _ = writer(spark, log, planned, serving=FakeServing(log))
 
-    gold.write_batch("fact_order_history", spark.range(1))
+    gold.write_batch("fact_order_item_history", spark.range(1))
 
     assert log == [
-        "lock",
-        "compute fact_order_history",
+        "stage fact_order_item_history",
+        "compute fact_order_item_history",
         "lake write dim_order_status 1",
-        "lake write pending_items_by_product 1",
-        "copy [dim_order_status upsert 1, pending_items_by_product recount 1]"
-        " {'dim_order_status': 1, 'pending_items_by_product': 1}",
-        "unlock",
+        "lake write current_order_items 1",
+        "copy [dim_order_status upsert 1, current_order_items upsert 1]"
+        " {'dim_order_status': 1, 'current_order_items': 1}",
     ]
 
 
-def test_writes_that_change_nothing_are_neither_committed_nor_copied(spark: SparkSession) -> None:
+def test_writes_that_change_nothing_are_neither_merged_nor_copied(spark: SparkSession) -> None:
     log: list[str] = []
-    gold, _, _ = writer(spark, log, [("dim_order_status", seeds(spark))], serving=FakeServing(log))
+    gold, _ = writer(spark, log, [(SEEDS.name, seeds(spark))], serving=FakeServing(log))
 
-    gold.write_batch("fact_order_history", spark.range(1))
+    gold.write_batch("fact_order_item_history", spark.range(1))
 
-    assert log == ["lock", "compute fact_order_history", "unlock"]
+    assert log == ["stage fact_order_item_history", "compute fact_order_item_history"]
 
 
 def test_a_commit_conflict_replays_the_batch_after_copying_what_the_failed_try_wrote(
     spark: SparkSession,
 ) -> None:
     log: list[str] = []
-    planned = [
-        ("dim_order_status", seeds(spark, (1, "PENDING", True))),
-        ("pending_items_by_product", report(spark, (5, 1, 2))),
-    ]
-    serving = FakeServing(log, {"dim_order_status": None, "pending_items_by_product": None})
-    gold, _, _ = writer(
-        spark, log, planned, conflicts={"pending_items_by_product": 1}, serving=serving
-    )
+    planned = [(SEEDS.name, seeds(spark, (1, "PENDING", True))), (ITEMS.name, items(spark, (5, 2)))]
+    serving = FakeServing(log, {SEEDS.name: None, ITEMS.name: None})
+    gold, _ = writer(spark, log, planned, conflicts={ITEMS.name: 1}, serving=serving)
 
-    gold.write_batch("fact_order_history", spark.range(1))
+    gold.write_batch("fact_order_item_history", spark.range(1))
 
     assert log == [
-        "lock",
-        "compute fact_order_history",
+        "stage fact_order_item_history",
+        "compute fact_order_item_history",
         "lake write dim_order_status 1",
-        "lake write pending_items_by_product 1",
+        "lake write current_order_items 1",
         "copy [dim_order_status upsert 1] {'dim_order_status': 1}",
-        "compute fact_order_history",
+        "compute fact_order_item_history",
         "lake write dim_order_status 1",
-        "lake write pending_items_by_product 1",
-        "copy [dim_order_status upsert 1, pending_items_by_product recount 1]"
-        " {'dim_order_status': 2, 'pending_items_by_product': 1}",
-        "unlock",
+        "lake write current_order_items 1",
+        "copy [dim_order_status upsert 1, current_order_items upsert 1]"
+        " {'dim_order_status': 2, 'current_order_items': 1}",
     ]
+
+
+def test_a_batch_catches_up_only_its_own_tables(spark: SparkSession) -> None:
+    log: list[str] = []
+    serving = FakeServing(log, {OTHER.name: None})
+    gold, lake = writer(spark, log, serving=serving)
+    lake.write(OTHER, spark.createDataFrame([(1,)], "customer_id long"))
+    gold.unsynced.add(OTHER.name)
+    log.clear()
+
+    gold.write_batch("fact_order_item_history", spark.range(1))
+
+    assert not any(line.startswith("copy") for line in log)
+    assert gold.unsynced == {OTHER.name}
 
 
 def test_a_batch_gives_up_after_the_last_retry(spark: SparkSession) -> None:
     log: list[str] = []
-    planned = [("pending_items_by_product", report(spark, (5, 1, 2)))]
-    gold, _, _ = writer(
-        spark,
-        log,
-        planned,
-        conflicts={"pending_items_by_product": 3},
-        serving=FakeServing(log),
-        max_retries=2,
+    planned = [(ITEMS.name, items(spark, (5, 2)))]
+    gold, _ = writer(
+        spark, log, planned, conflicts={ITEMS.name: 3}, serving=FakeServing(log), max_retries=2
     )
 
     with pytest.raises(ConflictError):
-        gold.write_batch("fact_order_history", spark.range(1))
+        gold.write_batch("fact_order_item_history", spark.range(1))
 
-    assert log.count("compute fact_order_history") == 3
-    assert log[-1] == "unlock"
+    assert log.count("compute fact_order_item_history") == 3
 
 
 def test_any_other_failure_fails_the_batch_at_once(spark: SparkSession) -> None:
     log: list[str] = []
-    gold, _, _ = writer(spark, log, [("missing", report(spark))], serving=FakeServing(log))
+    gold, _ = writer(spark, log, [("missing", items(spark))], serving=FakeServing(log))
 
     with pytest.raises(KeyError):
-        gold.write_batch("fact_order_history", spark.range(1))
+        gold.write_batch("fact_order_item_history", spark.range(1))
 
-    assert log == ["lock", "compute fact_order_history", "unlock"]
+    assert log == ["stage fact_order_item_history", "compute fact_order_item_history"]
 
 
 @pytest.mark.parametrize(
@@ -154,60 +150,95 @@ def test_only_iceberg_commit_conflicts_are_retried(message: str, *, conflict: bo
 
 def test_without_a_serving_copy_the_written_tables_wait_for_a_sync(spark: SparkSession) -> None:
     log: list[str] = []
-    planned = [("dim_order_status", seeds(spark, (1, "PENDING", True)))]
-    gold, lake, _ = writer(spark, log, planned)
+    planned = [(SEEDS.name, seeds(spark, (1, "PENDING", True)))]
+    gold, lake = writer(spark, log, planned)
 
-    gold.write_batch("fact_order_history", spark.range(1))
+    gold.write_batch("fact_order_item_history", spark.range(1))
 
-    assert log[-2:] == ["lake write dim_order_status 1", "unlock"]
-    assert gold.unsynced == {"dim_order_status"}
-    assert lake.snapshot("dim_order_status") == 1
+    assert log[-1] == "lake write dim_order_status 1"
+    assert gold.unsynced == {SEEDS.name}
+    assert lake.snapshot(SEEDS.name) == 1
+
+
+def test_each_batch_logs_one_line_with_its_steps_jobs_and_rows(
+    spark: SparkSession, caplog: pytest.LogCaptureFixture
+) -> None:
+    log: list[str] = []
+    planned = [(SEEDS.name, seeds(spark)), (ITEMS.name, items(spark, (5, 2)))]
+    lake = FakeLake(tables={ITEMS.name: items(spark)}, log=log)
+    jobs = FakeJobs({1})
+    gold = GoldWriter(FakeBatches(planned, log), lake, FakeServing(log), jobs=jobs, clock=Ticks())
+
+    with caplog.at_level(logging.INFO, logger=LOGGER):
+        gold.write_batch("fact_order_item_history", spark.range(1), 9)
+
+    (record,) = caplog.records
+    line = json.loads(record.getMessage().removeprefix(BATCH_PREFIX))
+    assert line["load"] == "fact_order_item_history"
+    assert line["batch_id"] == 9
+    assert line["written"] == {SEEDS.name: 0, ITEMS.name: 1}
+    assert [step["step"] for step in line["steps"]] == [
+        "catch-up",
+        "compute dim_order_status",
+        "compute current_order_items",
+        "merge current_order_items",
+        "snapshots",
+        "copy",
+    ]
 
 
 def test_a_sync_copies_only_the_tables_whose_snapshot_the_copy_lacks(spark: SparkSession) -> None:
     log: list[str] = []
-    serving = FakeServing(
-        log,
-        {
-            "dim_order_status": 1,
-            "pending_items_by_product": 1,
-            "top_delivery_dates_by_open_orders": None,
-        },
-    )
-    gold, lake, _ = writer(spark, log, serving=serving)
+    serving = FakeServing(log, {SEEDS.name: 1, ITEMS.name: 1, OTHER.name: None})
+    gold, lake = writer(spark, log, serving=serving)
     lake.write(SEEDS, seeds(spark, (1, "PENDING", True)))
-    lake.write(BY_PRODUCT, report(spark, (5, 1, 2), (6, 1, 1)))
-    lake.write(BY_PRODUCT, report(spark, (5, 2, 4)))
+    lake.write(ITEMS, items(spark, (5, 2), (6, 1)))
+    lake.write(ITEMS, items(spark, (5, 2), (6, 3), (7, 1)))
     log.clear()
 
-    copied = gold.sync()
+    copied = gold.sync([SEEDS.name, ITEMS.name])
 
-    assert copied == ["pending_items_by_product"]
+    assert copied == [ITEMS.name]
     (change,) = serving.changes[-1]
-    assert change.copy is Copy.RECOUNT
-    assert sorted(tuple(row) for row in change.rows.collect()) == [
-        (5, 2, 4, False),
-        (6, 1, 1, True),
+    assert change.copy is Copy.UPSERT
+    assert sorted((row.order_item_id, row.quantity) for row in change.rows.collect()) == [
+        (6, 3),
+        (7, 1),
     ]
 
 
 def test_a_table_whose_synced_snapshot_is_gone_is_reloaded_whole(spark: SparkSession) -> None:
     log: list[str] = []
-    serving = FakeServing(log, {"dim_order_status": 7})
-    gold, lake, _ = writer(spark, log, serving=serving)
+    serving = FakeServing(log, {SEEDS.name: 7})
+    gold, lake = writer(spark, log, serving=serving)
     lake.write(SEEDS, seeds(spark, (1, "PENDING", True)))
 
-    gold.sync(["dim_order_status"])
+    gold.sync([SEEDS.name])
 
     (change,) = serving.changes[-1]
     assert change.copy is Copy.RELOAD
-    assert serving.synced_snapshots["dim_order_status"] == 1
+    assert serving.synced_snapshots[SEEDS.name] == 1
+
+
+def test_a_table_the_copy_holds_no_snapshot_of_is_copied_whole_as_upserts(
+    spark: SparkSession,
+) -> None:
+    log: list[str] = []
+    serving = FakeServing(log, {SEEDS.name: None})
+    gold, lake = writer(spark, log, serving=serving)
+    lake.write(SEEDS, seeds(spark, (1, "PENDING", True)))
+
+    gold.sync([SEEDS.name])
+
+    (change,) = serving.changes[-1]
+    assert change.copy is Copy.UPSERT
+    assert change.rows.count() == 1
 
 
 def test_a_reload_copies_every_table_whole(spark: SparkSession) -> None:
     log: list[str] = []
     serving = FakeServing(log)
-    gold, _, _ = writer(spark, log, serving=serving)
+    gold, _ = writer(spark, log, serving=serving)
 
     copied = gold.sync(reload=True)
 
@@ -217,24 +248,18 @@ def test_a_reload_copies_every_table_whole(spark: SparkSession) -> None:
 
 def test_the_seeds_write_only_the_rows_that_changed(spark: SparkSession) -> None:
     log: list[str] = []
-    gold, lake, _ = writer(spark, log, serving=FakeServing(log))
-    lake.tables["dim_order_status"] = seeds(spark, (1, "PENDING", True))
+    gold, lake = writer(spark, log, serving=FakeServing(log))
+    lake.tables[SEEDS.name] = seeds(spark, (1, "PENDING", True))
 
-    gold.write_seeds({"dim_order_status": seeds(spark, (1, "PENDING", True), (2, "DONE", False))})
+    gold.write_seeds({SEEDS.name: seeds(spark, (1, "PENDING", True), (2, "DONE", False))})
 
     assert "lake write dim_order_status 1" in log
-    assert sorted(tuple(row) for row in lake.read("dim_order_status").collect()) == [
-        (2, "DONE", False)
-    ]
+    assert sorted(tuple(row) for row in lake.read(SEEDS.name).collect()) == [(2, "DONE", False)]
 
 
-def test_a_replaced_table_is_copied_whole_from_any_snapshot(spark: SparkSession) -> None:
-    rows = spark.createDataFrame([], "delivery_date date, open_orders long")
-
-    assert difference(TOP, rows, rows).copy is Copy.REPLACE
-
-
-def test_a_merged_table_copies_the_rows_added_or_changed(spark: SparkSession) -> None:
+def test_the_difference_of_two_snapshots_is_the_rows_added_or_changed(
+    spark: SparkSession,
+) -> None:
     before = seeds(spark, (1, "PENDING", True), (2, "DONE", False))
     after = seeds(spark, (1, "PENDING", True), (2, "DONE", True))
 
@@ -242,12 +267,3 @@ def test_a_merged_table_copies_the_rows_added_or_changed(spark: SparkSession) ->
 
     assert change.copy is Copy.UPSERT
     assert [tuple(row) for row in change.rows.collect()] == [(2, "DONE", True)]
-
-
-def test_a_recounted_table_removes_the_keys_gone_nulls_matching(spark: SparkSession) -> None:
-    before = report(spark, (None, 1, 1), (5, 1, 1))
-    after = report(spark, (None, 1, 1))
-
-    change = difference(BY_PRODUCT, before, after)
-
-    assert [tuple(row) for row in change.rows.collect()] == [(5, 1, 1, True)]

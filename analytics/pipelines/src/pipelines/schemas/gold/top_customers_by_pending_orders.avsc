@@ -2,8 +2,7 @@
   "type": "record",
   "name": "top_customers_by_pending_orders",
   "namespace": "gold",
-  "doc": "The customers in the first 3 places by pending orders, ranked by the gold job from pending_orders_by_customer with the name of each customer's current version, and replaced whenever they change",
-  "public_doc": "The 3 customers with the most pending (open) orders, more when several share the third place; a customer not in dim_customer yet has a null name",
+  "doc": "The 3 customers with the most pending (open) orders, more when several share the third place; a customer not in dim_customer yet has a null name",
   "fields": [
     {
       "name": "customer_id",

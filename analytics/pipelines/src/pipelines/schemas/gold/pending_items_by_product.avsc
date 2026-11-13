@@ -2,8 +2,7 @@
   "type": "record",
   "name": "pending_items_by_product",
   "namespace": "gold",
-  "doc": "Pending items by product, recounted by the gold job for the products each batch of orders or order items touches; a product without pending items is deleted",
-  "public_doc": "Pending items by product: the order items, not deleted, of open orders",
+  "doc": "Pending items by product: the order items, not deleted, of open orders",
   "fields": [
     {
       "name": "product_id",
