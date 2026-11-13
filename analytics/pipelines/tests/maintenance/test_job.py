@@ -25,7 +25,7 @@ from analytics.pipelines.tests.maintenance.job_setup import (
     table_rows,
 )
 from pipelines.lake.bronze.entities import CUSTOMERS
-from pipelines.lake.gold.views.views import refresh_gold_views
+from pipelines.lake.gold.views.views import MissingGoldTablesError, refresh_gold_views
 from pipelines.lake.shared.checkpoints import HadoopCheckpointFiles
 from pipelines.lake.shared.tables import TABLE_TEMPLATES
 from pipelines.lake.silver.views import MissingSilverTablesError, refresh_views
@@ -96,6 +96,21 @@ def test_snapshots_older_than_the_retention_expire_except_the_last_ones(
 
     assert snapshot_operations(spark, table) == ["append", "replace"]
     assert result.expired_snapshots == 5
+    assert len(table_rows(spark, table)) == 6
+
+
+def test_the_gold_tables_are_compacted_and_expire_their_snapshots_like_the_others(
+    spark: SparkSession, iceberg_catalog: str
+) -> None:
+    table = f"{iceberg_catalog}.gold_internal.dim_customer"
+    small_appends(spark, table, 6)
+    settings = maintenance_settings(iceberg_catalog, **EXPIRE_EVERYTHING_OLD)
+
+    (result,) = run(spark_sql(spark), settings, NO_STREAMS, now=hours_from_now(2))
+
+    assert result.table == "gold_internal.dim_customer"
+    assert (result.rewritten_files, result.added_files) == (6, 1)
+    assert snapshot_operations(spark, table) == ["append", "replace"]
     assert len(table_rows(spark, table)) == 6
 
 
@@ -249,7 +264,10 @@ def test_procedures_use_cutoffs_from_the_clock_and_settings() -> None:
     run(sql, settings, NO_STREAMS, now=lambda: moment, report=lambda _: None)
 
     assert sql.statements[2:] == [
-        "CALL lake.system.rewrite_data_files(table => 'bronze.orders', strategy => 'binpack')",
+        "CALL lake.system.rewrite_data_files(table => 'bronze.orders', strategy => 'binpack',"
+        " options => map('partial-progress.enabled', 'true'))",
+        "CALL lake.system.rewrite_position_delete_files(table => 'bronze.orders',"
+        " options => map('partial-progress.enabled', 'true'))",
         "CALL lake.system.expire_snapshots(table => 'bronze.orders',"
         " older_than => TIMESTAMP '2026-11-03 12:00:00+00:00', retain_last => 3)",
         "CALL lake.system.remove_orphan_files(table => 'bronze.orders',"
@@ -267,7 +285,8 @@ def test_a_failing_table_does_not_stop_the_others_and_fails_the_job() -> None:
     assert error.value.tables == ("bronze.customers",)
     assert reported == [
         "bronze.customers: maintenance failed: table metadata is unreadable",
-        "bronze.orders: rewrote 6 data files into 1, expired 4 snapshots, removed 1 orphan files",
+        "bronze.orders: rewrote 6 data files into 1, 3 position delete files into 1,"
+        " expired 4 snapshots, removed 1 orphan files",
     ]
 
 
@@ -286,10 +305,11 @@ def test_every_table_is_reported() -> None:
 
 
 def test_a_summary_names_every_count() -> None:
-    summary = TableMaintenance(ORDERS, 12, 2, 5, 0).summary()
+    summary = TableMaintenance(ORDERS, 12, 2, 5, 0, rewritten_deletes=4, added_deletes=1).summary()
 
     assert summary == (
-        "bronze.orders: rewrote 12 data files into 2, expired 5 snapshots, removed 0 orphan files"
+        "bronze.orders: rewrote 12 data files into 2, 4 position delete files into 1,"
+        " expired 5 snapshots, removed 0 orphan files"
     )
 
 
@@ -326,7 +346,7 @@ def test_a_run_replaces_a_stale_silver_view_and_reports_it(
     )
 
 
-def test_a_run_replaces_a_stale_gold_view_after_the_silver_views(
+def test_a_run_replaces_a_stale_gold_view_and_reports_it(
     spark: SparkSession, tmp_path: Path
 ) -> None:
     gold, stale_view = stale_gold_view(spark, tmp_path)
@@ -337,13 +357,10 @@ def test_a_run_replaces_a_stale_gold_view_after_the_silver_views(
         maintenance_settings(gold.lake.catalog),
         NO_STREAMS,
         report=reported.append,
-        views={
-            SILVER_VIEWS: lambda: refresh_views(spark, gold.silver),
-            GOLD_VIEWS: lambda: refresh_gold_views(spark, gold.views),
-        },
+        views={GOLD_VIEWS: lambda: refresh_gold_views(spark, gold.views)},
     )
 
-    assert reported == ["silver views: up to date", "gold views: created or replaced 1"]
+    assert reported == ["gold views: created or replaced 1"]
     stored = stored_description(spark, stale_view)
     assert stored.comment == gold.views.definitions()[stale_view].comment
 
@@ -385,28 +402,43 @@ def test_a_failing_view_refresh_fails_the_job_after_every_table_and_view_is_hand
     ]
 
 
-def test_every_view_refresh_is_skipped_while_the_silver_tables_do_not_exist_yet() -> None:
+def test_a_group_of_views_is_skipped_while_its_tables_do_not_exist_yet() -> None:
     reported: list[str] = []
-    refreshed: list[str] = []
 
-    def missing_tables() -> list[str]:
+    def missing_silver() -> list[str]:
         raise MissingSilverTablesError(["lake.silver.orders"])
 
-    def gold() -> list[str]:
-        refreshed.append(GOLD_VIEWS)
-        return []
+    def missing_gold() -> list[str]:
+        raise MissingGoldTablesError(["lake.gold_internal.dim_customer"])
 
     run(
         FakeSql({}),
         maintenance_settings("lake"),
         NO_STREAMS,
         report=reported.append,
-        views={SILVER_VIEWS: missing_tables, GOLD_VIEWS: gold},
+        views={SILVER_VIEWS: missing_silver, GOLD_VIEWS: missing_gold},
     )
 
-    reason = (
-        "The silver views read tables that do not exist yet: lake.silver.orders."
-        " Start the silver job first."
+    assert reported == [
+        "silver views: skipped: The silver views read tables that do not exist yet:"
+        " lake.silver.orders. Start the silver job first.",
+        "gold views: skipped: The gold views read tables that do not exist yet:"
+        " lake.gold_internal.dim_customer. Start the gold job first.",
+    ]
+
+
+def test_the_gold_views_are_refreshed_while_the_silver_tables_do_not_exist_yet() -> None:
+    reported: list[str] = []
+
+    def missing_silver() -> list[str]:
+        raise MissingSilverTablesError(["lake.silver.orders"])
+
+    run(
+        FakeSql({}),
+        maintenance_settings("lake"),
+        NO_STREAMS,
+        report=reported.append,
+        views={SILVER_VIEWS: missing_silver, GOLD_VIEWS: lambda: ["CREATE VIEW"]},
     )
-    assert reported == [f"silver views: skipped: {reason}", f"gold views: skipped: {reason}"]
-    assert refreshed == []
+
+    assert reported[1] == "gold views: created or replaced 1"

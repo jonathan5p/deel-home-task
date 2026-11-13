@@ -10,11 +10,11 @@ from pyspark.sql.types import StructField, StructType
 from common.settings import AnalyticsDbSettings
 from pipelines.lake.gold import job, rebuild
 from pipelines.lake.gold.dimensions import DIMENSIONS, FACTS
+from pipelines.lake.gold.public import FRESHNESS
 from pipelines.lake.gold.sink import jdbc_options
-from pipelines.lake.gold.views.views import FRESHNESS, SEEDED, GoldLakeViews, refresh_gold_views
+from pipelines.lake.gold.views.views import GoldLakeViews, refresh_gold_views
 from pipelines.lake.shared.tables import table_definition
 from pipelines.lake.shared.types import SPARK_TYPES
-from pipelines.lake.silver.views import refresh_views
 from pipelines.schemas.definitions import EntityDefinition
 from pipelines.settings import GoldSettings, SilverSettings
 
@@ -22,6 +22,7 @@ LAKE_CATALOG = "spark.sql.catalog.lake"
 LAKE_VIEWS = "--lake-views"
 STREAM = "--stream"
 COMPARED = "GOLD LAKE "
+SEEDED = ("dim_date", "dim_order_status")
 
 
 def silver_schema(entity: EntityDefinition) -> StructType:
@@ -69,12 +70,16 @@ def matching(lake: DataFrame, postgres: DataFrame, *, every_row: bool) -> dict[s
 
 
 def compare_lake_views(spark: SparkSession) -> None:
+    """Print how many gold views the gold job left and how many a refresh replaces, the
+    entities with a freshness time, then each view's comparison with PostgreSQL's."""
     settings = SilverSettings.from_env(os.environ)
     views = GoldLakeViews(settings.lake)
-    refresh_views(spark, settings)
-    created = refresh_gold_views(spark, views)
+    stored = spark.sql(f"SHOW VIEWS IN {views.namespace}").count()
     replaced = refresh_gold_views(spark, views)
-    print(f"{COMPARED}{json.dumps({'created': len(created), 'replaced': len(replaced)})}")
+    print(f"{COMPARED}{json.dumps({'views': stored, 'replaced': len(replaced)})}")
+    freshness = spark.table(views.view(FRESHNESS)).where("last_changed_at IS NOT NULL")
+    fresh = sorted(row.entity for row in freshness.collect())
+    print(f"{COMPARED}{json.dumps({'fresh': fresh})}")
     database = AnalyticsDbSettings.from_env(os.environ)
     for view in views.definitions():
         name = view.rpartition(".")[2]

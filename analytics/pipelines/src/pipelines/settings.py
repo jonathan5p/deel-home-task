@@ -12,22 +12,22 @@ from common.settings import (
     split_list,
 )
 from pipelines.lake.gold.dimensions import DIMENSIONS, FACTS
+from pipelines.lake.gold.scd2 import INTERNAL_SCHEMA
 from pipelines.schemas.definitions import load_entities
 
 DEFAULT_LANDING_TRIGGER_SECONDS = 10
 DEFAULT_BRONZE_TRIGGER_SECONDS = 10
 DEFAULT_SILVER_TRIGGER_SECONDS = 10
 DEFAULT_GOLD_TRIGGER_SECONDS = 10
-DEFAULT_MAINTENANCE_NAMESPACES = ("bronze", "silver")
+DEFAULT_MAINTENANCE_NAMESPACES = ("bronze", "silver", INTERNAL_SCHEMA)
 DEFAULT_SNAPSHOT_RETENTION_HOURS = 168
 DEFAULT_RETAIN_LAST = 10
 DEFAULT_ORPHAN_AGE_HOURS = 72
 MIN_ORPHAN_AGE_HOURS = 24
 DEFAULT_GOLD_RETENTION_MONTHS = 36
 DEFAULT_GOLD_PARTITION_MONTHS_AHEAD = 2
-GOLD_STORED_PREFIX = "internal_"
 DEFAULT_STAGE_EXPORTER_POLL_SECONDS = 30
-DEFAULT_TABLE_STATS_NAMESPACES = ("bronze", "silver")
+DEFAULT_TABLE_STATS_NAMESPACES = ("bronze", "silver", INTERNAL_SCHEMA)
 DEFAULT_SMALL_FILE_BYTES = 32 * 1024 * 1024
 DEFAULT_TABLE_STATS_INTERVAL_SECONDS = 300
 DEFAULT_PARTITION_STATS_INTERVAL_SECONDS = 3600
@@ -66,6 +66,11 @@ class LakeSettings:
 
     def table(self, layer: str, name: str) -> str:
         return f"{self.catalog}.{layer}.{name}"
+
+    def gold_table(self, name: str) -> str:
+        """The Iceberg table of a stored gold table, in gold_internal like its PostgreSQL copy;
+        the gold views over it are in gold, as in PostgreSQL."""
+        return self.table(INTERNAL_SCHEMA, name)
 
     def checkpoint_path(self, layer: str, name: str) -> str:
         return f"{self.checkpoint_root}/{layer}/{name}"
@@ -191,9 +196,7 @@ class GoldSettings(SourcedLakeLayerNames):
         )
 
     def stored_table(self, name: str) -> str:
-        """The Iceberg table of a stored gold table. The prefix keeps the names of the gold
-        views in the same namespace free."""
-        return self.table(f"{GOLD_STORED_PREFIX}{name}")
+        return self.lake.gold_table(name)
 
 
 def downstream_checkpoints(value: str) -> dict[str, tuple[str, ...]]:

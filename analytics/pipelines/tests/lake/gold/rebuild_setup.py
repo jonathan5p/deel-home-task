@@ -11,9 +11,11 @@ from analytics.pipelines.tests.lake.gold.silver_setup import (
     silver_version,
     write_silver,
 )
+from analytics.pipelines.tests.lake.shared.views_setup import register_view_catalog
 from pipelines.lake.gold.dimensions import DIMENSIONS, FACTS, load_dimensions, load_facts
 from pipelines.lake.gold.job import SilverReader
 from pipelines.schemas.definitions import EntityDefinition
+from pipelines.settings import GoldSettings
 
 CUSTOMERS = load_dimensions()["dim_customer"]
 PRODUCTS = load_dimensions()["dim_product"]
@@ -83,3 +85,9 @@ class RecordingWriter:
             raise RuntimeError(f"cannot write {load}")
         self.log.append(f"write {load}")
         self.batches[load] = batch.collect()
+
+
+def gold_in(spark: SparkSession, folder: Path) -> GoldSettings:
+    """Gold settings on an in-memory Iceberg catalog, which stores the gold views too."""
+    catalog = register_view_catalog(spark, folder)
+    return GoldSettings.from_env(DATABASE | {"ICEBERG_CATALOG": catalog})

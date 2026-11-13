@@ -38,6 +38,12 @@ def view_metadata_file(spark: SparkSession, catalog: str, view: str) -> str:
     return str(iceberg.loadView(name).operations().current().metadataFileLocation())
 
 
+def stored_views(spark: SparkSession, namespace: str) -> list[str]:
+    """The names of the catalog views in `namespace`, without the session's temporary views."""
+    rows = spark.sql(f"SHOW VIEWS IN {namespace}").collect()
+    return sorted(row.viewName for row in rows if not row.isTemporary)
+
+
 def register_view_catalog(spark: SparkSession, folder: Path) -> str:
     """Register an in-memory Iceberg catalog, which unlike the Hadoop catalog stores views.
 

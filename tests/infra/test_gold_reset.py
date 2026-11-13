@@ -7,6 +7,7 @@ from tests.infra.gold_reset_setup import (
     CATALOG_TABLE,
     EXTRA_STATUS,
     GoldReset,
+    lake_gold_entries,
     lake_has,
     remove_catalog_table,
     run_gold_reset_scenario,
@@ -43,9 +44,14 @@ def test_gold_reset_recreates_the_gold_schemas_empty(stack: Stack, reset: GoldRe
     assert views != "0"
 
 
-def test_gold_reset_drops_the_gold_iceberg_tables(reset: GoldReset) -> None:
-    assert "Dropped the gold tables in lake.gold" in reset.first.stdout
-    assert "Dropped the gold tables in lake.gold" in reset.second.stdout
+def test_gold_reset_drops_the_gold_iceberg_tables_their_former_names_and_the_views(
+    stack: Stack, reset: GoldReset
+) -> None:
+    dropped = "Dropped the gold tables in lake.gold_internal and the gold views in lake.gold"
+
+    assert dropped in reset.first.stdout
+    assert dropped in reset.second.stdout
+    assert lake_gold_entries(stack) == "0"
 
 
 def test_gold_reset_deletes_only_the_gold_checkpoints(stack: Stack, reset: GoldReset) -> None:

@@ -15,7 +15,7 @@ HISTORY = STORED["fact_order_item_history"]
 @pytest.fixture
 def lake(spark: SparkSession, iceberg_catalog: str) -> IcebergGold:
     gold = IcebergGold(
-        spark, STORED, {name: f"{iceberg_catalog}.gold.internal_{name}" for name in STORED}
+        spark, STORED, {name: f"{iceberg_catalog}.gold_internal.{name}" for name in STORED}
     )
     gold.ensure()
     return gold

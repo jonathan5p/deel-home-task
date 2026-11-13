@@ -238,14 +238,22 @@ def test_gold_reads_silver_tables_and_keeps_checkpoints_per_gold_table() -> None
     assert settings.checkpoint_path("dim_customer") == "s3a://bucket/checkpoints/gold/dim_customer"
 
 
+def test_gold_tables_are_named_in_gold_internal_as_in_postgres_and_views_in_gold() -> None:
+    settings = GoldSettings.from_env(LAKE | DATABASE)
+
+    assert settings.stored_table("dim_customer") == "catalog.gold_internal.dim_customer"
+    assert settings.lake.gold_table("sync_state") == "catalog.gold_internal.sync_state"
+    assert settings.table("dim_customer") == "catalog.gold.dim_customer"
+
+
 MAINTENANCE = {"ICEBERG_CATALOG": "catalog", "LAKE_ROOT": "s3a://lake"}
 
 
-def test_maintenance_defaults_cover_bronze_and_silver_with_a_week_of_snapshots() -> None:
+def test_maintenance_defaults_cover_the_lake_tables_with_a_week_of_snapshots() -> None:
     settings = MaintenanceSettings.from_env(MAINTENANCE)
 
     assert settings.catalog == "catalog"
-    assert settings.namespaces == ("bronze", "silver")
+    assert settings.namespaces == ("bronze", "silver", "gold_internal")
     assert settings.snapshot_retention_hours == 168
     assert settings.retain_last == 10
     assert settings.orphan_age_hours == 72
@@ -393,10 +401,12 @@ TABLE_STATS = {
 }
 
 
-def test_table_stats_cover_bronze_and_silver_with_a_32_mib_threshold_by_default() -> None:
+def test_table_stats_cover_bronze_silver_and_gold_internal_with_a_32_mib_threshold_by_default() -> (
+    None
+):
     settings = TableStatsSettings.from_env(TABLE_STATS)
 
-    assert settings.namespaces == ("bronze", "silver")
+    assert settings.namespaces == ("bronze", "silver", "gold_internal")
     assert settings.small_file_bytes == 32 * 1024 * 1024
     assert settings.table_interval_seconds == 300
     assert settings.partition_interval_seconds == 3600

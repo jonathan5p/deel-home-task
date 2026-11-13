@@ -25,27 +25,7 @@ SILVER_APP = "analytics/pipelines/src/pipelines/lake/silver/job.py"
 VIEWS_APP = "analytics/pipelines/src/pipelines/lake/silver/views_job.py"
 SILVER_TABLES = [f"lake.silver.{entity}" for entity in ENTITIES]
 SILVER_VIEWS = [f"lake.silver.{entity}_{view}" for entity in ENTITIES for view in VIEWS]
-GOLD_VIEWS = [
-    f"lake.gold.{name}"
-    for name in (
-        "dim_date",
-        "dim_order_status",
-        "dim_customer",
-        "dim_product",
-        "fact_order_history",
-        "fact_order_item_history",
-        "current_orders",
-        "current_order_items",
-        "open_orders",
-        "open_orders_by_delivery_date_and_status",
-        "top_delivery_dates_by_open_orders",
-        "pending_items_by_product",
-        "top_customers_by_pending_orders",
-        "data_freshness",
-    )
-]
 VIEWS_SQL = "tests/infra/sql/silver_views.sql"
-GOLD_VIEWS_SQL = "tests/infra/sql/gold_views.sql"
 VIEWS_SQL_ENTITY = "customers"
 NEXT_OFFSET = 4
 VERSIONED_UPDATE_OFFSET = 1
@@ -61,7 +41,6 @@ class SilverRuns:
     first_view_files: dict[str, str]
     idle_view_files: dict[str, str]
     spark_sql: SqlResults
-    gold_spark_sql: SqlResults
 
 
 def commit_sequence(row: dict[str, str | None]) -> int:
@@ -101,7 +80,7 @@ def view_metadata_files(stack: Stack) -> dict[str, str]:
     listing = stack.sql(
         "iceberg_catalog",
         "select 'lake.' || table_namespace || '.' || table_name, metadata_location"
-        " from iceberg_tables where iceberg_type = 'VIEW'",
+        " from iceberg_tables where iceberg_type = 'VIEW' and catalog_name = 'lake'",
     )
     return dict(line.split("|", 1) for line in listing.splitlines())
 
@@ -140,7 +119,6 @@ def run_silver_scenario(stack: Stack, bronze: Tables) -> SilverRuns:
         spark_sql=query_with_spark_sql(
             stack, VIEWS_SQL, {"entity": VIEWS_SQL_ENTITY, "key": KEYS[VIEWS_SQL_ENTITY]}
         ),
-        gold_spark_sql=query_with_spark_sql(stack, GOLD_VIEWS_SQL, {}),
     )
 
 

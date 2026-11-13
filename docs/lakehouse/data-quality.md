@@ -7,7 +7,7 @@ make data-quality                 # every check (CHECK=all)
 make data-quality CHECK=landing   # Kafka -> landing
 make data-quality CHECK=bronze    # landing -> bronze and its quarantine
 make data-quality CHECK=silver    # bronze -> silver
-make data-quality CHECK=gold      # silver -> gold in PostgreSQL, through the gold views in the lake
+make data-quality CHECK=gold      # Iceberg gold -> its PostgreSQL copy, and the gold model's invariants
 make up PROFILES=data-quality     # or run every check on a schedule (optional, off by default)
 ```
 
@@ -21,12 +21,14 @@ flowchart LR
     landing[/"Landing"/]
     bronze[("Bronze + quarantine")]
     silver[("Silver")]
+    icegold[("Iceberg gold")]
     gold[("PostgreSQL gold")]
 
     kafka -- "CHECK=landing" --> landing
     landing -- "CHECK=bronze" --> bronze
     bronze -- "CHECK=silver" --> silver
-    silver -- "CHECK=gold" --> gold
+    silver -. "gold job" .-> icegold
+    icegold -- "CHECK=gold" --> gold
 ```
 
 | Check | Compares | Status |
@@ -34,7 +36,7 @@ flowchart LR
 | `landing` | Kafka to landing: every offset landed once, payloads unchanged | merged (#23) |
 | `bronze` | Landing to bronze and quarantine: every landed record held exactly once | merged (#151) |
 | `silver` | Bronze to silver: every change identity held exactly once | merged (#179) |
-| `gold` | Silver to PostgreSQL gold: each gold view against the lake gold views computed over silver, at the silver snapshots gold committed | merged (#154) |
+| `gold` | Iceberg gold to PostgreSQL gold: each `gold_internal` table against its Iceberg table at the snapshot the copy records, then the gold model's invariants on the Iceberg tables | merged (#154) |
 | Schedule | Runs every check every `DATA_QUALITY_INTERVAL_HOURS` in the `data-quality` profile | merged (#180) |
 
 ## How the checks run
@@ -83,13 +85,21 @@ The silver checks compare each entity's silver table with bronze by change ident
 
 The results report the counts (`bronze_changes`, `missing`, `extra`, `silver_rows`, `duplicated`), silver's committed batch, the bronze and silver snapshots compared, and up to 10 sample identities of each mismatch. An entity whose silver stream has not committed a batch yet has nothing to check and passes. If the bronze snapshot has been expired, which lake maintenance avoids while a silver checkpoint still needs it, `same_changes_as_bronze` fails and gives the reason in its details.
 
-The `gold` check compares every PostgreSQL `gold` view with the [gold view in the lake](gold/writer.md#gold-in-the-lake) of the same name, computed over silver, one `gold_matches_silver` result per view, `data_freshness` aside. The lake views apply gold's rules to silver at read time, so one comparison checks silver against gold in PostgreSQL and the lake views against PostgreSQL, and silver and PostgreSQL are each read once per run:
+The `gold` check compares PostgreSQL's copy of gold with the Iceberg tables the gold job writes, then checks the gold model's rules on those tables. The gold job computes gold with Spark into the `lake.gold_internal` Iceberg tables and copies each batch into the PostgreSQL `gold_internal` tables, recording in `gold_internal.sync_state` the Iceberg snapshot each table holds ([the gold writer](gold/writer.md)), so the copy is checked against its own upstream like every other layer. Silver to Iceberg gold is the gold job's transformation: it is covered by the unit and infra tests and by the invariants below, not by a comparison with silver.
 
-- **Same point in silver:** each gold stream's checkpoint gives the silver snapshot of its last committed batch, and of the batch it is writing, if any. The check reads the committed batches, then PostgreSQL, then the planned batches, and computes the lake views' SQL over silver at those snapshots, the committed ones first and then each combination with a planned one, because PostgreSQL commits a batch before the checkpoint does.
-- **Dimension versions, not surrogate keys:** PostgreSQL's `customer_key` and `product_key` are compared as the `_commit_sequence` of the dimension version they name (through `gold_internal.dim_*`), which the lake side computes too, so the version each fact points at is checked.
-- **Retention window:** the history facts are compared from the first month PostgreSQL still holds, with the lake's history computed over silver from that month; current state, dimensions, seeds and the business views in full.
-- **Up to date:** a stored lake view whose query or descriptions differ from its definition fails (`stale`).
-- **Output:** the metrics count the rows of each side and the rows only one side has (`lake_rows`, `postgres_rows`, `lake_only`, `postgres_only`, `stale`); the details hold the snapshots compared at, up to 10 sample rows of each side and the history start. Before every gold stream has committed a batch, each view is reported as not checked and fails.
+- **Parity, one `gold_copy_matches_iceberg` result per table:** each `gold_internal` table in PostgreSQL holds exactly the rows of its Iceberg table read at the snapshot `sync_state` records for it, compared as multisets with the DataFrame API after casting PostgreSQL's columns to the Iceberg types. A copy changes a table and its `sync_state` row in one transaction, so I read `sync_state` before and after reading the tables, and read again the tables whose snapshot changed meanwhile, up to three times.
+- **Retention window:** PostgreSQL keeps the history facts from the first day of the `GOLD_RETENTION_MONTHS` window, while Iceberg keeps every change, so the history tables are compared from that day on both sides (`history_from` in the details); current state, dimensions and seeds in full.
+- **Invariants, on the Iceberg tables at the same snapshots,** so they check the state PostgreSQL serves, read at a point the gold job wrote whole:
+
+| Check | Checks that |
+| --- | --- |
+| `gold_one_current_version` | each business key has at most one current row: one version with `_is_current` in `dim_customer`, `dim_product` and the history facts, one row in `current_orders` and `current_order_items` |
+| `gold_no_overlapping_validity` | the validity ranges of a key's versions that are not folded do not overlap: each ends at or before the next one starts, and only the last is open |
+| `gold_lookups_resolve` | every status and date key names a row of `dim_order_status` or `dim_date`, or is null where the model allows it (an unknown status takes the `UNKNOWN` row, a missing date stays null) |
+| `gold_business_keys_known` | every history fact's dimension business key (an order's `customer_id`, an item's `product_id`) names a key the dimension holds, for every change committed no later than the dimension's newest version: the facts keep business keys and the public views join the dimension version valid at each change, and each stream writes on its own, so a later change may still wait for its dimension's stream |
+| `gold_report_views_match_lake` | each PostgreSQL business-question view (`gold.open_orders_by_delivery_date_and_status`, `gold.top_delivery_dates_by_open_orders`, `gold.pending_items_by_product`, `gold.top_customers_by_pending_orders`) returns the rows the same view returns in the lake, run over the Iceberg tables at the snapshots PostgreSQL held when it answered; both render the same SQL template, so this checks the copy the reports read and the view on each side |
+
+- **Output:** parity reports `lake_rows`, `postgres_rows`, `lake_only` and `postgres_only`, with the snapshot compared at and up to 10 sample keys of each side; an invariant reports the `rows` it checked and its `violations`, with up to 10 samples. A table `sync_state` has no copy of yet, or whose snapshot Iceberg no longer has, fails as not checked with the reason in its details, and so do the invariants that read it.
 
 ## Latest results
 

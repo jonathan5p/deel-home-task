@@ -5,7 +5,11 @@ from typing import NamedTuple
 
 from pyspark.sql import Row, SparkSession
 
-from pipelines.lake.gold.views.views import GoldLakeViews, refresh_gold_views
+from pipelines.lake.gold.views.views import (
+    GoldLakeViews,
+    MissingGoldTablesError,
+    refresh_gold_views,
+)
 from pipelines.lake.shared.checkpoints import (
     CheckpointFiles,
     HadoopCheckpointFiles,
@@ -21,6 +25,10 @@ type ViewRefresh = Callable[[], Sequence[str]]
 
 SILVER_VIEWS = "silver views"
 GOLD_VIEWS = "gold views"
+MISSING_TABLES = (MissingSilverTablesError, MissingGoldTablesError)
+# Commits each rewritten file group on its own, so a gold MERGE committing meanwhile fails only
+# the groups it conflicts with instead of the whole rewrite.
+PARTIAL_PROGRESS = "partial-progress.enabled"
 
 
 class TableMaintenance(NamedTuple):
@@ -30,6 +38,8 @@ class TableMaintenance(NamedTuple):
     expired_snapshots: int
     removed_orphans: int
     expiry_skipped: bool = False
+    rewritten_deletes: int = 0
+    added_deletes: int = 0
 
     def summary(self) -> str:
         expiry = (
@@ -39,6 +49,7 @@ class TableMaintenance(NamedTuple):
         )
         return (
             f"{self.table}: rewrote {self.rewritten_files} data files into {self.added_files},"
+            f" {self.rewritten_deletes} position delete files into {self.added_deletes},"
             f" {expiry}, removed {self.removed_orphans} orphan files"
         )
 
@@ -113,8 +124,13 @@ def maintain(job: Maintenance, table: str, now: datetime) -> TableMaintenance:
     procedures = f"{settings.catalog}.system"
     snapshots_before = sql_timestamp(now - timedelta(hours=settings.snapshot_retention_hours))
     orphans_before = sql_timestamp(now - timedelta(hours=settings.orphan_age_hours))
+    options = f"options => map('{PARTIAL_PROGRESS}', 'true')"
     (rewritten,) = job.sql(
-        f"CALL {procedures}.rewrite_data_files(table => '{table}', strategy => 'binpack')"
+        f"CALL {procedures}.rewrite_data_files(table => '{table}', strategy => 'binpack',"
+        f" {options})"
+    )
+    (deletes,) = job.sql(
+        f"CALL {procedures}.rewrite_position_delete_files(table => '{table}', {options})"
     )
     blockers = expiry_blockers(job, table, snapshots_before)
     for blocker in blockers:
@@ -137,24 +153,19 @@ def maintain(job: Maintenance, table: str, now: datetime) -> TableMaintenance:
         expired_snapshots=expired_snapshots,
         removed_orphans=len(orphans),
         expiry_skipped=bool(blockers),
+        rewritten_deletes=deletes["rewritten_delete_files_count"],
+        added_deletes=deletes["added_delete_files_count"],
     )
 
 
 def refresh_lake_views(views: Mapping[str, ViewRefresh] | None, report: Report) -> list[str]:
-    """Refresh each named group of views in order; returns the groups that failed.
-
-    Every group reads the silver tables, so once one reports them missing the rest are skipped.
-    """
+    """Refresh each named group of views in order; returns the groups that failed. A group
+    whose tables do not exist yet is skipped, which is not a failure."""
     failed: list[str] = []
-    missing: MissingSilverTablesError | None = None
     for name, refresh in (views or {}).items():
-        if missing is not None:
-            report(f"{name}: skipped: {missing}")
-            continue
         try:
             statements = refresh()
-        except MissingSilverTablesError as error:
-            missing = error
+        except MISSING_TABLES as error:
             report(f"{name}: skipped: {error}")
         except Exception as error:
             report(f"{name}: refresh failed: {error}")

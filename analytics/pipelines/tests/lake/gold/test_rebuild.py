@@ -13,14 +13,29 @@ from analytics.pipelines.tests.lake.gold.rebuild_setup import (
     ENTITIES,
     LATER,
     RecordingWriter,
+    gold_in,
     silver_tables,
     write_silver_tables,
 )
 from analytics.pipelines.tests.lake.gold.silver_setup import CHANGED_AT
-from pipelines.lake.gold.rebuild import iso_time, read_silver_table, run, to_time, until
+from analytics.pipelines.tests.lake.gold.views.views_setup import current_order
+from analytics.pipelines.tests.lake.shared.views_setup import stored_views
+from pipelines.lake.gold.dimensions import STORED
+from pipelines.lake.gold.job import gold_writer
+from pipelines.lake.gold.lake import described_schema
+from pipelines.lake.gold.rebuild import (
+    iso_time,
+    read_silver_table,
+    recreated,
+    run,
+    to_time,
+    until,
+)
+from pipelines.lake.gold.views.views import GoldLakeViews
 from pipelines.settings import GoldSettings
 
 SETTINGS = GoldSettings.from_env(DATABASE)
+STORED_ORDERS = STORED["current_orders"]
 
 
 @pytest.fixture
@@ -142,3 +157,24 @@ def test_a_silver_table_is_read_in_batch_from_the_catalog(
 
     assert not orders.isStreaming
     assert sorted(row._commit_sequence for row in orders.collect()) == [50, 95]
+
+
+def test_recreating_empties_the_gold_tables_seeds_them_and_creates_the_views(
+    spark: SparkSession, tmp_path: Path
+) -> None:
+    settings = gold_in(spark, tmp_path)
+    writer, lake = gold_writer(spark, settings, serve=False)
+    lake.ensure()
+    orders = STORED_ORDERS
+    row = current_order(1, 10)
+    spark.createDataFrame(
+        [tuple(row.get(name) for name in orders.columns)], described_schema(orders.table)
+    ).writeTo(settings.stored_table(orders.name)).append()
+    views = GoldLakeViews(settings.lake)
+
+    recreated(spark, writer, lake, views)()
+
+    assert lake.read("current_orders").isEmpty()
+    assert lake.read("dim_order_status").count() == 5
+    shown = stored_views(spark, views.namespace)
+    assert {f"{views.namespace}.{name}" for name in shown} == set(views.definitions())

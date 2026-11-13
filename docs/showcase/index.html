@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" href="data:,">
 <title>CDC Pipeline Tour</title>
-<meta name="description" content="An interactive tour of a change data capture pipeline built for Deel's data engineering take-home: PostgreSQL and Debezium into Kafka, an Iceberg lake kept by Spark Structured Streaming, and a star schema in PostgreSQL that answers four business questions.">
+<meta name="description" content="An interactive tour of a change data capture pipeline built for Deel's data engineering take-home: PostgreSQL and Debezium into Kafka, an Iceberg lake kept by Spark Structured Streaming, and a star schema built by Spark into Iceberg and served from PostgreSQL to answer four business questions.">
 <style>
 :root {
   color-scheme: light;
@@ -396,7 +396,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
     <div class="intro">
       <div class="eyebrow">Deel data engineering take-home</div>
       <h1 id="flow-title">A CDC pipeline, <span>from the orders database to the answers</span></h1>
-      <p class="lede">I built a pipeline that streams every change in an orders database through Kafka and Spark into an Iceberg lake, and into a star schema in PostgreSQL that answers four business questions.</p>
+      <p class="lede">I built a pipeline that streams every change in an orders database through Kafka and Spark into an Iceberg lake, where Spark builds a star schema that a PostgreSQL copy serves to answer four business questions.</p>
     </div>
     <div class="flow-shell">
       <div class="flow-toolbar" role="toolbar" aria-label="Data flow controls">
@@ -418,7 +418,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
           <p class="scroll-hint">Scroll the diagram sideways to see every part.</p>
           <div class="diagram-scroll" id="diagram-scroll">
             <svg id="flow" viewBox="0 0 1216 496" role="group" aria-labelledby="flow-title flow-desc">
-              <desc id="flow-desc">Data flow from the source PostgreSQL through Debezium and Kafka to the landing, bronze and silver layers of the lake, then to gold in PostgreSQL and the gold views in the lake, and on to the API, Grafana, Spark SQL and DuckDB. Platform and operations components are along the bottom. Each component is a button that shows its explanation next to the diagram.</desc>
+              <desc id="flow-desc">Data flow from the source PostgreSQL through Debezium and Kafka to the landing, bronze and silver layers of the lake, then to gold, built by Spark into Iceberg and copied into PostgreSQL, the gold views in the lake, and on to the API, Grafana, Spark SQL and DuckDB. Platform and operations components are along the bottom. Each component is a button that shows its explanation next to the diagram.</desc>
               <defs>
                 <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrowhead" d="M0,0 L10,5 L0,10 z"/></marker>
               </defs>
@@ -436,7 +436,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
           <div class="explain-inner" id="explain-inner">
             <div class="ex-head"><div class="kicker">Overview</div><h3>From a commit to an answer</h3></div>
             <div class="ex-body">
-              <p>Debezium captures every change in the orders database. Spark carries it through the lake's layers and merges it into a star schema in PostgreSQL, which the API and Grafana read.</p>
+              <p>Debezium captures every change in the orders database. Spark carries it through the lake's layers and merges it into a star schema in Iceberg, then copies it into PostgreSQL, which the API and Grafana read.</p>
               <p class="try"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 1.5l9.5 6.2-4.3.9 2.4 4.6-1.8.9-2.4-4.6L3 12.3z" fill="currentColor"/></svg><span><b>Click any part of the pipeline</b>, or a green check, to see what it does. <b>Follow one change</b> walks one update through 13 steps.</span></p>
               <h4>The moving markers</h4>
               <ul class="legend" id="legend"></ul>
@@ -507,7 +507,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
         <p>Exact duplicates are dropped on write and versions that change nothing are folded on read. There is no time cut-off, so a late change is never dropped.</p>
         <a class="more" href="../architecture/decisions/#d36--silver-deduplication-exact-duplicates-on-write-unchanged-versions-on-read">Read more: D36 &rarr;</a></div></details>
       <details class="decision" data-cat="gold" style="--lc:var(--c-gold)"><summary><span class="dname">Gold in PostgreSQL, not ClickHouse</span><span class="dnum">D3</span></summary><div>
-        <p>Gold is small and must be consistent after every micro-batch, and PostgreSQL applies each batch in one transaction. ClickHouse stays an option for scale.</p>
+        <p>PostgreSQL serves gold: it is small and must be consistent after every micro-batch, and PostgreSQL applies each batch&rsquo;s copy in one transaction. ClickHouse stays an option for scale.</p>
         <a class="more" href="../architecture/decisions/#d3--gold-in-postgresql-not-clickhouse">Read more: D3 &rarr;</a></div></details>
       <details class="decision" data-cat="gold" style="--lc:var(--c-gold)"><summary><span class="dname">The gold dimensional model</span><span class="dnum">D32</span></summary><div>
         <p>Dimensions with history, history facts and current-state tables answer every question. Current state is a table because a view over the history would get slower as it grows.</p>
@@ -522,11 +522,11 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
         <p>PostgreSQL keeps 36 months of history by dropping whole months, which is cheaper than deleting rows. Current state is never trimmed.</p>
         <a class="more" href="../architecture/decisions/#d37--gold-retention-by-monthly-partitions">Read more: D37 &rarr;</a></div></details>
       <details class="decision" data-cat="gold" style="--lc:var(--c-gold)"><summary><span class="dname">Rebuild gold from silver</span><span class="dnum">D38</span></summary><div>
-        <p>Gold is rebuilt with the same merge the stream uses, optionally up to a point in time, so there is no second copy of the rules to keep in step.</p>
+        <p>Gold is rebuilt with the same Spark transforms the stream uses, optionally up to a point in time, so there is no second copy of the rules to keep in step.</p>
         <a class="more" href="../architecture/decisions/#d38--rebuild-gold-from-silver-with-an-optional-cutoff">Read more: D38 &rarr;</a></div></details>
-      <details class="decision" data-cat="gold" style="--lc:var(--c-gold)"><summary><span class="dname">Gold in the lake as views over silver</span><span class="dnum">D39</span></summary><div>
-        <p>Silver already holds every version, so the lake gets the gold model as views instead of a second writer. Every read recomputes over the full history.</p>
-        <a class="more" href="../architecture/decisions/#d39--gold-in-the-lake-as-iceberg-views-over-silver">Read more: D39 &rarr;</a></div></details>
+      <details class="decision" data-cat="gold" style="--lc:var(--c-gold)"><summary><span class="dname">Gold built in Spark on Iceberg</span><span class="dnum">D44</span></summary><div>
+        <p>Spark computes the whole gold model in each micro-batch and stores it as Iceberg tables, so every transformation runs in one engine and the lake has a columnar copy of gold. PostgreSQL only serves a copy, filled by plain upserts.</p>
+        <a class="more" href="../architecture/decisions/#d44--gold-modelled-in-spark-on-iceberg-postgresql-as-serving-copy">Read more: D44 &rarr;</a></div></details>
     </div>
     <p style="margin-top:16px"><a class="more" href="../architecture/decisions/">All design decisions &rarr;</a></p>
   </div>
@@ -740,19 +740,19 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
       how: ["They are computed when they are read, so a late change needs no special handling. Versions that change nothing are folded together here."],
       why: [D("D36", "unchanged versions are folded on read", "d36--silver-deduplication-exact-duplicates-on-write-unchanged-versions-on-read")],
       docs: [L("Silver views", "../lakehouse/silver/")] },
-    { id: "gold", x: 894, y: 56, w: 156, h: 178, layer: "gold", form: "star", t: "Gold", s: "PostgreSQL 18.6",
-      kicker: "Gold", title: "Gold: a star schema in PostgreSQL", tech: ["PostgreSQL 18.6", "Spark Structured Streaming"],
+    { id: "gold", x: 894, y: 56, w: 156, h: 178, layer: "gold", form: "star", t: "Gold", s: "Iceberg + PostgreSQL",
+      kicker: "Gold", title: "Gold: a star schema built by Spark", tech: ["Spark Structured Streaming", "Iceberg", "PostgreSQL 18.6"],
       hint: "the star schema that answers the questions",
-      what: "A star schema in a separate PostgreSQL: customer and product dimensions that keep their history, history facts, and current-state tables.",
-      how: ["Each micro-batch is merged in one transaction, and current state only accepts a newer version, so a replayed change never overwrites newer data. Consumers read public views."],
-      why: [D("D3", "PostgreSQL, not ClickHouse", "d3--gold-in-postgresql-not-clickhouse"), D("D32", "the dimensional model", "d32--the-gold-dimensional-model"), D("D35", "public views over an internal schema", "d35--public-views-over-an-internal-schema")],
+      what: "A star schema that Spark builds into Iceberg tables in <code>lake.gold_internal</code>: customer and product dimensions that keep their history, history facts that keep business keys, and current-state tables. A separate PostgreSQL holds the serving copy.",
+      how: ["Each entity streams on its own: a micro-batch is merged into that entity&rsquo;s Iceberg tables, then copied into PostgreSQL in one transaction that records the Iceberg snapshot of each table. Current state only accepts a newer version, so a replayed change never overwrites newer data. Consumers read public views, which join the dimension version valid at each change and count the four answers when read."],
+      why: [D("D44", "gold built in Spark on Iceberg", "d44--gold-modelled-in-spark-on-iceberg-postgresql-as-serving-copy"), D("D3", "PostgreSQL serves gold", "d3--gold-in-postgresql-not-clickhouse"), D("D32", "the dimensional model", "d32--the-gold-dimensional-model"), D("D35", "public views over an internal schema", "d35--public-views-over-an-internal-schema")],
       docs: [L("Gold", "../lakehouse/gold/"), L("The model", "../lakehouse/gold/model/"), L("The writer", "../lakehouse/gold/writer/")] },
-    { id: "lakegold", x: 894, y: 252, w: 156, h: 56, layer: "gold", form: "star", t: "Lake gold", s: "views over silver",
+    { id: "lakegold", x: 894, y: 252, w: 156, h: 56, layer: "gold", form: "star", t: "Lake gold", s: "views over gold",
       kicker: "Gold", title: "Gold in the lake", tech: ["Iceberg views"],
-      hint: "the same model, computed from silver",
-      what: "The same gold model also exists in the lake, as views over silver. They store nothing and compute the answer when read, over the full history.",
-      how: ["The gold data quality check compares PostgreSQL with them."],
-      why: [D("D39", "gold in the lake as views", "d39--gold-in-the-lake-as-iceberg-views-over-silver")],
+      hint: "the public gold views, in the lake",
+      what: "The lake has the public gold views too, in <code>lake.gold</code>, rendered from the same SQL as PostgreSQL&rsquo;s, over the gold Iceberg tables, which keep every change.",
+      how: ["They join the dimension version valid at each fact change and count the four answers when read, as PostgreSQL&rsquo;s do."],
+      why: [D("D44", "gold built in Spark on Iceberg", "d44--gold-modelled-in-spark-on-iceberg-postgresql-as-serving-copy")],
       docs: [L("Gold in the lake", "../lakehouse/gold/writer/#gold-in-the-lake")] },
     { id: "api", x: 1074, y: 40, w: 124, h: 56, layer: "serve", form: "answer", t: "HTTP API", s: "FastAPI",
       kicker: "Serving", title: "Analytics API", tech: ["FastAPI", "read-only login"],
@@ -773,7 +773,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
       hint: "query any lake table or view",
       what: "<code>make spark-sql</code> opens a SQL shell that can query every table and view in the lake, including the gold views over the full history.",
       how: [],
-      why: [D("D39", "the lake has the gold model too", "d39--gold-in-the-lake-as-iceberg-views-over-silver")],
+      why: [D("D44", "the lake has the gold model too", "d44--gold-modelled-in-spark-on-iceberg-postgresql-as-serving-copy")],
       docs: [L("Querying the lake", "../serving/lake-access/")] },
     { id: "rest", x: 1074, y: 320, w: 124, h: 56, layer: "serve", form: "answer", t: "DuckDB", s: "REST catalog",
       kicker: "Serving", title: "DuckDB", tech: ["DuckDB", "Iceberg REST catalog"],
@@ -813,7 +813,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
       hint: "each layer checked against the one before",
       what: "A chain of checks compares each layer with the one before it, from Kafka to gold, and fails if a record is missing, duplicated or different.",
       how: ["Each check only looks at what the next layer has already committed, so normal lag is never reported as missing data. Every run writes a report to the lake."],
-      why: [D("D39", "the gold check uses the lake gold views", "d39--gold-in-the-lake-as-iceberg-views-over-silver")],
+      why: [D("D44", "the gold check compares the copy with Iceberg", "d44--gold-modelled-in-spark-on-iceberg-postgresql-as-serving-copy")],
       docs: [L("Data quality checks", "../lakehouse/data-quality/")] },
     { id: "maint", x: 599, y: 424, w: 147, h: 60, layer: "bronze", t: "Maintenance", s: "compaction, expiry",
       related: ["bronze", "silver", "quarantine", "sviews", "lakegold"],
@@ -828,7 +828,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
       kicker: "Operations", title: "Gold retention and rebuild", tech: ["Python", "PostgreSQL"],
       hint: "36 months in gold; rebuild from silver",
       what: "PostgreSQL keeps 36 months of history by dropping whole monthly partitions; the lake keeps everything.",
-      how: ["Gold can also be rebuilt from silver with the same merge the stream uses, optionally up to a point in time."],
+      how: ["Gold can also be rebuilt from silver into Iceberg with the same Spark transforms the stream uses, optionally up to a point in time, and PostgreSQL reloaded from it."],
       why: [D("D37", "retention by monthly partitions", "d37--gold-retention-by-monthly-partitions"), D("D38", "rebuild from silver", "d38--rebuild-gold-from-silver-with-an-optional-cutoff")],
       docs: [L("Gold retention", "../operations/maintenance-and-recovery/#gold-retention"), L("Rebuilding gold", "../operations/maintenance-and-recovery/#rebuilding-gold-from-silver")] },
     { id: "history", x: 904, y: 424, w: 142, h: 60, layer: "kafka", t: "History Server", s: "Spark event logs",
@@ -851,7 +851,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
   const NODE = Object.fromEntries(NODES.map(n => [n.id, n]));
 
   const GOLD_ROWS = [
-    { id: "stage", label: "staging" },
+    { id: "stage", label: "Iceberg, then copy" },
     { id: "dims", label: "dimensions" },
     { id: "facts", label: "history facts" },
     { id: "current", label: "current state" },
@@ -869,7 +869,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
     ["bronze", "silver", "M716,140 H740"],
     ["silver", "gold", "M858,140 H894"],
     ["silver", "sviews", "M799,176 V252"],
-    ["sviews", "lakegold", "M867,280 H894"],
+    ["gold", "lakegold", "M972,234 V252"],
     ["lakegold", "sparksql", "M1050,280 H1074"],
     ["silver", "rest", "M858,162 C870,162 876,170 876,182 V336 C876,344 882,348 892,348 H1074", true],
     ["gold", "api", "M1050,96 C1062,96 1062,68 1074,68"],
@@ -883,8 +883,8 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
       text: "Every landed record is in bronze or in quarantine, once, and never in both." },
     { id: "dq-silver", x: 728, check: "silver", title: "Bronze to silver", pair: ["bronze", "silver"],
       text: "Silver holds every change bronze holds, each one once, and nothing else. A redelivered change is expected once." },
-    { id: "dq-gold", x: 876, check: "gold", title: "Silver to gold", pair: ["silver", "gold", "lakegold"],
-      text: "Each PostgreSQL gold view matches the same view computed from silver in the lake." }
+    { id: "dq-gold", x: 876, check: "gold", title: "Iceberg gold to PostgreSQL", pair: ["gold", "lakegold"],
+      text: "Each PostgreSQL gold table equals its Iceberg table at the snapshot it was copied from, the Iceberg tables keep the model's rules, and the business views give the same answers on both sides." }
   ];
 
   // ---------- Rendering ----------
@@ -1175,7 +1175,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
 
   const MAIN = ["source", "debezium", "kafka", "landing", "bronze", "silver", "gold", "api"];
   const SCRIPT = [
-    { at: 0, op: "c", route: MAIN, forks: { silver: [["silver", "sviews", "lakegold", "sparksql"]], gold: [["gold", "grafana"]] },
+    { at: 0, op: "c", route: MAIN, forks: { silver: [["silver", "sviews"]], gold: [["gold", "grafana"], ["gold", "lakegold", "sparksql"]] },
       caption: "<b>Insert.</b> Order 1 is created as PENDING. It flows through every layer and now counts as an open order." },
     { at: 3400, op: "u", route: MAIN, forks: { silver: [["silver", "rest"]], gold: [["gold", "grafana"]] },
       caption: "<b>Update.</b> Order 1 moves to REPROCESSING. Silver adds a version; gold adds a history row and updates the current state." },
@@ -1353,28 +1353,28 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
       body: "Silver stores this change once; a second copy would be dropped, and an older change arriving late would still be kept. In the history view, the PENDING version now ends where this one starts.",
       payload: "lake.silver.orders_history (order 1)\n  status        valid from                valid to\n  PENDING       ...                       2026-11-08 14:21:00.025\n  REPROCESSING  2026-11-08 14:21:00.025   (current)",
       link: L("Silver", "../lakehouse/silver/") },
-    { node: "gold", sub: "stage", form: "star", layer: "gold", title: "Staged, then merged in one transaction",
-      body: "The gold job writes the batch into a staging table, then merges it into the model in one PostgreSQL transaction. A lock keeps the four gold streams from missing each other's rows.",
-      payload: "write the batch to a staging table   -- Spark\nBEGIN;\n  take the gold writer lock\n  merge history, current state, dimensions\nCOMMIT;\n-- then Spark records the batch as done",
+    { node: "gold", sub: "stage", form: "star", layer: "gold", title: "Merged into Iceberg, then copied",
+      body: "The gold job computes the batch with Spark and merges it into the gold Iceberg tables, then copies the rows it wrote into PostgreSQL in one transaction, with the Iceberg snapshot of each table. Each entity's stream writes only its own tables, so the four streams run at the same time.",
+      payload: "compute the batch            -- Spark DataFrame API\nMERGE INTO lake.gold_internal.*  -- Iceberg\nwrite the new rows to staging    -- JDBC\nBEGIN;\n  upsert into gold_internal.*\n  record the snapshots in sync_state\nCOMMIT;",
       link: L("Writing gold", "../lakehouse/gold/writer/#writing-gold") },
     { node: "gold", sub: "facts", form: "star", layer: "gold", title: "A history row",
       body: "The change is added to the order history unless it is already there, so a replayed batch adds nothing.",
-      payload: "INSERT INTO fact_order_history (...)\n  order 1, REPROCESSING, at 14:21:00.025\nON CONFLICT DO NOTHING;",
+      payload: "MERGE INTO lake.gold_internal.fact_order_history\n  ON order_id, _commit_sequence\nWHEN NOT MATCHED THEN INSERT\n  order 1, REPROCESSING, at 14:21:00.025",
       link: L("Versioning rules", "../lakehouse/gold/model/#versioning") },
     { node: "gold", sub: "current", form: "star", layer: "gold", title: "Current state only moves forward",
       body: "The current row for order 1 is replaced only if this change is newer than the one stored. REPROCESSING still counts as open.",
-      payload: "MERGE INTO current_orders\n  ON order_id\nWHEN MATCHED AND the change is newer\n  THEN UPDATE SET status = REPROCESSING, is_open = true\nWHEN NOT MATCHED THEN INSERT ...;",
+      payload: "MERGE INTO lake.gold_internal.current_orders\n  ON order_id\nWHEN MATCHED AND the change is newer\n  THEN UPDATE SET status = REPROCESSING, is_open = true\nWHEN NOT MATCHED THEN INSERT ...;",
       link: L("The gold writer", "../lakehouse/gold/writer/#writing-gold") },
     { node: "gold", sub: "dims", form: "star", layer: "gold", title: "Customers and products keep versions",
-      body: "A customer or product change adds a new version instead (SCD2). Each order fact points at the customer version that was valid when the order changed.",
-      payload: "dim_customer (customer 42)\n  version 1   valid until the address change\n  version 2   current\n\nfact_order_history -> the version valid at the change",
+      body: "A customer or product change adds a new version instead (SCD2). Each order fact keeps the customer id, and the public view joins the customer version that was valid when the order changed.",
+      payload: "dim_customer (customer 42)\n  version 1   valid until the address change\n  version 2   current\n\ngold.fact_order_history -> the version valid at the change, when read",
       link: L("Dimension keys of the facts", "../lakehouse/gold/model/#dimension-keys-of-the-facts") },
     { node: "api", also: ["grafana"], sub: "views", form: "answer", layer: "serve", title: "Answered by the business view",
-      body: "The open-orders views read the current state. The API and the Grafana panel run the same query, so order 1 now counts under its delivery date as REPROCESSING.",
+      body: "The business view counts the open rows of the current state when it is read, through a partial index on the open orders. The API and the Grafana panel run the same query, so order 1 now counts under its delivery date as REPROCESSING.",
       payload: "GET /metrics/open-orders-by-delivery-date-and-status\n\n[{\"delivery_date\": \"2026-11-18\",\n  \"status_code\": \"REPROCESSING\",\n  \"open_orders\": ...}]",
       link: L("The four business questions", "../lakehouse/gold/model/#the-four-business-questions") },
-    { node: "lakegold", also: ["sviews"], form: "star", layer: "gold", title: "The same answer from the lake",
-      body: "The lake computes the same views from silver when they are read. The gold data quality check compares the two.",
+    { node: "lakegold", form: "star", layer: "gold", title: "The same answer from the lake",
+      body: "The lake has the same views over the gold Iceberg tables, so Spark SQL gives the answer the API gives. The gold data quality check compares PostgreSQL's copy with those tables.",
       payload: "SELECT delivery_date, open_orders\nFROM lake.gold.top_delivery_dates_by_open_orders;",
       link: L("Gold in the lake", "../lakehouse/gold/writer/#gold-in-the-lake") }
   ];
@@ -1399,7 +1399,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
     const hot = [];
     const ia = MAIN.indexOf(a), ib = MAIN.indexOf(b);
     if (ia >= 0 && ib > ia) for (let i = ia; i < ib; i++) hot.push(MAIN[i] + ">" + MAIN[i + 1]);
-    if (b === "lakegold") hot.push("silver>sviews", "sviews>lakegold");
+    if (b === "lakegold") hot.push("gold>lakegold");
     if (b === "api") hot.push("gold>grafana");
     return hot;
   }
