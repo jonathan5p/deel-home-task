@@ -15,6 +15,7 @@ from pipelines.lake.gold.postgres import connection_factory
 from pipelines.lake.gold.retention import apply_retention
 from pipelines.lake.gold.scd2 import Scd2Dimension
 from pipelines.lake.gold.sink import BatchLoader, GoldLoad, staged_rows
+from pipelines.lake.gold.views.views import GoldLakeViews, refresh_gold_views
 from pipelines.lake.gold.writer import GoldWriter
 from pipelines.settings import GoldRetentionSettings, GoldSettings
 
@@ -82,10 +83,15 @@ def run(
     return retain()
 
 
-def recreated(spark: SparkSession, writer: GoldWriter, lake: IcebergGold) -> Prepare:
+def recreated(
+    spark: SparkSession, writer: GoldWriter, lake: IcebergGold, views: GoldLakeViews
+) -> Prepare:
+    """Drop the gold tables, create them with the seeded rows, and the gold views over them."""
+
     def recreate() -> None:
         lake.drop()
         prepare(spark, writer, lake)
+        refresh_gold_views(spark, views)
 
     return recreate
 
@@ -115,7 +121,7 @@ def main(argv: Sequence[str]) -> None:
             settings,
             to_time=cutoff,
             writer=writer,
-            recreate=recreated(spark, writer, lake),
+            recreate=recreated(spark, writer, lake, GoldLakeViews(settings.lake)),
             copy=copy,
             retain=retain,
         )

@@ -1,293 +1,77 @@
-from collections.abc import Callable, Iterable, Mapping, Sequence
-from importlib.resources import files
-from typing import NamedTuple
+from collections.abc import Iterable, Mapping, Sequence
 
-from jinja2 import Environment, StrictUndefined
 from pyspark.sql import SparkSession
 
-from pipelines.lake.gold.dimensions import DIMENSIONS, FACTS
-from pipelines.lake.gold.facts import ChangeFact, FactColumn, KeyLookup
-from pipelines.lake.gold.public import PIPELINE_ONLY_COLUMNS
-from pipelines.lake.gold.scd2 import Scd2Column, Scd2Dimension
-from pipelines.lake.shared.columns import MetadataColumn
-from pipelines.lake.shared.tables import TABLE_TEMPLATES, sql_string
+from pipelines.lake.gold.dimensions import STORED
+from pipelines.lake.gold.public import PUBLIC_VIEWS, PublicView, public_columns, view_query
+from pipelines.lake.gold.scd2 import INTERNAL_SCHEMA
 from pipelines.lake.shared.views import ViewDefinition, ensure_view
-from pipelines.lake.silver.views import HISTORY
-from pipelines.schemas.definitions import ColumnDefinition
 from pipelines.schemas.gold_definitions import GoldTable, load_gold_tables
-from pipelines.settings import GoldSettings, LakeSettings, SilverSettings
-
-SQL = Environment(undefined=StrictUndefined, autoescape=False, trim_blocks=True, lstrip_blocks=True)
-SEEDED = ("dim_date", "dim_order_status")
-FRESHNESS = "data_freshness"
-OPEN_ORDERS = "open_orders"
-BUSINESS_VIEWS = (
-    "open_orders_by_delivery_date_and_status",
-    "top_delivery_dates_by_open_orders",
-    "pending_items_by_product",
-    "top_customers_by_pending_orders",
-)
-INTERNAL_COLUMNS: Mapping[str, frozenset[str]] = {"current_orders": frozenset({"is_open"})}
-HISTORY_COLUMNS = (MetadataColumn.VALID_TO, MetadataColumn.IS_CURRENT)
-DIMENSION_RANGE_COLUMNS = (Scd2Column.VALID_FROM, *HISTORY_COLUMNS)
-COMMIT_SEQUENCE = str(Scd2Column.COMMIT_SEQUENCE)
+from pipelines.settings import GoldSettings, LakeSettings
 
 
-def _render(template: str, **values: object) -> str:
-    text = (files("pipelines.lake.gold.views") / "sql" / f"{template}.sql.j2").read_text(
-        encoding="utf-8"
-    )
-    return SQL.from_string(text).render(**values).rstrip("\n")
-
-
-def _selected(source: str, column: str) -> str:
-    return source if source == column else f"{source} AS {column}"
-
-
-class KeyJoin(NamedTuple):
-    alias: str
-    relation: str
-    code: str
-    source: str
-
-
-class AsOfJoin(NamedTuple):
-    name: str
-    versions: str
-    dimension_key: str
-    business_key: str
-    columns: tuple[tuple[str, str], ...]
-
-
-class PointInTime(NamedTuple):
-    """Fact columns taken from the version of `dimension` valid when the change was committed,
-    as (fact column, dimension column) pairs, matched on the fact's `business_key`; `amount`
-    is a (column, factor, price) triple computed as factor times the looked-up price."""
-
-    dimension: str
-    business_key: str
-    columns: tuple[tuple[str, str], ...]
-    amount: tuple[str, str, str] | None = None
-
-    @property
-    def fact_columns(self) -> tuple[str, ...]:
-        amount = () if self.amount is None else (self.amount[0],)
-        return (*(fact for fact, _ in self.columns), *amount)
-
-
-POINT_IN_TIME: Mapping[str, PointInTime] = {
-    "fact_order_history": PointInTime(
-        "dim_customer",
-        "customer_id",
-        (
-            ("customer_key", "customer_key"),
-            ("customer_name", "customer_name"),
-            ("customer_address", "customer_address"),
-        ),
-    ),
-    "fact_order_item_history": PointInTime(
-        "dim_product",
-        "product_id",
-        (
-            ("product_key", "product_key"),
-            ("product_name", "product_name"),
-            ("unit_price", "unit_price"),
-        ),
-        amount=("line_amount", "quantity", "unit_price"),
-    ),
-}
+class MissingGoldTablesError(LookupError):
+    def __init__(self, tables: Iterable[str]) -> None:
+        super().__init__(
+            f"The gold views read tables that do not exist yet: {', '.join(tables)}."
+            " Start the gold job first."
+        )
 
 
 class GoldLakeViews:
+    """The gold views in the lake: the public views of PostgreSQL's gold schema, rendered from
+    the same templates, with the same names and columns, over the Iceberg tables the gold job
+    writes."""
+
     def __init__(
         self,
         lake: LakeSettings,
         tables: Mapping[str, GoldTable] | None = None,
-        dimensions: Iterable[Scd2Dimension] = DIMENSIONS,
-        facts: Iterable[ChangeFact] = FACTS,
-        *,
-        relation: Callable[[str, str], str] | None = None,
-        version_keys: bool = False,
+        public: Sequence[PublicView] = PUBLIC_VIEWS,
+        stored: Iterable[str] = STORED,
     ) -> None:
         self.lake = lake
         self.tables = tables if tables is not None else load_gold_tables()
-        self.dimensions = tuple(dimensions)
-        self.dimensions_by_name = {dimension.name: dimension for dimension in self.dimensions}
-        self.facts = tuple(facts)
-        self.relation = relation or lake.table
-        self.surrogate_keys = frozenset(d.surrogate_key for d in self.dimensions)
-        self.hidden = PIPELINE_ONLY_COLUMNS | (frozenset() if version_keys else self.surrogate_keys)
+        self.public = tuple(public)
+        self.stored = tuple(stored)
 
     @property
     def namespace(self) -> str:
         return f"{self.lake.catalog}.{GoldSettings.LAYER}"
 
+    @property
+    def internal(self) -> str:
+        """The namespace of the Iceberg tables the views read."""
+        return f"{self.lake.catalog}.{INTERNAL_SCHEMA}"
+
     def view(self, name: str) -> str:
-        return self.relation(GoldSettings.LAYER, name)
+        return self.lake.table(GoldSettings.LAYER, name)
 
-    def _silver(self, name: str) -> str:
-        return self.relation(SilverSettings.LAYER, name)
+    def sources(self) -> list[str]:
+        """The Iceberg tables the views read: every table the gold job writes."""
+        return [self.lake.gold_table(name) for name in self.stored]
 
-    def _silver_history(self, load: Scd2Dimension | ChangeFact) -> str:
-        return self._silver(TABLE_TEMPLATES[HISTORY].table_name(load.entity))
-
-    def public_columns(self, table: GoldTable) -> tuple[ColumnDefinition, ...]:
-        """The columns of the public PostgreSQL view of `table`, without the surrogate keys."""
-        hidden = self.hidden | INTERNAL_COLUMNS.get(table.name, frozenset())
-        kept = (column for column in table.columns if column.name not in hidden)
-        return tuple(kept)
-
-    def _definition(
-        self, table: GoldTable, columns: Sequence[ColumnDefinition], query: str
-    ) -> ViewDefinition:
+    def definition(self, view: PublicView) -> ViewDefinition:
+        table = self.tables[view.name]
+        columns = public_columns(table, view.hidden)
         return ViewDefinition(
             comment=table.view_description,
             columns={column.name: column for column in columns},
-            query=query,
+            query=view_query(view, self.tables, self.internal),
         )
-
-    def seeded(self, name: str) -> ViewDefinition:
-        table = self.tables[name]
-        return self._definition(table, table.columns, _render(name))
-
-    def dimension(self, dimension: Scd2Dimension) -> ViewDefinition:
-        columns = self.public_columns(dimension.table)
-        sources = dict(dimension.silver_columns) | {dimension.surrogate_key: COMMIT_SEQUENCE}
-        selected = [
-            column.name
-            if column.name in DIMENSION_RANGE_COLUMNS
-            else _selected(sources[column.name], column.name)
-            for column in columns
-        ]
-        query = _render("dimension", columns=selected, history=self._silver_history(dimension))
-        return self._definition(dimension.table, columns, query)
-
-    def _key_joins(self, fact: ChangeFact, names: set[str]) -> tuple[list[KeyJoin], dict[str, str]]:
-        joins: list[KeyJoin] = []
-        expressions: dict[str, str] = {}
-        for lookup in (lookup for lookup in fact.lookups if lookup.column in names):
-            join = KeyJoin(
-                alias=f"{lookup.column}_lookup",
-                relation=self.view(lookup.dimension.name),
-                code=lookup.code,
-                source=fact.silver_columns[lookup.source],
-            )
-            joins.append(join)
-            expressions[lookup.column] = self._key_expression(join, lookup)
-        return joins, expressions
-
-    @staticmethod
-    def _key_expression(join: KeyJoin, lookup: KeyLookup) -> str:
-        matched = f"{join.alias}.{lookup.key}"
-        if lookup.fallback is None:
-            return f"{matched} AS {lookup.column}"
-        fallback = (
-            f"(SELECT {lookup.key} FROM {join.relation}"
-            f" WHERE {lookup.code} = {sql_string(lookup.fallback)})"
-        )
-        return f"coalesce({matched}, {fallback}) AS {lookup.column}"
-
-    def _as_of_joins(
-        self, fact: ChangeFact, names: set[str]
-    ) -> tuple[list[AsOfJoin], dict[str, str]]:
-        joins: list[AsOfJoin] = []
-        expressions: dict[str, str] = {}
-        lookup = POINT_IN_TIME.get(fact.name)
-        if lookup is None or not set(lookup.fact_columns) & names:
-            return joins, expressions
-        join = self._as_of_join(fact, lookup)
-        joins.append(join)
-        expressions |= {column: f"{join.name}.{column}" for column, _ in join.columns}
-        if lookup.amount is not None:
-            column, factor, price = lookup.amount
-            expressions[column] = (
-                f"CAST(CAST({join.name}.{price} AS DECIMAL(27, 10))"
-                f" * change.{fact.silver_columns[factor]} AS DECIMAL(38, 10)) AS {column}"
-            )
-        return joins, expressions
-
-    def _as_of_join(self, fact: ChangeFact, lookup: PointInTime) -> AsOfJoin:
-        dimension = self.dimensions_by_name[lookup.dimension]
-        sources = dict(dimension.silver_columns) | {dimension.surrogate_key: COMMIT_SEQUENCE}
-        columns = tuple(
-            (fact_column, sources[column])
-            for fact_column, column in lookup.columns
-            if fact_column not in self.hidden
-        )
-        return AsOfJoin(
-            name=f"{dimension.name}_at_change",
-            versions=self._silver_history(dimension),
-            dimension_key=sources[dimension.key],
-            business_key=fact.silver_columns[lookup.business_key],
-            columns=columns,
-        )
-
-    def _fact(
-        self,
-        fact: ChangeFact,
-        table: GoldTable,
-        columns: Sequence[ColumnDefinition],
-        *,
-        latest: bool,
-    ) -> ViewDefinition:
-        names = {column.name for column in columns}
-        key_joins, expressions = self._key_joins(fact, names)
-        as_of_joins, looked_up = self._as_of_joins(fact, names)
-        expressions |= looked_up
-        expressions[MetadataColumn.VALID_TO] = f"change.{MetadataColumn.VALID_TO}"
-        expressions[MetadataColumn.IS_CURRENT] = (
-            f"change.{MetadataColumn.IS_CURRENT} AND NOT change.{FactColumn.IS_DELETED}"
-            f" AS {MetadataColumn.IS_CURRENT}"
-        )
-        sources = fact.silver_columns
-        selected = [
-            expressions.get(column.name) or f"change.{_selected(sources[column.name], column.name)}"
-            for column in columns
-        ]
-        query = _render(
-            "fact",
-            latest=latest,
-            source=self._silver(fact.entity.name) if latest else self._silver_history(fact),
-            key=sources[fact.key],
-            columns=selected,
-            key_joins=key_joins,
-            as_of_joins=as_of_joins,
-        )
-        return self._definition(table, columns, query)
-
-    def history(self, fact: ChangeFact) -> ViewDefinition:
-        table = self.tables[fact.history.name]
-        return self._fact(fact, table, self.public_columns(table), latest=False)
-
-    def current(self, fact: ChangeFact) -> ViewDefinition:
-        return self._fact(fact, fact.current, self.public_columns(fact.current), latest=True)
-
-    def derived(self, name: str) -> ViewDefinition:
-        table = self.tables[name]
-        columns = [column.name for column in table.columns]
-        views = {relation: self.view(relation) for relation in self.tables}
-        return self._definition(table, table.columns, _render(name, views=views, columns=columns))
-
-    def freshness(self) -> ViewDefinition:
-        table = self.tables[FRESHNESS]
-        loads = [*self.dimensions, *self.facts]
-        sources = [(load.entity.name, self._silver(load.entity.name)) for load in loads]
-        return self._definition(table, table.columns, _render(FRESHNESS, sources=sources))
 
     def definitions(self) -> Mapping[str, ViewDefinition]:
-        """Every view by name, each after the views it reads."""
-        views = {self.view(name): self.seeded(name) for name in SEEDED}
-        views |= {self.view(d.name): self.dimension(d) for d in self.dimensions}
-        views |= {self.view(fact.history.name): self.history(fact) for fact in self.facts}
-        views |= {self.view(fact.current.name): self.current(fact) for fact in self.facts}
-        views |= {self.view(name): self.derived(name) for name in (OPEN_ORDERS, *BUSINESS_VIEWS)}
-        views[self.view(FRESHNESS)] = self.freshness()
-        return views
+        """Every view by name."""
+        return {self.view(view.name): self.definition(view) for view in self.public}
 
 
 def refresh_gold_views(spark: SparkSession, views: GoldLakeViews) -> list[str]:
     """Create or replace the gold views whose query or descriptions changed; returns the
-    statements that ran."""
+    statements that ran. Spark resolves a view's query when it is created, so the gold tables
+    must exist first."""
+    missing = [table for table in views.sources() if not spark.catalog.tableExists(table)]
+    if missing:
+        raise MissingGoldTablesError(missing)
     spark.sql(f"CREATE NAMESPACE IF NOT EXISTS {views.namespace}")
     statements = []
     for view, definition in views.definitions().items():
@@ -295,3 +79,9 @@ def refresh_gold_views(spark: SparkSession, views: GoldLakeViews) -> list[str]:
         if statement is not None:
             statements.append(statement)
     return statements
+
+
+def drop_gold_views(spark: SparkSession, views: GoldLakeViews) -> None:
+    """Drop every gold view that exists."""
+    for view in views.definitions():
+        spark.sql(f"DROP VIEW IF EXISTS {view}")

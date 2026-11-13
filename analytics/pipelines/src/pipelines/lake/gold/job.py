@@ -20,6 +20,7 @@ from pipelines.lake.gold.scd2 import Scd2Dimension
 from pipelines.lake.gold.serving import PostgresServing
 from pipelines.lake.gold.sink import BatchWriter, GoldLoad, GoldSink, jdbc_stage, staged_rows
 from pipelines.lake.gold.stored import StoredTable
+from pipelines.lake.gold.views.views import GoldLakeViews, refresh_gold_views
 from pipelines.lake.gold.writer import GoldWriter
 from pipelines.lake.shared.streams import await_queries, wants_available_now
 from pipelines.settings import GoldSettings
@@ -170,6 +171,7 @@ def main(argv: Sequence[str]) -> None:
     try:
         writer, lake = gold_writer(spark, settings)
         prepare(spark, writer, lake)
+        refresh_gold_views(spark, GoldLakeViews(settings.lake))
         queries = run(spark, settings, writer_sinks(writer), available_now=available_now)
         await_queries(spark.streams, queries, available_now=available_now)
     finally:

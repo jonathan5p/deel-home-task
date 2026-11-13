@@ -17,7 +17,10 @@ def maintained(stack: Stack) -> MaintenanceRun:
 def test_maintenance_succeeds_and_reports_the_table(maintained: MaintenanceRun) -> None:
     assert maintained.returncode == 0, maintained.output
     table = TABLE.removeprefix("lake.")
-    assert f"{table}: rewrote {COMMITS} data files into 1" in maintained.output
+    assert (
+        f"{table}: rewrote {COMMITS} data files into 1, 0 position delete files into 0"
+        in maintained.output
+    )
 
 
 def test_compaction_leaves_one_data_file_with_the_same_rows(maintained: MaintenanceRun) -> None:

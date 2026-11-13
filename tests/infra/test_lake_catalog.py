@@ -18,7 +18,7 @@ from tests.infra.stack import Stack
 def test_the_rest_catalog_lists_the_namespaces_of_the_catalog_database(
     lake_catalog: LakeCatalog,
 ) -> None:
-    assert {"bronze", "silver", "gold"} <= lake_catalog.rest_namespaces
+    assert {"bronze", "silver"} <= lake_catalog.rest_namespaces
     assert lake_catalog.rest_namespaces == lake_catalog.catalog_namespaces
 
 

@@ -1,4 +1,0 @@
-SELECT
-    {{ columns | join(",\n    ") }}
-FROM {{ history }}
-WHERE NOT _is_deleted

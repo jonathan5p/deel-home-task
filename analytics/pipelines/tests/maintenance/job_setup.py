@@ -121,6 +121,8 @@ class FakeSql:
             raise RuntimeError("table metadata is unreadable")
         if ".rewrite_data_files(" in statement:
             return [Row(rewritten_data_files_count=6, added_data_files_count=1)]
+        if ".rewrite_position_delete_files(" in statement:
+            return [Row(rewritten_delete_files_count=3, added_delete_files_count=1)]
         if ".expire_snapshots(" in statement:
             return [Row(deleted_manifest_lists_count=4)]
         return [Row(orphan_file_location="s3://lake/warehouse/stray.parquet")]
@@ -143,7 +145,7 @@ def stale_silver_views(spark: SparkSession, catalog: str, lake_root: str) -> Sil
 
 
 def stale_gold_view(spark: SparkSession, folder: Path) -> tuple[GoldLake, str]:
-    """A lake with its silver and gold views, one gold view carrying a stale description."""
+    """The gold tables with their views, one view carrying a stale description."""
     gold = GoldLake.create(spark, folder, register_view_catalog(spark, folder))
     gold.refresh()
     view = gold.view("open_orders")

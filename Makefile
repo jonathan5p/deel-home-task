@@ -83,7 +83,7 @@ help:
 		'latency-probe  Mark one source row per entity and time its change into landing, bronze, silver and PostgreSQL gold: ENTITIES (default all), PROBES (default 5),' \
 		'               POLL_SECONDS (1), TIMEOUT_SECONDS per probe (300), MAX_LATENCY (e.g. gold=60,silver=40), KEYS (e.g. customers=7; default the lowest key);' \
 		'               writes a JSON and an HTML report under <LAKE_ROOT>/latency/reports/; fails on a timeout or a threshold exceeded; needs the pipeline and the catalog profile.' \
-		'lake-maintenance  Compact the bronze and silver Iceberg tables, expire old snapshots and remove orphan files; fails if any table fails.' \
+		'lake-maintenance  Compact the bronze, silver and gold_internal Iceberg tables and their position delete files, expire old snapshots and remove orphan files; fails if any table fails.' \
 		'pipeline       Start the stack, the History Server and the PIPELINE job (landing, bronze, silver, gold or all) as a long-running service.' \
 		'               silver and all also run lake-views once the silver tables exist.' \
 		'pipeline-logs  Follow the logs of the PIPELINE job (landing, bronze, silver, gold or all).' \
@@ -91,7 +91,7 @@ help:
 		'cdc-pause      Pause the Debezium connector: no new source changes reach Kafka; the stack and the pipeline keep running.' \
 		'cdc-resume     Resume the Debezium connector from where it paused, without losing changes.' \
 		'cdc-status     Show the state of the Debezium connector and its task.' \
-		'lake-views     Create the silver and gold views, or replace those whose query or descriptions changed; fails while a silver table is missing.' \
+		'lake-views     Create the silver and gold views, or replace those whose query or descriptions changed; fails while a silver table is missing; skips the gold views until the gold job has created its tables.' \
 		'test           Run the unit tests with coverage (fails below 90%), in PYTEST_WORKERS parallel workers (default 4): pipelines, common and the Grafana dashboard checks in the app image, the API and common in the API dev image.' \
 		'lint           Check linting and formatting with ruff in the app container.' \
 		'format         Format the code and apply safe lint fixes with ruff.' \

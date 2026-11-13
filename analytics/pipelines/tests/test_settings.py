@@ -249,11 +249,11 @@ def test_gold_tables_are_named_in_gold_internal_as_in_postgres_and_views_in_gold
 MAINTENANCE = {"ICEBERG_CATALOG": "catalog", "LAKE_ROOT": "s3a://lake"}
 
 
-def test_maintenance_defaults_cover_bronze_and_silver_with_a_week_of_snapshots() -> None:
+def test_maintenance_defaults_cover_the_lake_tables_with_a_week_of_snapshots() -> None:
     settings = MaintenanceSettings.from_env(MAINTENANCE)
 
     assert settings.catalog == "catalog"
-    assert settings.namespaces == ("bronze", "silver")
+    assert settings.namespaces == ("bronze", "silver", "gold_internal")
     assert settings.snapshot_retention_hours == 168
     assert settings.retain_last == 10
     assert settings.orphan_age_hours == 72
