@@ -1,6 +1,6 @@
 # End-to-end latency
 
-`make latency-probe` measures how long a change committed in the source PostgreSQL takes to become visible in landing, bronze, silver and PostgreSQL gold, per entity, against the running pipeline. It makes one traceable change per entity, polls every layer until each one holds it, and reports the latency from the source commit to each layer, the time each hop took, and percentiles over several probes. Like the [data quality checks](../lakehouse/data-quality.md), it runs on demand against the shared stack, never inside `make test-infra`.
+`make latency-probe` measures how long a source commit takes to reach landing, bronze, silver and PostgreSQL gold, per entity, on the running pipeline. It makes one traceable change per entity, polls every layer until it holds the change, and reports the latency per layer, the time per hop and percentiles over several probes.
 
 ```sh
 make up PROFILES=catalog && make pipeline PIPELINE=all   # the probe needs the four jobs and the REST catalog
@@ -18,18 +18,13 @@ make latency-probe MAX_LATENCY=gold=60,silver=40         # fail when a probe is 
 | `MAX_LATENCY` | none | Limits in seconds per layer, as `<layer>=<seconds>` pairs, such as `gold=60,silver=40` |
 | `KEYS` | the lowest key | The row each entity's probes mark, as `<entity>=<key>` pairs, such as `customers=7` |
 
-The target first checks that the four pipeline jobs and `iceberg-rest` are running; if one is not, it names it, prints how to start the stack (`make up PROFILES=catalog && make pipeline PIPELINE=all`) and exits 2 without starting anything. The probe itself is plain Python in the `spark-app` image (`python -m pipelines.latency.job`), not a Spark application: it reads every layer with DuckDB, so it takes no cores from the cluster. The target passes the probe's own variables from `.env` (the REST catalog and S3 settings and the source database login, see [configuration](configuration.md)) to the probe's container only, so the pipeline jobs and the other drivers never get the source database login. The DuckDB extensions it loads (`httpfs`, `avro`, `iceberg` and `postgres`) are installed in the `spark-app` image when it is built, for the DuckDB version in `uv.lock`, so the probe never downloads one; if one is missing it stops with exit code 2 and says to rebuild the image.
+The target first checks that the four jobs and `iceberg-rest` run, and exits 2 naming what is missing. The probe is plain Python that reads every layer with DuckDB, so it takes no cluster cores. Only the probe's container gets the source database login.
 
 ## What it changes in the source
 
-Each probe runs one transaction in the source database that sets `updated_by` on one existing row of each probed entity to a marker unique to that probe: the negative epoch milliseconds of the probe's start, such as `-1794426435487`. The source's own scheduled jobs write `-1`, so a probe's change is easy to tell apart, and the row is the lowest key of each table unless `KEYS` names another. Every entity of a probe shares that one commit, so their latencies start from the same moment.
+Each probe runs one source transaction that sets `updated_by` on one row of each entity (the lowest key unless `KEYS` says otherwise) to a marker unique to the probe, the negative epoch milliseconds of its start. The source's own jobs write `-1`, so the marker is easy to tell apart.
 
-`updated_by` is an audit column, and the content hash that bronze computes leaves the key and the audit columns out, so the change carries the same `_content_hash` as the version before it:
-
-- **Lake:** bronze and silver append the change like any other (one row per probed entity and probe), and the silver `_history` and `_current` views fold it into the version it repeats.
-- **Gold:** the dimensions and history facts store it in `lake.gold_internal` and in PostgreSQL's `gold_internal` as a folded version (one row per probed entity and probe, so about four per probe), which the public views in `gold` and `lake.gold` leave out; the point-in-time fact views skip folded dimension versions too. No business metric, dimension version or fact row of the public views changes.
-
-The probe writes to the source database, so run it on local stacks only.
+`updated_by` is an audit column, left out of the content hash, so the change is a folded version: bronze and silver append it, gold stores it folded, and no public view or business metric changes. The probe writes to the source, so run it on local stacks only.
 
 ## How it measures
 
@@ -40,26 +35,26 @@ The probe writes to the source database, so run it on local stacks only.
 | Silver | `lake.silver.<entity>` holds them | the Iceberg REST catalog, filtered on the `_changed_at` partition |
 | Gold | the entity's `gold_internal` dimension or history fact holds them | a query run in the analytics database (`postgres_query`), as the gold owner |
 
-Landing identifies the change by its topic, key and marker, and gives its `_commit_sequence` (Debezium `source.lsn`), the source commit time (`source.ts_ms`), the time Debezium read it (envelope `ts_ms`) and the Kafka record timestamp. The later layers are matched on the key and `_commit_sequence`. Gold counts as visible once `gold_internal` holds the version, whether folded or not, because that is when the gold job has copied it. The lake gold views are not polled: they read the gold Iceberg tables, which the gold job commits just before it copies the same batch into PostgreSQL, so they are as fresh as the gold Iceberg tables and never behind PostgreSQL gold.
+Landing finds the change by topic, key and marker; later layers by key and `_commit_sequence`. The lake gold views are not polled: Iceberg commits before the PostgreSQL copy, so they are never behind PostgreSQL gold.
 
-- **Latency** of a layer is the time from the source commit (`source.ts_ms`) to the first poll that saw the change there. A poll's time is when it started, so a latency is at most one `POLL_SECONDS` plus one lookup above the exact moment.
+- **Latency** of a layer: from the source commit (`source.ts_ms`) to the first poll that saw the change, so at most one `POLL_SECONDS` above the exact moment.
 - **Hops** split the latency to gold: `commit_to_debezium` (envelope `ts_ms` minus `source.ts_ms`), `debezium_to_kafka` (the Kafka timestamp minus `ts_ms`), `kafka_to_landing`, `landing_to_bronze`, `bronze_to_silver` and `silver_to_gold` (each from one layer's first sighting to the next one's).
 - **Percentiles** (min, p50, p90, p95, max) are per entity and layer, nearest rank over the probes that reached the layer.
-- **Probes** run one after another, each after a random wait of up to the longest trigger interval, so they land at different points of the jobs' cycles. Polls check the layers from gold back to landing, so a poll never sees a later layer before an earlier one.
+- **Probes** run one after another, each after a random wait of up to the longest trigger, so they land at different points of the jobs' cycles.
 
 ## Reading the numbers against the trigger intervals
 
-Every job runs a micro-batch every `*_TRIGGER_SECONDS` (10 by default; `.env` sets 10 for landing, 2 for bronze and silver and 5 for gold, see [configuration](configuration.md)), and Spark starts those batches on multiples of the interval, so jobs with the same interval start their batches at the same moments. A change therefore:
+Each job starts a batch every `*_TRIGGER_SECONDS` (landing 10, bronze and silver 2, gold 5 in `.env`; [configuration](configuration.md)). A change:
 
-1. reaches Kafka within about a second of its commit (`commit_to_debezium` plus `debezium_to_kafka`);
-2. waits in Kafka for landing's next batch, anywhere between 0 and `LANDING_TRIGGER_SECONDS`, then for that batch to finish (`kafka_to_landing`);
-3. waits for the next batch of each later job. When two jobs share an interval, that is about one full interval, because the next job started its batch at the same moment as the job before it, before that batch committed the change, and picks it up one interval later, plus the difference between the two batches' durations. A shorter downstream interval cuts that wait to between 0 and the downstream job's own interval, plus its batch duration.
+1. reaches Kafka within about a second of its commit;
+2. waits 0 to 10 seconds for landing's next batch, plus the batch itself;
+3. waits for the next batch of each later job: between 0 and that job's own interval, plus its batch. With equal intervals the wait is a full interval, because both jobs start on the same boundaries.
 
-With the `.env` triggers, expect landing between about 1 and 12 seconds after the commit, then about 1 to 2 seconds more for bronze, about 2 for silver and 2 to 4 for gold, so gold about 5 to 8 seconds after landing, plus gold's own batch. Each of gold's four streams runs on its own, so a change waits only for the batches of its own entity's stream, but those batches run Spark compute, Iceberg merges and the PostgreSQL copy, and can take longer than the 5-second trigger ([sizing](../architecture/sizing.md#gold)). With the four independent Spark streams: 13 s at the median and 16 s at p95 for customers and products, and 16 s at the median and 19–20 s at p95 for orders and order items (`make latency-probe PROBES=5` on 2026-11-13, report `20261113T054301Z`). With 10-second triggers everywhere, each of bronze, silver and gold adds about 10 seconds, so gold lands about 30 seconds after landing ([sizing](../architecture/sizing.md#measured-on-the-real-load) has both runs). The [latest latency results](latency-results.md) show what the last committed run measured. With different intervals, a hop waits for the next batch of the downstream job instead, anywhere between 0 and its interval. A hop well above its job's interval means a batch took longer than the interval (Spark then starts the next one late), or the job was stopped or restarting.
+So expect landing 1–12 s after the commit and gold about 5–8 s after landing, plus gold's own batch, which can outlast its 5-second trigger ([sizing](../architecture/sizing.md#gold)). Measured on 2026-11-13: gold 13 s at p50 and 16 s at p95 for customers and products, 16 s and 19–20 s for orders and order items. With 10-second triggers everywhere, gold was about 39 s after the commit ([sizing](../architecture/sizing.md#measured-on-the-real-load)). A hop well above its interval means a batch outlasted the interval, or the job was restarting.
 
 ## Output and exit codes
 
-The probe prints one line per probe with each entity's latency per layer, then a table of the percentiles per entity and layer, the median of each hop, one `TIMEOUT` line per probe that never reached gold (with the last layer it reached) and one `THRESHOLD` line per probe slower than a limit. The last line is a `LATENCY` summary, like the `DATA QUALITY` one: whether the run passed, the number of probes, timeouts and exceeded limits, the p95 per entity and layer, and the paths of the reports.
+The probe prints one line per probe, a percentile table, the hop medians, a `TIMEOUT` or `THRESHOLD` line per failing probe, and a final `LATENCY` summary with the report paths.
 
 | Exit code | When |
 | --- | --- |
@@ -67,24 +62,19 @@ The probe prints one line per probe with each entity's latency per layer, then a
 | 1 | a probe timed out, or a probe was slower than a limit |
 | 2 | the probe could not run: a missing setting, option or DuckDB extension, a job or the catalog not running, an empty source table, or a read that failed |
 
-These are the exit codes of the probe itself (`python -m pipelines.latency.job`). `make` exits 2 whenever a recipe fails, so through `make latency-probe` tell them apart by its `Error 1` or `Error 2` message.
+Through `make`, which always exits 2 on failure, tell them apart by its `Error 1` or `Error 2` message.
 
 ## Reports
 
-Every run writes two files to the lake's object storage, named after the run's start in UTC, like the data quality reports:
-
-- `<LAKE_ROOT>/latency/reports/<UTC>.json`: the run's settings (entities, probes, poll interval, timeout, each job's trigger interval, limits, the probed keys), its summary (pass or fail, timeouts, exceeded limits, the percentiles of every layer and hop) and every probe's change with when each layer saw it.
-- `<LAKE_ROOT>/latency/reports/<UTC>.html`: the same as a static page: the summary and settings, the percentile table with each limit's status, a chart of the median latency per entity and layer, the hop breakdown and one row per probe. It has no scripts or external assets.
-
-Each run also rebuilds `<LAKE_ROOT>/latency/reports/index.html`, the list of every run, newest first, with its status and links to both files. SeaweedFS serves the lake bucket over HTTP, with HTML as `text/html`, so the reports open in a browser at <http://localhost:8888/buckets/lake/latency/reports/index.html>, and `curl http://localhost:8888/buckets/lake/latency/reports/` lists the files.
+Every run writes `<LAKE_ROOT>/latency/reports/<UTC>.json` and a static `<UTC>.html` page, and rebuilds `index.html`, the list of runs. Open it at <http://localhost:8888/buckets/lake/latency/reports/index.html>.
 
 ## Latest results
 
-The [latest latency results](latency-results.md) page shows one run of the probe, stamped with when it ran and the name of its report: the summary and settings, p50 and p95 per entity and layer, the hop medians and every probe. It is rendered on every docs build from the report committed under `docs/results/latency/` (`latest.json`, with the run's [HTML page](../results/latency/latest.html) next to it), not from the lake, so the published site shows it too.
+The [latest latency results](latency-results.md) page shows one run, rendered on every docs build from `docs/results/latency/latest.json` (with its [HTML page](../results/latency/latest.html)).
 
 ```sh
 make latency-probe     # on the running pipeline: writes a new report to the lake
 make docs-results      # copy the newest reports from the lake into docs/results/, then commit them
 ```
 
-`make docs-results` reads the lake through the SeaweedFS filer on <http://localhost:8888> (override with `LAKE_FILER_URL`), so only `seaweedfs` needs to be running. It copies the newest run that passed; when newer runs did not pass, the page names them and says why. When no run passed, it copies the newest one and the page says it did not pass. `RESULTS=latency` copies only the latency report. It exits 2 when `seaweedfs` is not running or the filer cannot be reached, and 1 when a kind of report is missing from the lake, after copying the others. Only the latest report is kept in the repository; the lake keeps every run.
+`make docs-results` reads the lake through the SeaweedFS filer (`LAKE_FILER_URL`, default <http://localhost:8888>). It copies the newest run that passed, and the page names any newer failed runs; `RESULTS=latency` copies only this report. It exits 2 when the filer cannot be reached and 1 when a report is missing.
