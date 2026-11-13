@@ -5,7 +5,7 @@ from typing import cast
 
 from pyspark.sql import DataFrame, SparkSession
 
-from analytics.pipelines.tests.lake.gold.batch_setup import MemoryGold
+from analytics.pipelines.tests.lake.gold.batch_setup import MemoryGold, batches
 from analytics.pipelines.tests.lake.gold.model.model_samples import (
     CUSTOMERS,
     ITEMS,
@@ -17,11 +17,12 @@ from analytics.pipelines.tests.lake.gold.model.model_samples import (
     product,
     staged,
 )
-from pipelines.lake.gold.batch import GoldBatches
-from pipelines.lake.gold.dimensions import DIMENSIONS, FACTS, STORED
-from pipelines.lake.gold.quality import GoldCheck, GoldReaders
+from pipelines.lake.gold.dimensions import STORED
+from pipelines.lake.gold.public import PUBLIC_SCHEMA, PUBLIC_VIEWS, view_query
+from pipelines.lake.gold.quality import REPORTS, GoldCheck, GoldReaders
 from pipelines.lake.gold.serving import SYNC_STATE
 from pipelines.quality.checks import CheckResult
+from pipelines.schemas.gold_definitions import load_gold_tables
 from pipelines.settings import GoldSettings
 
 SNAPSHOT = 7
@@ -36,7 +37,9 @@ SETTINGS = GoldSettings.from_env(
         "ANALYTICS_DB_PASSWORD": "password",
     }
 )
-BATCHES = GoldBatches(STORED, DIMENSIONS, FACTS)
+GLOBAL_TEMP = "global_temp"
+
+TABLES = load_gold_tables()
 
 type Synced = dict[str, int | None]
 type GoldTables = Mapping[str, DataFrame]
@@ -46,6 +49,7 @@ def consistent_gold(spark: SparkSession) -> dict[str, DataFrame]:
     """Every stored gold table as the gold job writes them for two customers, one with two
     versions, a product, three orders, one of them closed, and two items."""
     gold = MemoryGold(spark)
+    batch_of = batches(spark)
     loads = (
         (CUSTOMERS, [customer(1, 10, "Ada"), customer(1, 20, "Bo"), customer(2, 15, "Cy")]),
         (PRODUCTS, [product(1, 11, "1.50")]),
@@ -61,8 +65,23 @@ def consistent_gold(spark: SparkSession) -> dict[str, DataFrame]:
         (ITEMS, [item(80, 33, order_id=70), item(81, 34, order_id=71, quantity=5)]),
     )
     for load, rows in loads:
-        gold.apply(BATCHES.writes(load.name, staged(spark, load, rows), gold.read))
+        batch = batch_of.staged(load.name, staged(spark, load, rows))
+        gold.apply(batch_of.writes(load.name, batch, gold.read))
     return {name: rows.localCheckpoint() for name, rows in gold.tables.items()}
+
+
+def answers(spark: SparkSession, tables: GoldTables) -> dict[str, DataFrame]:
+    """PostgreSQL's answer to each business-question view over `tables`, by public view: the
+    view's query run over the tables as global temporary views."""
+    for name, rows in tables.items():
+        rows.createOrReplaceGlobalTempView(name)
+    views = {view.name: view for view in PUBLIC_VIEWS}
+    return {
+        f"{PUBLIC_SCHEMA}.{name}": spark.sql(
+            view_query(views[name], TABLES, GLOBAL_TEMP)
+        ).localCheckpoint()
+        for name in REPORTS
+    }
 
 
 @dataclass
@@ -79,10 +98,11 @@ class FakeGold:
 
     @classmethod
     def mirrored(cls, spark: SparkSession, tables: GoldTables) -> FakeGold:
+        copies = {STORED[name].relation: rows for name, rows in tables.items()}
         return cls(
             spark=spark,
             lake={name: {SNAPSHOT: rows} for name, rows in tables.items()},
-            postgres={STORED[name].relation: rows for name, rows in tables.items()},
+            postgres=copies | answers(spark, tables),
             sync_states=[dict.fromkeys(tables, SNAPSHOT)],
         )
 

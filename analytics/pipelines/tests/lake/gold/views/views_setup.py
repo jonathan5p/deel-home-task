@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from pyspark.sql import SparkSession
@@ -10,6 +10,7 @@ from pipelines.lake.gold.views.views import GoldLakeViews, refresh_gold_views
 from pipelines.settings import LakeSettings
 
 FIRST_CHANGE = datetime(2026, 11, 1, 10, 0)
+DELIVERY_DAY = date(2026, 11, 5)
 
 type GoldRow = dict[str, object]
 
@@ -42,6 +43,7 @@ def current_order(
         "status_key": status_key,
         "is_open": is_open,
         "customer_id": 1,
+        "delivery_date": DELIVERY_DAY,
         "_commit_sequence": sequence,
         "_changed_at": at(sequence),
         "_is_deleted": deleted,

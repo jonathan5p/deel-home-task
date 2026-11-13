@@ -9,8 +9,8 @@ from pyspark.sql.types import StructField, StructType
 
 from common.settings import AnalyticsDbSettings
 from pipelines.lake.gold import job, rebuild
-from pipelines.lake.gold.ddl import FRESHNESS
 from pipelines.lake.gold.dimensions import DIMENSIONS, FACTS
+from pipelines.lake.gold.public import FRESHNESS
 from pipelines.lake.gold.sink import jdbc_options
 from pipelines.lake.gold.views.views import GoldLakeViews, refresh_gold_views
 from pipelines.lake.shared.tables import table_definition

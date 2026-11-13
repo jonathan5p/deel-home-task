@@ -401,10 +401,12 @@ TABLE_STATS = {
 }
 
 
-def test_table_stats_cover_bronze_and_silver_with_a_32_mib_threshold_by_default() -> None:
+def test_table_stats_cover_bronze_silver_and_gold_internal_with_a_32_mib_threshold_by_default() -> (
+    None
+):
     settings = TableStatsSettings.from_env(TABLE_STATS)
 
-    assert settings.namespaces == ("bronze", "silver")
+    assert settings.namespaces == ("bronze", "silver", "gold_internal")
     assert settings.small_file_bytes == 32 * 1024 * 1024
     assert settings.table_interval_seconds == 300
     assert settings.partition_interval_seconds == 3600

@@ -20,9 +20,10 @@ from analytics.pipelines.tests.lake.gold.quality_setup import (
 from pipelines.lake.gold.dimensions import STORED
 from pipelines.lake.gold.quality import (
     COPY_MATCHES_ICEBERG,
+    KNOWN_BUSINESS_KEYS,
     NO_OVERLAPPING_RANGES,
     ONE_CURRENT_VERSION,
-    REPORTS_MATCH_RECOUNT,
+    REPORTS_MATCH_LAKE,
     RESOLVED_LOOKUPS,
     compare,
     plain,
@@ -37,7 +38,8 @@ CHECKED = {
     ONE_CURRENT_VERSION.name: 6,
     NO_OVERLAPPING_RANGES.name: 4,
     RESOLVED_LOOKUPS.name: 4,
-    REPORTS_MATCH_RECOUNT.name: 5,
+    KNOWN_BUSINESS_KEYS.name: 2,
+    REPORTS_MATCH_LAKE.name: 4,
 }
 
 
@@ -127,10 +129,10 @@ def test_a_table_never_copied_is_not_checked_nor_the_invariants_that_read_it(
     assert not copy.passed
     assert copy.metrics == dict.fromkeys(copy.metrics)
     assert "records no copy" in str(copy.details["not_checked"])
-    lookups = by_check(results, RESOLVED_LOOKUPS.name)["fact_order_item_history"]
-    assert not lookups.passed
-    assert lookups.details == {"not_checked": "no readable copied snapshot of dim_product"}
-    assert by_check(results, RESOLVED_LOOKUPS.name)["fact_order_history"].passed
+    keys = by_check(results, KNOWN_BUSINESS_KEYS.name)["fact_order_item_history"]
+    assert not keys.passed
+    assert keys.details == {"not_checked": "no readable copied snapshot of dim_product"}
+    assert by_check(results, KNOWN_BUSINESS_KEYS.name)["fact_order_history"].passed
 
 
 def test_a_copy_of_a_snapshot_iceberg_no_longer_has_fails(
@@ -151,11 +153,11 @@ def test_a_table_copied_without_a_snapshot_is_compared_with_an_empty_table(
     spark: SparkSession, gold_tables: GoldTables
 ) -> None:
     gold = FakeGold.mirrored(spark, gold_tables)
-    relation = STORED["top_customers_by_pending_orders"].relation
+    relation = STORED["current_order_items"].relation
     gold.postgres[relation] = gold.postgres[relation].limit(0)
-    gold.sync_states = [dict.fromkeys(STORED, SNAPSHOT) | {"top_customers_by_pending_orders": None}]
+    gold.sync_states = [dict.fromkeys(STORED, SNAPSHOT) | {"current_order_items": None}]
 
-    result = by_check(gold.results(), COPY)["top_customers_by_pending_orders"]
+    result = by_check(gold.results(), COPY)["current_order_items"]
 
     assert result.passed
     assert result.details["snapshot_id"] is None
@@ -249,34 +251,74 @@ def test_a_status_key_no_status_has_fails_and_a_null_date_key_does_not(
     assert samples(result, "violating") == ({"order_id": 71, "_commit_sequence": 31},)
 
 
-def test_an_item_naming_another_product_version_than_the_model_resolves_fails(
+def test_an_order_of_a_customer_the_dimension_lacks_fails(
     spark: SparkSession, gold_tables: GoldTables
 ) -> None:
     gold = FakeGold.mirrored(spark, gold_tables)
 
-    def other_version(rows: DataFrame) -> DataFrame:
-        key = F.when(F.col("order_item_id") == 80, F.lit(12345)).otherwise(F.col("product_key"))
-        return rows.withColumn("product_key", key.cast("long"))
+    def unknown_customer(rows: DataFrame) -> DataFrame:
+        changed = F.col("_commit_sequence") == 30
+        customer = F.when(changed, F.lit(99)).otherwise(F.col("customer_id"))
+        changed_at = F.when(changed, F.lit(at(5))).otherwise(F.col("_changed_at"))
+        return rows.withColumn("customer_id", customer.cast("long")).withColumn(
+            "_changed_at", changed_at
+        )
 
-    gold.change("fact_order_item_history", other_version)
+    gold.change("fact_order_history", unknown_customer)
 
-    result = by_check(gold.results(), RESOLVED_LOOKUPS.name)["fact_order_item_history"]
+    result = by_check(gold.results(), KNOWN_BUSINESS_KEYS.name)["fact_order_history"]
 
     assert not result.passed
-    assert samples(result, "violating") == ({"order_item_id": 80, "_commit_sequence": 33},)
-
-
-def test_a_report_total_that_differs_from_the_recount_fails_with_both_rows(
-    spark: SparkSession, gold_tables: GoldTables
-) -> None:
-    gold = FakeGold.mirrored(spark, gold_tables)
-    gold.change(
-        "pending_items_by_product",
-        lambda rows: rows.withColumn("pending_quantity", F.col("pending_quantity") + 1),
+    assert samples(result, "violating") == (
+        {"order_id": 70, "_commit_sequence": 30, "customer_id": 99},
     )
 
-    result = by_check(gold.results(), REPORTS_MATCH_RECOUNT.name)["pending_items_by_product"]
+
+def test_a_change_committed_after_the_newest_dimension_version_is_not_checked_yet(
+    spark: SparkSession, gold_tables: GoldTables
+) -> None:
+    gold = FakeGold.mirrored(spark, gold_tables)
+
+    def later_unknown_customer(rows: DataFrame) -> DataFrame:
+        later = F.col("_commit_sequence") == 40
+        return rows.withColumn(
+            "customer_id", F.when(later, F.lit(99)).otherwise(F.col("customer_id")).cast("long")
+        ).withColumn("_changed_at", F.when(later, F.lit(at(500))).otherwise(F.col("_changed_at")))
+
+    gold.change("fact_order_history", later_unknown_customer)
+
+    result = by_check(gold.results(), KNOWN_BUSINESS_KEYS.name)["fact_order_history"]
+
+    assert result.passed
+    assert result.metrics == {"rows": 4, "violations": 0}
+
+
+def test_a_report_answer_that_differs_from_the_lake_fails_with_both_rows(
+    spark: SparkSession, gold_tables: GoldTables
+) -> None:
+    gold = FakeGold.mirrored(spark, gold_tables)
+    view = "gold.pending_items_by_product"
+    gold.postgres[view] = gold.postgres[view].withColumn(
+        "pending_quantity", F.col("pending_quantity") + 1
+    )
+
+    results = by_check(gold.results(), REPORTS_MATCH_LAKE.name)
+    result = results["pending_items_by_product"]
 
     assert not result.passed
+    assert result.subject == view
     assert result.metrics == {"rows": 1, "violations": 2}
-    assert [row["side"] for row in samples(result, "violating")] == ["recounted", "stored"]
+    assert [row["side"] for row in samples(result, "violating")] == ["lake", "postgres"]
+    assert results["top_customers_by_pending_orders"].passed
+
+
+def test_report_answers_read_while_their_tables_are_copied_into_are_not_checked(
+    spark: SparkSession, gold_tables: GoldTables
+) -> None:
+    gold = FakeGold.mirrored(spark, gold_tables)
+    gold.sync_states = [dict.fromkeys(STORED, SNAPSHOT) | {"current_orders": n} for n in range(12)]
+
+    result = by_check(gold.results(), REPORTS_MATCH_LAKE.name)["top_delivery_dates_by_open_orders"]
+
+    assert not result.passed
+    assert "current_orders" in str(result.details["not_checked"])

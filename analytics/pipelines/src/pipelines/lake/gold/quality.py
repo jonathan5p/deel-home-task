@@ -12,31 +12,16 @@ from common.settings import AnalyticsDbSettings
 from pipelines.lake.gold.dimensions import DIMENSIONS, FACTS, STORED
 from pipelines.lake.gold.facts import ChangeFact, FactColumn
 from pipelines.lake.gold.job import iceberg_gold
-from pipelines.lake.gold.model.columns import IS_REMOVED, VersionColumn
-from pipelines.lake.gold.model.lookups import with_as_of_lookup
-from pipelines.lake.gold.model.reports import (
-    open_orders_by_delivery_date_and_status,
-    pending_items_by_product,
-    pending_orders_by_customer,
-    products_of_orders,
-    top_customers_by_pending_orders,
-    top_delivery_dates_by_open_orders,
-)
-from pipelines.lake.gold.model.versions import COMMIT_SEQUENCE, VALID_FROM, any_of
+from pipelines.lake.gold.model.columns import VersionColumn
+from pipelines.lake.gold.model.versions import COMMIT_SEQUENCE, VALID_FROM
+from pipelines.lake.gold.public import PUBLIC_SCHEMA, PUBLIC_VIEWS, PublicView, view_query
 from pipelines.lake.gold.retention import retained_from
 from pipelines.lake.gold.scd2 import Scd2Dimension
 from pipelines.lake.gold.serving import SYNC_STATE
 from pipelines.lake.gold.sink import jdbc_options
-from pipelines.lake.gold.stored import (
-    OPEN_ORDERS_BY_DELIVERY_DATE_AND_STATUS,
-    PENDING_ITEMS_BY_PRODUCT,
-    PENDING_ORDERS_BY_CUSTOMER,
-    SEED_KEYS,
-    TOP_CUSTOMERS,
-    TOP_DELIVERY_DATES,
-    StoredTable,
-)
+from pipelines.lake.gold.stored import SEED_KEYS, StoredTable
 from pipelines.quality.checks import Check, CheckResult
+from pipelines.schemas.gold_definitions import GoldTable, load_gold_tables
 from pipelines.settings import GoldSettings
 
 SAMPLE_SIZE = 10
@@ -45,13 +30,17 @@ PARITY_METRICS = ("lake_rows", "postgres_rows", "lake_only", "postgres_only")
 INVARIANT_METRICS = ("rows", "violations")
 CHANGED_AT = str(FactColumn.CHANGED_AT)
 REPORTS = (
-    OPEN_ORDERS_BY_DELIVERY_DATE_AND_STATUS,
-    PENDING_ORDERS_BY_CUSTOMER,
-    PENDING_ITEMS_BY_PRODUCT,
-    TOP_DELIVERY_DATES,
-    TOP_CUSTOMERS,
+    "open_orders_by_delivery_date_and_status",
+    "top_delivery_dates_by_open_orders",
+    "pending_items_by_product",
+    "top_customers_by_pending_orders",
 )
-RECOUNT_SOURCES = ("current_orders", "current_order_items", "dim_order_status", "dim_customer")
+REPORT_SOURCES = ("current_orders", "current_order_items", "dim_order_status", "dim_customer")
+GLOBAL_TEMP = "spark.sql.globalTempDatabase"
+BUSINESS_KEYS: Mapping[str, tuple[str, str]] = {
+    "fact_order_history": ("customer_id", "dim_customer"),
+    "fact_order_item_history": ("product_id", "dim_product"),
+}
 
 COPY_MATCHES_ICEBERG = Check(
     "gold_copy_matches_iceberg",
@@ -72,13 +61,18 @@ NO_OVERLAPPING_RANGES = Check(
 RESOLVED_LOOKUPS = Check(
     "gold_lookups_resolve",
     "Every status and date key names a row of its seeded dimension, or is null where the model"
-    " allows it (an unknown status takes the UNKNOWN row); every history fact's as-of columns"
-    " are those of the dimension version valid when the change was committed, as the gold model"
-    " resolves them, so they are null only when the key had no version yet or a deleted one.",
+    " allows it (an unknown status takes the UNKNOWN row).",
 )
-REPORTS_MATCH_RECOUNT = Check(
-    "gold_reports_match_recount",
-    "The report table equals a recount of the current-state tables.",
+KNOWN_BUSINESS_KEYS = Check(
+    "gold_business_keys_known",
+    "Every history fact's dimension business key (an order's customer_id, an item's product_id)"
+    " names a key the dimension holds, for every change committed no later than the"
+    " dimension's newest version, which the gold views join as of the change.",
+)
+REPORTS_MATCH_LAKE = Check(
+    "gold_report_views_match_lake",
+    "Each PostgreSQL business-question view returns the rows the same view returns in the lake"
+    " over the Iceberg tables at the snapshots the copy held when PostgreSQL answered it.",
 )
 
 type Sample = tuple[Mapping[str, object], ...]
@@ -232,52 +226,6 @@ def unresolved_keys(
     return union
 
 
-def unresolved_as_of(
-    history: DataFrame, fact: ChangeFact, dimensions: Mapping[str, DataFrame]
-) -> DataFrame:
-    """The history rows whose as-of columns differ from the dimension version the model
-    resolves for them, by key and `_commit_sequence`."""
-    identity = [fact.key, COMMIT_SEQUENCE]
-    misses: list[DataFrame] = []
-    for lookup in fact.as_of:
-        versions = dimensions[lookup.dimension.name]
-        columns = lookup.fact_columns
-        expected = with_as_of_lookup(history, fact.key, lookup, versions).select(
-            *identity, *(F.col(column).alias(f"__expected_{column}") for column in columns)
-        )
-        differs = any_of(
-            [~F.col(column).eqNullSafe(F.col(f"__expected_{column}")) for column in columns]
-        )
-        misses.append(history.join(expected, identity).where(differs).select(*identity))
-    union = misses[0] if misses else history.select(*identity).limit(0)
-    for miss in misses[1:]:
-        union = union.unionByName(miss)
-    return union
-
-
-def recounted_reports(lake: Mapping[str, DataFrame]) -> dict[str, DataFrame]:
-    """Every report table recounted from the current-state tables, as the gold model counts a
-    batch's touched keys, with every key touched."""
-    orders, items = lake["current_orders"], lake["current_order_items"]
-
-    def kept(rows: DataFrame) -> DataFrame:
-        return rows.where(~F.col(IS_REMOVED)).drop(IS_REMOVED)
-
-    by_date_status = kept(
-        open_orders_by_delivery_date_and_status(orders, orders, lake["dim_order_status"])
-    )
-    by_customer = kept(pending_orders_by_customer(orders, orders))
-    return {
-        OPEN_ORDERS_BY_DELIVERY_DATE_AND_STATUS: by_date_status,
-        PENDING_ORDERS_BY_CUSTOMER: by_customer,
-        PENDING_ITEMS_BY_PRODUCT: kept(
-            pending_items_by_product(products_of_orders(orders, items), items, orders)
-        ),
-        TOP_DELIVERY_DATES: top_delivery_dates_by_open_orders(by_date_status),
-        TOP_CUSTOMERS: top_customers_by_pending_orders(by_customer, lake["dim_customer"]),
-    }
-
-
 def current_rows_of(
     frames: Mapping[str, DataFrame], *, name: str, key: str, current: Column | None
 ) -> Violations:
@@ -290,28 +238,53 @@ def overlapping_in(
     return overlapping(frames[name], key, starts_at)
 
 
-def unresolved_in(
-    frames: Mapping[str, DataFrame], *, fact: ChangeFact, name: str, as_of: bool
-) -> Violations:
-    """The rows of `name` with a status or date key that names no seeded row, or for a history
-    table with as-of columns the model would resolve otherwise."""
+def unresolved_in(frames: Mapping[str, DataFrame], *, fact: ChangeFact, name: str) -> Violations:
+    """The rows of `name` with a status or date key that names no seeded row."""
     rows = frames[name]
-    identity = [fact.key, COMMIT_SEQUENCE]
-    violating = unresolved_keys(rows, fact, frames, identity)
-    if as_of:
-        violating = violating.unionByName(unresolved_as_of(rows, fact, frames))
-    return Violations(rows.count(), violating.distinct())
+    identity = [fact.key, COMMIT_SEQUENCE] if COMMIT_SEQUENCE in rows.columns else [fact.key]
+    return Violations(rows.count(), unresolved_keys(rows, fact, frames, identity).distinct())
 
 
-def recount_differences(frames: Mapping[str, DataFrame], *, table: StoredTable) -> Violations:
-    """The rows only the stored report or only its recount has, each marked with its side."""
-    stored = frames[table.name].select(*table.columns)
-    recounted = aligned(recounted_reports(frames)[table.name], stored.schema)
-    stored_only, recounted_only = differences(stored, recounted)
-    marked = stored_only.withColumn("side", F.lit("stored")).unionByName(
-        recounted_only.withColumn("side", F.lit("recounted"))
+def unknown_business_keys(
+    frames: Mapping[str, DataFrame],
+    *,
+    fact: ChangeFact,
+    business_key: str,
+    dimension: Scd2Dimension,
+) -> Violations:
+    """The history rows whose `business_key` names no key of the dimension, among the changes
+    committed no later than the dimension's newest version. A source row exists before the
+    changes that refer to it, so the dimension holds every key such a change names; a later
+    change may still be waiting for its dimension's stream, which writes on its own."""
+    history = frames[fact.history.name].where(F.col(business_key).isNotNull())
+    versions = frames[dimension.name]
+    newest = versions.agg(F.max(VALID_FROM).alias("__newest"))
+    known = versions.select(F.col(dimension.key).alias("__known")).distinct()
+    violating = (
+        history.join(known, F.col(business_key) == F.col("__known"), "left_anti")
+        .join(F.broadcast(newest), F.col(CHANGED_AT) <= F.col("__newest"))
+        .select(fact.key, COMMIT_SEQUENCE, business_key)
     )
-    return Violations(stored.count(), marked)
+    return Violations(history.count(), violating)
+
+
+def report_view_differences(
+    frames: Mapping[str, DataFrame], *, view: PublicView, tables: Mapping[str, GoldTable]
+) -> Violations:
+    """The rows only PostgreSQL's answer or only the lake's answer to a business-question view
+    has, each marked with its side. The lake's answer runs the view's query over the Iceberg
+    tables at the snapshots PostgreSQL held, as global temporary views."""
+    spark = frames[REPORT_SOURCES[0]].sparkSession
+    for name in REPORT_SOURCES:
+        frames[name].createOrReplaceGlobalTempView(name)
+    namespace = spark.conf.get(GLOBAL_TEMP, "global_temp")
+    lake = spark.sql(view_query(view, tables, str(namespace)))
+    postgres = aligned(frames[f"{PUBLIC_SCHEMA}.{view.name}"], lake.schema)
+    lake_only, postgres_only = differences(lake, postgres)
+    marked = lake_only.withColumn("side", F.lit("lake")).unionByName(
+        postgres_only.withColumn("side", F.lit("postgres"))
+    )
+    return Violations(lake.count(), marked)
 
 
 def utc_today() -> date:
@@ -383,11 +356,13 @@ class GoldCheck:
         return copies, pending
 
     def _lake(self, name: str, copy: Copy | None) -> DataFrame | None:
-        if copy is None:
-            return None
-        if copy.snapshot_id is None:
+        return None if copy is None else self._lake_at(name, copy.snapshot_id)
+
+    def _lake_at(self, name: str, snapshot_id: int | None) -> DataFrame | None:
+        """The Iceberg table at a snapshot, empty for none, or None once the snapshot is gone."""
+        if snapshot_id is None:
             return self.readers.lake.read(name).limit(0)
-        return self.readers.lake.read_snapshot(name, copy.snapshot_id)
+        return self.readers.lake.read_snapshot(name, snapshot_id)
 
     def run(self) -> list[CheckResult]:
         copies, changing = self.copies()
@@ -400,7 +375,8 @@ class GoldCheck:
         results += self._one_current(lake)
         results += self._overlaps(lake)
         results += self._lookups(lake)
-        results += self._recounts(lake)
+        results += self._business_keys(lake)
+        results += self._report_views()
         return results
 
     def _parity(
@@ -441,10 +417,15 @@ class GoldCheck:
         )
 
     def _not_checked(
-        self, check: Check, name: str, metrics: Sequence[str], reason: str
+        self,
+        check: Check,
+        name: str,
+        metrics: Sequence[str],
+        reason: str,
+        subject: str | None = None,
     ) -> CheckResult:
         return check.result(
-            self.subject(name),
+            subject or self.subject(name),
             passed=False,
             metrics=dict.fromkeys(metrics),
             details={"not_checked": reason},
@@ -456,17 +437,18 @@ class GoldCheck:
         name: str,
         needed: Frames,
         compute: Callable[[Mapping[str, DataFrame]], Violations],
+        subject: str | None = None,
     ) -> CheckResult:
         unread = sorted(table for table, rows in needed.items() if rows is None)
         if unread:
             reason = f"no readable copied snapshot of {', '.join(unread)}"
-            return self._not_checked(check, name, INVARIANT_METRICS, reason)
+            return self._not_checked(check, name, INVARIANT_METRICS, reason, subject)
         frames = {table: rows for table, rows in needed.items() if rows is not None}
         result = compute(frames)
         columns = result.violating.columns
         violations = result.violating.count()
         return check.result(
-            self.subject(name),
+            subject or self.subject(name),
             passed=violations == 0,
             metrics={"rows": result.rows, "violations": violations},
             details={"violating": sample(result.violating, columns, self.sample_size)},
@@ -506,21 +488,61 @@ class GoldCheck:
         results: list[CheckResult] = []
         seeded = {name: lake[name] for name in SEED_KEYS}
         for fact in self.facts:
-            versions = {lookup.dimension.name: lake[lookup.dimension.name] for lookup in fact.as_of}
-            for table, as_of in ((fact.history, True), (fact.current, False)):
-                needed = {table.name: lake[table.name], **seeded, **(versions if as_of else {})}
-                compute = partial(unresolved_in, fact=fact, name=table.name, as_of=as_of)
+            for table in (fact.history, fact.current):
+                needed = {table.name: lake[table.name], **seeded}
+                compute = partial(unresolved_in, fact=fact, name=table.name)
                 results.append(self._invariant(RESOLVED_LOOKUPS, table.name, needed, compute))
         return results
 
-    def _recounts(self, lake: Frames) -> list[CheckResult]:
-        sources = {name: lake[name] for name in RECOUNT_SOURCES}
+    def _business_keys(self, lake: Frames) -> list[CheckResult]:
+        dimensions = {dimension.name: dimension for dimension in self.dimensions}
+        results: list[CheckResult] = []
+        for fact in self.facts:
+            business_key, name = BUSINESS_KEYS[fact.name]
+            dimension = dimensions[name]
+            needed = {fact.history.name: lake[fact.history.name], name: lake[name]}
+            compute = partial(
+                unknown_business_keys, fact=fact, business_key=business_key, dimension=dimension
+            )
+            results.append(self._invariant(KNOWN_BUSINESS_KEYS, fact.history.name, needed, compute))
+        return results
+
+    def answers(self) -> tuple[dict[str, DataFrame], dict[str, int | None]] | None:
+        """PostgreSQL's answer to every business-question view, and the snapshots of the tables
+        they read, or None when the gold job copied into those tables during each of
+        `MAX_READS` reads. A copy changes a table and its sync_state row in one transaction, so
+        answers read while the sync_state rows stayed the same were all read at those
+        snapshots."""
+        for _ in range(MAX_READS):
+            before = self.synced()
+            read = {
+                name: materialized(
+                    self.readers.read_postgres(self.spark, f"{PUBLIC_SCHEMA}.{name}")
+                )
+                for name in REPORTS
+            }
+            after = self.synced()
+            if all(name in after and after[name] == before.get(name) for name in REPORT_SOURCES):
+                return read, {name: after[name] for name in REPORT_SOURCES}
+        return None
+
+    def _report_views(self) -> list[CheckResult]:
+        answered = self.answers()
+        sources: dict[str, DataFrame | None] = dict.fromkeys(REPORT_SOURCES)
+        answers: dict[str, DataFrame | None] = {}
+        if answered is not None:
+            read, snapshots = answered
+            sources = {name: self._lake_at(name, snapshots[name]) for name in REPORT_SOURCES}
+            answers = {f"{PUBLIC_SCHEMA}.{name}": rows for name, rows in read.items()}
+        views = {view.name: view for view in PUBLIC_VIEWS}
+        tables = load_gold_tables()
         return [
             self._invariant(
-                REPORTS_MATCH_RECOUNT,
+                REPORTS_MATCH_LAKE,
                 name,
-                {name: lake[name], **sources},
-                partial(recount_differences, table=self.tables[name]),
+                {**sources, f"{PUBLIC_SCHEMA}.{name}": answers.get(f"{PUBLIC_SCHEMA}.{name}")},
+                partial(report_view_differences, view=views[name], tables=tables),
+                subject=f"{PUBLIC_SCHEMA}.{name}",
             )
             for name in REPORTS
         ]
