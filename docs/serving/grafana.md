@@ -1,16 +1,17 @@
 # Grafana
 
-[Grafana](https://grafana.com/oss/grafana/) (`grafana`, image `grafana/grafana-oss`) starts with `make up` and serves the metrics on http://localhost:3000. Visitors are anonymous viewers, so no login is needed to look; sign in as `admin` / `admin` (`GRAFANA_ADMIN_USER`, `GRAFANA_ADMIN_PASSWORD` in `.env`, local development credentials) to administer it. Its own settings, users and sessions live in the `grafana-data` volume.
+[Grafana](https://grafana.com/oss/grafana/) starts with `make up` on http://localhost:3000. Visitors are anonymous viewers; sign in as `admin` / `admin` (local credentials in `.env`) to administer it.
 
-Monitoring configuration lives in the root `monitoring/` folder, one subfolder per tool (`monitoring/grafana/` and `monitoring/prometheus/`). Everything Grafana shows is provisioned as code from `monitoring/grafana/provisioning/`, mounted read-only:
+Everything Grafana shows is provisioned as code from `monitoring/grafana/provisioning/` and cannot be changed from the UI:
 
-- `datasources/gold.yaml` defines the **Gold** datasource (uid `gold`, the default one): the `analytics` database on `analytics-db:5432`, read only and not editable in the UI.
-- `datasources/prometheus.yaml` defines the **Prometheus** datasource (uid `prometheus`): the `prometheus` service of the `metrics` profile on `prometheus:9090`, which `make up` starts by default, with a 10 s minimum interval to match the scrape interval, not editable in the UI. Started with `make up DEFAULT_PROFILES=`, it reports an error and the Spark dashboards stay empty (see [Monitoring Spark](../operations/monitoring.md)).
-- `dashboards/gold.yaml` loads `monitoring/grafana/dashboards/gold-metrics.json` into the **Gold** folder, and `dashboards/spark-and-lake.yaml` loads every dashboard in `monitoring/grafana/dashboards/spark-and-lake/` into the **Spark and lake** folder; they cannot be changed or deleted from the UI. The Gold provider names its file rather than the directory, because Grafana walks a provider's directory recursively and would load the Spark and lake dashboards into the Gold folder too.
+| File | Provides |
+| --- | --- |
+| `datasources/gold.yaml` | The default **Gold** datasource: the `analytics` database, read-only |
+| `datasources/prometheus.yaml` | The **Prometheus** datasource; empty dashboards when the `metrics` profile is off |
+| `dashboards/gold.yaml` | The **Gold metrics** dashboard, in the **Gold** folder |
+| `dashboards/spark-and-lake.yaml` | The Spark and Iceberg dashboards, in the **Spark and lake** folder, linked to each other |
 
-Every dashboard in the **Spark and lake** folder carries the `spark-and-lake` tag and a links bar listing the dashboards with that tag, so each one links to the others, keeping the time range. The Gold dashboard has no links bar.
-
-Grafana connects as its own [service login](../architecture/infrastructure.md#read-only-service-logins), `grafana` (`GRAFANA_READER_USER`, `GRAFANA_READER_PASSWORD` in `.env`), a member of the read-only role `gold_reader`: it reads the views of the public `gold` schema and nothing else, has no rights on `gold_internal`, where the pipeline keeps its tables, and its sessions are read-only with a 30 s statement timeout, so a heavy panel query cannot hold the database. On an analytics volume created before this login existed, `make db-logins` creates it.
+Grafana connects as its own read-only [service login](../architecture/infrastructure.md#read-only-service-logins), `grafana`: it reads the `gold` views and nothing else, with a 30 s statement timeout.
 
 ```mermaid
 flowchart LR
@@ -31,11 +32,11 @@ flowchart LR
 | Pending items by product | table: items and total quantity | `gold.pending_items_by_product` |
 | Top 3 customers by pending orders | table, ties for third place included | `gold.top_customers_by_pending_orders` |
 
-Each business-question panel runs exactly the query of its file in `analytics/sql/gold/`, so the dashboard and the documented queries always agree. The views count the open current orders when the panel reads them, through the partial indexes on the open orders ([the four business questions](../lakehouse/gold/model.md#the-four-business-questions)), so every refresh shows the state of the last micro-batch each gold stream copied; the lake has the same views, with the same SQL. Freshness is measured from the data, as the time since the source commit of the newest change gold holds, so it also grows while the source is idle.
+Each question panel runs exactly the query of its file in `analytics/sql/gold/`, so the dashboard and the documented queries agree ([the four business questions](../lakehouse/gold/model.md#the-four-business-questions)). Freshness is the time since the source commit of the newest change gold holds, so it also grows while the source is idle.
 
 ## Spark dashboards
 
-The **Spark and lake** folder holds three Spark dashboards over the Prometheus datasource, for the live state of the streaming jobs, the history of their stages, and for [sizing the cluster](../architecture/sizing.md#key-metrics). Every query uses Grafana's `$__rate_interval`, so rates stay correct at any zoom level. [Monitoring Spark](../operations/monitoring.md) explains where the metrics come from and how to read them.
+Three Spark dashboards over Prometheus show the streams' live state, their stage history and the numbers for [sizing the cluster](../architecture/sizing.md#key-metrics). [Monitoring Spark](../operations/monitoring.md) explains how to read them.
 
 **Spark cluster** (http://localhost:3000/d/spark-cluster), the last 6 hours:
 
@@ -94,4 +95,4 @@ The **Spark and lake** folder also holds **Iceberg tables** (http://localhost:30
 
 ## Editing the dashboards
 
-The dashboards are plain JSON, edited by hand or in Grafana and exported back (Share → Export → JSON, then replace the file). The tests in `tests/grafana/` (run by `make test`) check every dashboard's stable uid, read-only flag, refresh interval and unique panel ids, that each provider loads its folder's dashboards and every dashboard is loaded exactly once, and that every Spark and lake dashboard has the links bar and the Gold dashboard none. For the Gold dashboard they also check that it keeps one panel per question plus freshness, that every query uses the Gold datasource and reads only `gold` views, and that each question panel's query equals its file. For the Spark dashboards they check that every query uses the Prometheus datasource and `$__rate_interval`, and reads only metric names that Prometheus stores: the names the scrape configuration produces from real Spark 4.1.4 pages captured in `tests/prometheus/scrapes/`, and those the exporter serves after recording real History Server responses and measuring a table.
+The dashboards are plain JSON, edited by hand or in Grafana and exported back (Share → Export → JSON). The tests in `tests/grafana/` (run by `make test`) check their uids, read-only flags, folders and panel ids; that the Gold dashboard reads only `gold` views with exactly the documented queries; and that the Spark dashboards read only metric names Prometheus really stores, taken from captured Spark 4.1.4 pages.

@@ -1368,7 +1368,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: s
     { node: "gold", sub: "dims", form: "star", layer: "gold", title: "Customers and products keep versions",
       body: "A customer or product change adds a new version instead (SCD2). Each order fact keeps the customer id, and the public view joins the customer version that was valid when the order changed.",
       payload: "dim_customer (customer 42)\n  version 1   valid until the address change\n  version 2   current\n\ngold.fact_order_history -> the version valid at the change, when read",
-      link: L("Dimension keys of the facts", "../lakehouse/gold/model/#dimension-keys-of-the-facts") },
+      link: L("Point-in-time dimension attributes", "../lakehouse/gold/model/#point-in-time-dimension-attributes") },
     { node: "api", also: ["grafana"], sub: "views", form: "answer", layer: "serve", title: "Answered by the business view",
       body: "The business view counts the open rows of the current state when it is read, through a partial index on the open orders. The API and the Grafana panel run the same query, so order 1 now counts under its delivery date as REPROCESSING.",
       payload: "GET /metrics/open-orders-by-delivery-date-and-status\n\n[{\"delivery_date\": \"2026-11-18\",\n  \"status_code\": \"REPROCESSING\",\n  \"open_orders\": ...}]",

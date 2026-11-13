@@ -8,15 +8,11 @@ The `operations` schema holds four tables:
 
 ![Database Diagram](../assets/database-diagram.png)
 
-Once you have the Database up and running feel free to connect to this using any tool you want, for this you can use the following credentials:
-
-- **Username**: `finance_db_user`
-- **Password**: `1234`
-- **Database**: `finance_db`
+Connect with any PostgreSQL client as `finance_db_user` (password `1234`) to database `finance_db` on `localhost:5432`.
 
 ## Debezium CDC
 
-The stack includes a Debezium CDC pipeline that streams database changes to Kafka in real-time. Kafka is available at `localhost:9092`.
+Debezium streams every change to Kafka, at `localhost:9092`.
 
 ### Topics
 
@@ -27,7 +23,7 @@ The stack includes a Debezium CDC pipeline that streams database changes to Kafk
 | `finance_db.operations.orders` | `operations.orders` |
 | `finance_db.operations.order_items` | `operations.order_items` |
 
-When the connector starts, it first takes a snapshot of each table (`op` = `r`) and then streams every change. The source database and the connector are used exactly as provided; the pipeline handles their format.
+The connector first snapshots each table (`op` = `r`), then streams every change.
 
 ### Message format
 
@@ -71,12 +67,6 @@ Column values are encoded by type:
 
 Column names are kept as in the source, including `order_items.quanity`.
 
-**Deletes:** the data generator never deletes rows. If a row is deleted, Debezium sends an event with `op` = `d`, the full row in `before` and `after` = `null`, followed by a *tombstone*: a message with the same key and a `null` value. Consumers must accept `null` values.
+**Deletes:** the generator never deletes rows. A delete would arrive as `op` = `d` with the full row in `before`, followed by a *tombstone* (same key, `null` value).
 
-**Heartbeats:** every 10 seconds the connector writes `{"ts_ms": ...}` with the key `{"serverName": "finance_db"}` to `__debezium-heartbeat.finance_db`, so the replication slot keeps advancing while the tables are idle. The pipeline does not read this topic.
-
-### Kafka Connection Example
-
-```properties
-bootstrap.servers=localhost:9092
-```
+**Heartbeats:** every 10 seconds the connector writes to `__debezium-heartbeat.finance_db`, so the replication slot advances while the tables are idle. The pipeline does not read this topic.
