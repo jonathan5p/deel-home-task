@@ -142,7 +142,7 @@ The profile of each container is in its label; containers without one start with
 | `bronze-job` | The committed landing files | `lake.bronze.<entity>` and `lake.bronze.<entity>_quarantine`, its checkpoints |
 | `silver-job` | `lake.bronze.<entity>` | `lake.silver.<entity>`, its checkpoints and RocksDB state |
 | `lake-views` | The silver and gold Iceberg tables | The silver views and the `lake.gold` views (definitions only) |
-| `gold-job` | `lake.silver.<entity>`, `lake.gold.internal_<table>` | `lake.gold.internal_<table>`, then the same rows into `gold_internal` in `analytics`; its checkpoints |
+| `gold-job` | `lake.silver.<entity>`, `lake.gold_internal.<table>` | `lake.gold_internal.<table>`, then the same rows into `gold_internal` in `analytics`; its checkpoints |
 | `maintenance-job` | The lake tables and the downstream streams' checkpoints | Compacted data files, expired snapshots, removed orphan files, refreshed views |
 | `data-quality-job` | Kafka, landing, bronze, silver, PostgreSQL gold and the checkpoints | Reports in `<LAKE_ROOT>/quality/reports/` |
 | `gold-retention-job` | `gold_internal` | Monthly history partitions in `gold_internal`: creates the months ahead, drops expired ones |
@@ -165,7 +165,7 @@ flowchart LR
     silver[("Silver<br/>lake.silver.ENTITY")]
     sviews["Silver views<br/>ENTITY_history, ENTITY_current"]
     goldjob["gold-job<br/>Spark DataFrames in foreachBatch"]
-    lgoldt[("Gold in the lake<br/>lake.gold.internal_TABLE<br/>dimensions, facts, current state, reports")]
+    lgoldt[("Gold in the lake<br/>lake.gold_internal.TABLE<br/>dimensions, facts, current state, reports")]
     stage[("gold_internal.stage_*<br/>unlogged staging")]
     gint[("gold_internal<br/>serving copy of the same tables")]
     gpub["gold views<br/>dimensions, facts, current state,<br/>open_orders, business questions,<br/>data_freshness"]
@@ -196,7 +196,7 @@ flowchart LR
 | Landing | Avro files, one folder per topic, `s3a://lake/landing/<topic>/` | `landing-job`, one query per topic | Every Kafka record stored unchanged (key and value as raw bytes, plus topic, partition, offset and timestamp). The file sink and checkpoint make it exactly once, and it is the replay source for bronze |
 | Bronze | Iceberg `lake.bronze.<entity>`, partitioned by `days(_published_at)` | `bronze-job`, two queries per topic | A typed, faithful log: one row per change event, deletes with their before image, no deduplication. Records that fail validation go to `<entity>_quarantine` with their landing file. Append-only |
 | Silver | Iceberg `lake.silver.<entity>`, partitioned by `days(_changed_at)`, plus the views `<entity>_history` and `<entity>_current` | `silver-job`, one query per topic | One row per change identity (entity key, `_commit_sequence`, `_change_op`), deduplicated with RocksDB state and no watermark, so late changes are appended as history. The views fold versions that change nothing (decision [D36](decisions.md#d36--silver-deduplication-exact-duplicates-on-write-unchanged-versions-on-read)). Append-only, so gold can stream it |
-| Gold (lake) | Iceberg tables `lake.gold.internal_<table>` (format v2, merge-on-read; history bucketed by key), plus thin views `lake.gold.<relation>` | `gold-job`, one query per silver table, with `mergeInto`; `lake-views` for the views | SCD2 dimensions, history facts, current-state tables that only apply newer versions, and the report tables behind the business questions, all computed by Spark, with the full history. Writes are idempotent per micro-batch and serialised by one lock in the driver; Iceberg commits per table (decisions [D32](decisions.md#d32--the-gold-dimensional-model), [D44](decisions.md#d44--gold-modelled-in-spark-on-iceberg-postgresql-as-serving-copy)) |
+| Gold (lake) | Iceberg tables `lake.gold_internal.<table>` (format v2, merge-on-read; history bucketed by key), plus thin views `lake.gold.<relation>` | `gold-job`, one query per silver table, with `mergeInto`; `lake-views` for the views | SCD2 dimensions, history facts, current-state tables that only apply newer versions, and the report tables behind the business questions, all computed by Spark, with the full history. Writes are idempotent per micro-batch and serialised by one lock in the driver; Iceberg commits per table (decisions [D32](decisions.md#d32--the-gold-dimensional-model), [D44](decisions.md#d44--gold-modelled-in-spark-on-iceberg-postgresql-as-serving-copy)) |
 | Gold (PostgreSQL) | Database `analytics`: tables in `gold_internal`, views in `gold` | `gold-job`, in the same micro-batch, with plain upserts | A serving copy of the gold tables, one transaction per micro-batch, with the Iceberg snapshot of each table it holds; history facts partitioned by month and kept 36 months. Consumers read the `gold` views, which hide pipeline metadata and soft deletes (decisions [D35](decisions.md#d35--public-views-over-an-internal-schema), [D44](decisions.md#d44--gold-modelled-in-spark-on-iceberg-postgresql-as-serving-copy)) |
 
 The gold model, its rules and the business-question views are described in [the gold model](../lakehouse/gold/model.md), and every table and column in the [table reference](../reference/index.md), which the docs site renders from the Avro schemas.

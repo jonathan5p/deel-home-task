@@ -6,7 +6,7 @@ How gold is written: the gold job, which computes every gold table with Spark in
 
 Gold has two kinds of storage, created in two places:
 
-- **The Iceberg tables** `lake.gold.internal_<table>` are created by the gold job when it starts, if they are missing, from the gold Avro schemas (see [table and column definitions](../../development/table-definitions.md)): format version 2, merge-on-read for deletes, updates and merges, every column described, and the history facts bucketed by their business key into 16 buckets and sorted by their key within each data file. On every start the job also brings the table and column descriptions up to date.
+- **The Iceberg tables** `lake.gold_internal.<table>` are created by the gold job when it starts, if they are missing, from the gold Avro schemas (see [table and column definitions](../../development/table-definitions.md)): format version 2, merge-on-read for deletes, updates and merges, every column described, and the history facts bucketed by their business key into 16 buckets and sorted by their key within each data file. On every start the job also brings the table and column descriptions up to date.
 - **The PostgreSQL DDL**, `docker/analytics-db/initdb/02-gold-model.sql`, is generated and git-ignored: `make up` (and `make pipeline` and `make test-infra`) renders it, on the host with [uv](https://docs.astral.sh/uv/), from the Jinja template `analytics/pipelines/src/pipelines/lake/gold/sql/ddl.sql.j2` and the same schemas, which give every column its type, nullability and description. Edit the template or the schemas, never the SQL file. The file creates both schemas, the tables and their staging tables, `gold_internal.sync_state`, the public views, each history table's default partition and the retention functions; the monthly history partitions are created and dropped by the retention job (see [Gold retention](../../operations/maintenance-and-recovery.md#gold-retention)). It runs on an empty volume like the other init scripts, and every statement is idempotent, so it can also be applied to an existing database without losing data:
 
 ```sh
@@ -187,17 +187,17 @@ sequenceDiagram
 
 ## Gold in the lake
 
-The lake holds the whole gold model as columnar Iceberg tables, `lake.gold.internal_<table>`, written by the gold job, with every change of the history. For readers, `lake.gold` also holds one thin Iceberg view per public gold relation (`dim_customer`, `dim_product`, `dim_date`, `dim_order_status`, `fact_order_history`, `fact_order_item_history`, `current_orders`, `current_order_items`, `open_orders`, the four business-question views and `data_freshness`). Each view selects and filters the stored columns exactly like the PostgreSQL `gold` view of the same name, so both show the same columns, surrogate keys included, and the same rows, except the history PostgreSQL's retention has dropped.
+The lake holds the whole gold model as columnar Iceberg tables, `lake.gold_internal.<table>`, written by the gold job, with every change of the history. For readers, `lake.gold` also holds one thin Iceberg view per public gold relation (`dim_customer`, `dim_product`, `dim_date`, `dim_order_status`, `fact_order_history`, `fact_order_item_history`, `current_orders`, `current_order_items`, `open_orders`, the four business-question views and `data_freshness`). Each view selects and filters the stored columns exactly like the PostgreSQL `gold` view of the same name, so both show the same columns, surrogate keys included, and the same rows, except the history PostgreSQL's retention has dropped.
 
 - **Kept current:** `make lake-views` creates the views right after the silver views, and replaces only those whose query or descriptions changed; every lake maintenance run does the same (see [Lake maintenance](../../operations/maintenance-and-recovery.md#lake-maintenance)).
 - **Described from the gold schemas:** each view and column has the description of the PostgreSQL `gold` view and column of the same name.
-- **Read by any engine:** the tables are standard Iceberg, so Spark SQL, DuckDB and Trino read them through the catalog. The views are Spark SQL; an engine that cannot run them reads the `internal_` tables with the same filters ([querying the lake](../../serving/lake-access.md)).
+- **Read by any engine:** the tables are standard Iceberg, so Spark SQL, DuckDB and Trino read them through the catalog. The views are Spark SQL; an engine that cannot run them reads the `lake.gold_internal` tables with the same filters ([querying the lake](../../serving/lake-access.md)).
 - **Consistent per table:** see [Consistency between the two copies](#consistency-between-the-two-copies).
 
 ```mermaid
 flowchart LR
     S[lake.silver.entity] --> J[gold job]
-    J -- mergeInto --> T[(lake.gold.internal_* tables)]
+    J -- mergeInto --> T[(lake.gold_internal.* tables)]
     J -- upserts --> P[(PostgreSQL gold_internal)]
     T --> V[lake.gold views]
     P --> G[gold views]

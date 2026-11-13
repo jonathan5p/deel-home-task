@@ -7,7 +7,7 @@ Gold is the dimensional model: a star schema that answers the four business ques
 ```mermaid
 flowchart LR
     silver[("lake.silver.ENTITY")] --> job["gold job<br/>Spark DataFrames, foreachBatch"]
-    job -- "mergeInto" --> iceberg[("lake.gold.internal_*<br/>Iceberg tables, full history")]
+    job -- "mergeInto" --> iceberg[("lake.gold_internal.*<br/>Iceberg tables, full history")]
     job -- "INSERT ... ON CONFLICT<br/>one transaction per batch" --> pg[("gold_internal<br/>PostgreSQL serving copy")]
     iceberg --> lviews["lake.gold views"]
     pg --> gviews["gold views"]
@@ -28,7 +28,7 @@ In short:
 
 | | PostgreSQL gold | Lake gold |
 | --- | --- | --- |
-| Where | Database `analytics`: tables in `gold_internal`, views in `gold` | Iceberg tables `lake.gold.internal_<table>`, views `lake.gold.<relation>` |
+| Where | Database `analytics`: tables in `gold_internal`, views in `gold` | Iceberg tables `lake.gold_internal.<table>`, views `lake.gold.<relation>` |
 | Written by | The gold job, one transaction per micro-batch, copying what it wrote to Iceberg | The gold job, one Iceberg `MERGE` per table per micro-batch |
 | Consistent | Per micro-batch: every table of a batch commits together | Per table: a reader can briefly see a dimension before its re-resolved facts ([consistency](writer.md#consistency-between-the-two-copies)) |
 | History | History facts keep 36 months by default (`GOLD_RETENTION_MONTHS`) | The full history |

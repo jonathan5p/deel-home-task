@@ -4,7 +4,7 @@ The lake can be queried without PostgreSQL, from Spark SQL (`make spark-sql`) or
 
 ## The lake gold views
 
-`lake.gold` holds the gold model twice: the Iceberg tables the gold job writes, `lake.gold.internal_<table>`, with every column it stores and the full history, and one thin Iceberg view per public gold relation over them. How they are written is in [Gold in the lake](../lakehouse/gold/writer.md#gold-in-the-lake), and how they compare with PostgreSQL gold in [Gold](../lakehouse/gold/index.md#postgresql-gold-and-the-lake-gold-views).
+The lake holds the gold model twice, with the same split as PostgreSQL: the Iceberg tables the gold job writes, `lake.gold_internal.<table>`, with every column it stores and the full history, and in `lake.gold` one thin Iceberg view per public gold relation over them. How they are written is in [Gold in the lake](../lakehouse/gold/writer.md#gold-in-the-lake), and how they compare with PostgreSQL gold in [Gold](../lakehouse/gold/index.md#postgresql-gold-and-the-lake-gold-views).
 
 - **Same columns as the PostgreSQL `gold` views, surrogate keys included:** the keys are hashed from each version's business key and `_commit_sequence`, so a fact joins its dimension version on `customer_key` or `product_key` in the lake exactly as in PostgreSQL.
 - **Full history:** PostgreSQL's retention window does not apply to the lake.
@@ -50,11 +50,11 @@ DuckDB reads the lake's tables only. The lake's Iceberg views (the silver `_hist
 
 ```sql
 SELECT delivery_date, open_orders
-FROM lake.gold.internal_top_delivery_dates_by_open_orders
+FROM lake.gold_internal.top_delivery_dates_by_open_orders
 ORDER BY open_orders DESC, delivery_date;
 
 SELECT customer_key, customer_id, customer_name, _valid_from
-FROM lake.gold.internal_dim_customer
+FROM lake.gold_internal.dim_customer
 WHERE _is_current;
 ```
 
