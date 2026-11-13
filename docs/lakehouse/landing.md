@@ -1,6 +1,6 @@
 # Landing
 
-The landing job (`analytics/pipelines/src/pipelines/lake/landing/job.py`) streams every record of the CDC topics into raw Avro files, exactly as Kafka delivered it, so the lake keeps a replayable copy of the sources:
+The landing job streams every record of the CDC topics into raw Avro files, exactly as Kafka delivered it, so the lake keeps a replayable copy of the sources:
 
 ```sh
 make pipeline PIPELINE=landing   # as a long-running service; see Running the pipeline below
@@ -9,14 +9,14 @@ make spark-submit SPARK_APP=analytics/pipelines/src/pipelines/lake/landing/job.p
 
 - **One streaming query per topic,** reading from the earliest offset and writing to `<LAKE_ROOT>/landing/<topic>/`: one folder per topic, with no partition folders.
 - **Each record is stored unchanged:** `key` and `value` as raw bytes, plus `topic`, `partition`, `offset`, `timestamp` and `timestampType`. Tombstones keep their `null` value.
-- **Restart-safe:** each query keeps its checkpoint in `<CHECKPOINT_ROOT>/landing/<topic>/`, and Spark's file sink records the committed files in `_spark_metadata`. Stopping and restarting the job neither skips nor duplicates records; Spark readers of the folder see only committed files.
-- **Micro-batches** run every `LANDING_TRIGGER_SECONDS`. `spark.cores.max` keeps cores free for the other jobs; the job runs until it is stopped.
+- **Restart-safe:** each query keeps its checkpoint in `<CHECKPOINT_ROOT>/landing/<topic>/`, and the file sink records committed files in `_spark_metadata`, so a restart neither skips nor duplicates records, and readers see only committed files.
+- **Micro-batches** run every `LANDING_TRIGGER_SECONDS`.
 
 The landing zone's place in the data flow is in the [architecture overview](../architecture/overview.md#data-flow), and its checks against Kafka in [data quality](data-quality.md).
 
 ## Inspecting the landing zone with Spark SQL
 
-`make spark-sql` opens the Spark SQL shell in its own driver container, like `make spark-submit`: it runs on the cluster, reads the lake with the S3A credentials, and can use the Iceberg catalog `lake` (Spark loads it on first use, so it appears in `SHOW CATALOGS` only after a query such as `SHOW NAMESPACES IN lake;`). It uses Spark's in-memory session catalog, so temporary views live for the session only.
+`make spark-sql` opens the Spark SQL shell in its own driver container, on the cluster, with the lake's credentials and the Iceberg catalog `lake`. Temporary views last for the session only.
 
 ```sh
 make spark-sql                                                      # interactive shell
@@ -44,10 +44,4 @@ It defines a `landing` view that decodes the topic's records: the source coordin
 | `counts` | record counts by operation |
 | `tombstones` | tombstone records |
 
-When a whole file runs, the result sets follow each other without headers, so every example's first column is its name. In the shell, set the variables first (for example `SET hivevar:topic=finance_db.operations.orders;`), then paste the views and the queries you need.
-
-The default landing root only has data once the landing job has run; until then the views fail with `PATH_NOT_FOUND`.
-
-Spark reads each topic folder through its file-sink commit log (`_spark_metadata`), so files from failed micro-batches are ignored and counts are exact.
-
-Extra informations and tips about the task execution can be found in the task description document shared by our recruiting team.
+Every example's first column is its name, because a whole file prints its result sets without headers. In the shell, set the variables first (`SET hivevar:topic=finance_db.operations.orders;`), then paste the queries you need. Until the landing job has run, the views fail with `PATH_NOT_FOUND`.

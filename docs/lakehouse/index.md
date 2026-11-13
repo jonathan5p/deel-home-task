@@ -1,6 +1,6 @@
 # Lakehouse
 
-The lakehouse follows a medallion architecture: bronze, silver and gold, each layer refining the one before it. In front of it, the source database with its CDC stream and the landing zone are the ingestion: Debezium captures every change of the source into Kafka, and landing keeps a raw, replayable copy of every Kafka record.
+The lakehouse follows a medallion architecture: bronze, silver and gold, each refining the layer before it. Debezium captures every source change into Kafka, and landing keeps a raw, replayable copy of every record.
 
 ```mermaid
 flowchart LR
@@ -11,8 +11,6 @@ flowchart LR
     silver --> gold[("Gold<br/>dimensional model, Iceberg<br/>4 independent streams")]
     gold --> serving[("PostgreSQL<br/>serving copy, same views")]
 ```
-
-Each layer has its own page: its purpose, what it reads and writes, its model, the job that writes it and what it guarantees.
 
 - [Source database and CDC](source-and-cdc.md): the supplied database, the Debezium topics and the change event format.
 - [Landing](landing.md): the raw Avro copy of every Kafka record, and how to inspect it with Spark SQL.
