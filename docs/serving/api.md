@@ -1,6 +1,6 @@
 # Analytics API
 
-The analytics API (`analytics/api`, [FastAPI](https://fastapi.tiangolo.com/)) serves the four business questions and the freshness of gold over HTTP. It starts with `make up` as the `api` service, on http://localhost:8000, with its interactive documentation on http://localhost:8000/docs and the OpenAPI document on http://localhost:8000/openapi.json. It reads only the `gold` views, as the read-only login `api_reader` (see [read-only service logins](../architecture/infrastructure.md#read-only-service-logins)), through a connection pool (`API_DB_POOL_*` in [configuration](../operations/configuration.md)).
+The analytics API ([FastAPI](https://fastapi.tiangolo.com/)) serves the four business questions and gold freshness on http://localhost:8000, with interactive docs on `/docs`. It starts with `make up` and reads only the `gold` views, as the read-only login `api_reader` ([service logins](../architecture/infrastructure.md#read-only-service-logins)), through a connection pool ([configuration](../operations/configuration.md)).
 
 | Endpoint | Answer |
 | --- | --- |
@@ -11,9 +11,7 @@ The analytics API (`analytics/api`, [FastAPI](https://fastapi.tiangolo.com/)) se
 | `GET /health` | `200 {"status": "ok", "database": "reachable"}`, or `503 {"status": "unavailable", "database": "unreachable"}` |
 | `GET /freshness` | `{"checked_at", "entities": [{"entity", "last_changed_at", "lag_seconds"}]}`, from `gold.data_freshness` at the database's clock, in UTC |
 
-Each metric returns the rows of its query in `analytics/sql/gold/`, in the same order; dates are ISO 8601 and unknown values `null`. While the database is unreachable, slower than the pool timeout or without readable gold views, the metric and freshness endpoints answer `503` with a `detail`; any other failure answers `500` without its details. The API starts even while the database is down, reports itself unhealthy (`docker compose ps api`) and reconnects when the database is back.
-
-The rows are read with plain SQL into small hand-written response models (`api/models.py`), which is enough for a read-only API over a handful of views; a larger project would use an ORM or SQL toolkit such as [SQLAlchemy](https://www.sqlalchemy.org/) for the queries, the mapping and the connections.
+Each metric returns the rows of its query in `analytics/sql/gold/`, in the same order. When the database is unreachable or too slow, the endpoints answer `503`; other failures answer `500` without details. The API starts while the database is down and reconnects when it is back. Plain SQL into small response models is enough for a read-only API over a few views.
 
 ```sh
 curl -s localhost:8000/health
@@ -22,7 +20,7 @@ curl -s localhost:8000/freshness
 docker compose logs -f api   # Access log and errors
 ```
 
-The image (`docker/api/Dockerfile`, `<project>-api`) is a slim Python 3.14 image with only the `api` and `common` projects and their dependencies, run by an unprivileged user. To run the API on the host instead, against the analytics database's host port:
+The image is slim Python 3.14 with only the `api` and `common` projects, run by an unprivileged user. To run the API on the host instead:
 
 ```sh
 ANALYTICS_DB_URL=postgresql://localhost:5433/analytics ANALYTICS_DB_USER=api_reader ANALYTICS_DB_PASSWORD=api_reader \
