@@ -9,7 +9,7 @@ The numbers come from my decision log, which also holds smaller decisions, so th
 | Decision | Why, in one line |
 | --- | --- |
 | **Requirements and constraints** | |
-| [D8 · Fully local](#d8--fully-local-no-cloud-services) | The assignment asks for a stack reviewers can run from the README, and it is the fastest way to develop |
+| [D8 · Fully local](#d8--fully-local-no-cloud-services) | The assignment asks for a stack anyone can run from the README, and it is the fastest way to develop |
 | [D29 · Source side as provided](#d29--the-source-database-and-the-debezium-connector-stay-as-provided) | The assignment treats the source database and the connector as given input |
 | **Platform** | |
 | [D13 · SeaweedFS instead of MinIO](#d13--object-store-seaweedfs-instead-of-minio) | MinIO is no longer maintained; SeaweedFS is maintained, Apache-2.0 and one container |
@@ -43,16 +43,16 @@ The numbers come from my decision log, which also holds smaller decisions, so th
 
 ### D8 · Fully local, no cloud services
 
-**Context.** The assignment asks for a Dockerized application with a README detailed enough for reviewers to run it, and supplies the source database as a Docker Compose stack.
+**Context.** The assignment asks for a Dockerized application with a README detailed enough for anyone to run it, and supplies the source database as a Docker Compose stack.
 
 **Decision.** Everything runs in Docker Compose on one machine: the source, Kafka, the Spark cluster, the lake, the analytics database and the serving services.
 
 **Why.**
 
-- It is what the assignment asks for: reviewers run the whole stack with `make up`, without cloud accounts or costs.
+- It is what the assignment asks for: the whole stack runs with `make up`, without cloud accounts or costs.
 - It is also the easiest way to develop: every change is tried in seconds on the same stack, and the infra tests start isolated copies of it, several at a time.
 
-**Alternatives considered.** Managed services (Amazon MSK, EMR, S3, RDS). Closer to production, but reviewers would need accounts and credentials, and every test run would cost money.
+**Alternatives considered.** Managed services (Amazon MSK, EMR, S3, RDS). Closer to production, but running it would need accounts and credentials, and every test run would cost money.
 
 **Outcome.** The local choices keep production in reach: the object store speaks S3 and the catalog is standard Iceberg, so moving to AWS S3 or another catalog is a configuration change. What is left to reach a real production environment is listed in [the way to production](production.md).
 
@@ -65,7 +65,7 @@ The numbers come from my decision log, which also holds smaller decisions, so th
 - `unity_price` is decoded at bronze (#34).
 - Timestamps and dates are converted at bronze too.
 
-**Why.** The assignment treats the source side as given input; changing it would also change what the reviewers' own source produces.
+**Why.** The assignment treats the source side as given input; changing it would also change what anyone else's copy of the source produces.
 
 **Alternatives considered.** Setting `decimal.handling.mode=string` on the connector, which sends the decimal as a string, but needs a reset of the topics and the connector.
 
